@@ -1,9 +1,144 @@
 * {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
+  box-sizing: border-box;
 }
 
 body {
-    font-family: sans-serif;
+  margin: 0;
+  background: #f4f7fa;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-family: Manrope, system-ui, sans-serif;
+  color: #0e2a47;
+}
+
+::selection {
+  background: #ffd9c4;
+  color: #0e2a47;
+}
+
+@keyframes ahFade {
+  from {
+    transform: translateY(8px);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes ahPop {
+  from {
+    transform: translateY(12px);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes ahPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+@keyframes ahspin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.ah-screen {
+  animation: ahFade 0.28s ease both;
+}
+.ah-hov {
+  transition:
+    transform 0.16s ease,
+    box-shadow 0.16s ease,
+    border-color 0.16s ease,
+    background 0.16s ease;
+}
+.ah-hov:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 14px 34px rgba(14, 42, 71, 0.12);
+}
+.ah-btn {
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.16s ease,
+    background 0.16s ease,
+    opacity 0.16s;
+}
+.ah-btn:hover {
+  transform: translateY(-1px);
+}
+.ah-btn:active {
+  transform: translateY(0);
+}
+.ah-link {
+  transition: color 0.15s ease;
+}
+.ah-link:hover {
+  color: #ff6a2b;
+}
+.ah-row:hover {
+  background: #f7fafc;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #d3dce6;
+  border-radius: 99px;
+  border: 3px solid #f4f7fa;
+}
+
+/* ===== Responsive pass (desktop-first -> tablet/mobile) ===== */
+@media (max-width: 1024px) {
+  .ah-grid-5,
+  .ah-grid-4 {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+@media (max-width: 820px) {
+  .ah-grid-2,
+  .ah-grid-3,
+  .ah-grid-4,
+  .ah-grid-5,
+  .ah-grid-auto,
+  .ah-grid-side,
+  .ah-grid-side-alt {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Dashboards: stack sidebar over content */
+  .ah-dash-shell {
+    flex-direction: column !important;
+  }
+  .ah-dash-sidebar {
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    position: static !important;
+  }
+  .ah-dash-sidebar nav {
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+  }
+
+  .ah-hero-title {
+    font-size: 36px !important;
+    line-height: 1.06 !important;
+  }
+  .ah-dash-main {
+    overflow-x: auto !important;
+  }
+}
+@media (max-width: 560px) {
+  .ah-grid-side-alt {
+    grid-template-columns: 1fr !important;
+  }
+  .ah-hero-title {
+    font-size: 30px !important;
+  }
 }
