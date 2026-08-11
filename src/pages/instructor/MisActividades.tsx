@@ -1,10 +1,10 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
-import { getCategoria, getTipoActividad } from "../../lib/mockData";
+import { ApiError } from "../../lib/api";
 import type { NivelIntensidad } from "../../lib/types";
 
 const NIVEL_COLORS: Record<NivelIntensidad, [bg: string, fg: string, bd: string]> = {
@@ -28,9 +28,22 @@ export default function InstructorMisActividades() {
     [data.actividades, currentUser],
   );
 
-  const eliminar = (id: string, nombre: string) => {
+  useEffect(() => {
+    misActividades.forEach((a) => {
+      data.cargarDetalleActividad(a.id).catch(() => {});
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser, data.actividades.length]);
+
+  const [error, setError] = useState<string | null>(null);
+
+  const eliminar = async (id: string, nombre: string) => {
     if (window.confirm(`¿Eliminar la actividad "${nombre}"? Esta acción no se puede deshacer.`)) {
-      data.eliminarActividad(id);
+      try {
+        await data.eliminarActividad(id);
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : "No pudimos eliminar la actividad.");
+      }
     }
   };
 
@@ -63,6 +76,15 @@ export default function InstructorMisActividades() {
         </button>
       </div>
       <div style={s("padding:26px 32px 50px;")}>
+        {error && (
+          <div
+            style={s(
+              "display:flex;align-items:center;gap:11px;background:#FBEAEB;border:1px solid #F3D2D3;border-radius:12px;padding:13px 15px;margin-bottom:18px;",
+            )}
+          >
+            <span style={s("font-size:13px;line-height:1.4;color:#BE3A3E;font-weight:600;")}>{error}</span>
+          </div>
+        )}
         {misActividades.length === 0 ? (
           <div
             style={s(
@@ -74,8 +96,8 @@ export default function InstructorMisActividades() {
         ) : (
           <div className="ah-grid-auto" style={s("display:grid;grid-template-columns:repeat(auto-fill,minmax(440px,1fr));gap:18px;")}>
             {misActividades.map((a) => {
-              const tipo = getTipoActividad(a.tipoActividadId);
-              const cat = tipo ? getCategoria(tipo.categoriaId) : undefined;
+              const tipo = data.getTipoActividad(a.tipoActividadId);
+              const cat = tipo ? data.getCategoria(tipo.categoriaId) : undefined;
               const [nivelBg, nivelFg, nivelBd] = NIVEL_COLORS[a.nivelIntensidad];
               const clasesCount = data.clases.filter((c) => c.actividadId === a.id).length;
               return (

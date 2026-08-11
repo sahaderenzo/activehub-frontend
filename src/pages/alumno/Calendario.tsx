@@ -1,19 +1,13 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import AlumnoNav from "../../components/AlumnoNav";
 import StatusBadge from "../../components/StatusBadge";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
-import { formatFecha, formatHora, getCategoria, getTipoActividad, getUsuario } from "../../lib/mockData";
+import type { MiInscripcion } from "../../context/DataContext";
+import { formatFecha, formatHora } from "../../lib/mockData";
 import { inscripcionStatusType } from "../../lib/status";
-import type { Actividad, Clase, Inscripcion } from "../../lib/types";
-
-interface AgendaItem {
-  inscripcion: Inscripcion;
-  clase: Clase;
-  actividad: Actividad;
-}
 
 /**
  * Simplification: the original prototype shows a literal month grid with a
@@ -25,30 +19,28 @@ interface AgendaItem {
 export default function AlumnoCalendario() {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const { inscripciones, clases, actividades } = useData();
+  const { getActividad, getTipoActividad, getCategoria, instructorNombre, listarMisInscripciones } = useData();
+  const [inscripciones, setInscripciones] = useState<MiInscripcion[]>([]);
+
+  useEffect(() => {
+    if (currentUser) listarMisInscripciones().then(setInscripciones).catch(() => {});
+  }, [currentUser, listarMisInscripciones]);
 
   const grupos = useMemo(() => {
-    if (!currentUser) return [] as [string, AgendaItem[]][];
-    const propias: AgendaItem[] = [];
-    for (const i of inscripciones) {
-      if (i.alumnoId !== currentUser.id || i.estado === "Cancelada") continue;
-      const clase = clases.find((c) => c.id === i.claseId);
-      if (!clase) continue;
-      const actividad = actividades.find((a) => a.id === clase.actividadId);
-      if (!actividad) continue;
-      propias.push({ inscripcion: i, clase, actividad });
-    }
-    propias.sort((a, b) => a.clase.fechaHora.localeCompare(b.clase.fechaHora));
+    const propias = inscripciones
+      .filter((i) => i.estado !== "Cancelada")
+      .slice()
+      .sort((a, b) => a.claseFechaHora.localeCompare(b.claseFechaHora));
 
-    const byDate = new Map<string, AgendaItem[]>();
+    const byDate = new Map<string, MiInscripcion[]>();
     for (const item of propias) {
-      const key = formatFecha(item.clase.fechaHora);
+      const key = formatFecha(item.claseFechaHora);
       const arr = byDate.get(key) ?? [];
       arr.push(item);
       byDate.set(key, arr);
     }
     return Array.from(byDate.entries());
-  }, [inscripciones, clases, actividades, currentUser]);
+  }, [inscripciones]);
 
   return (
     <div className="ah-screen" style={s("min-height:100vh;background:#F4F7FA;")}>
@@ -81,42 +73,35 @@ export default function AlumnoCalendario() {
                 {fecha}
               </div>
               <div style={s("display:flex;flex-direction:column;gap:12px;")}>
-                {items.map(({ inscripcion, clase, actividad }) => {
-                  const tipo = getTipoActividad(actividad.tipoActividadId);
+                {items.map((item) => {
+                  const actividad = getActividad(item.actividadId);
+                  const tipo = actividad ? getTipoActividad(actividad.tipoActividadId) : undefined;
                   const cat = tipo ? getCategoria(tipo.categoriaId) : undefined;
-                  const instructor = getUsuario(actividad.instructorId);
-                  const libres = clase.cuposMax - clase.cuposOcupados;
+                  const instructor = actividad ? instructorNombre[actividad.instructorId] : undefined;
                   return (
                     <div
-                      key={inscripcion.id}
+                      key={item.id}
                       className="ah-hov"
-                      onClick={() => navigate(`/alumno/actividad/${actividad.id}`)}
+                      onClick={() => navigate(`/alumno/actividad/${item.actividadId}`)}
                       style={s(
                         "cursor:pointer;background:#fff;border:1px solid #E7EDF3;border-left:4px solid #12B5A5;border-radius:12px;padding:16px 18px;",
                       )}
                     >
                       <div style={s("display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;")}>
-                        <span style={s("font:700 15px Space Grotesk,sans-serif;color:#0E2A47;")}>{formatHora(clase.fechaHora)} hs</span>
-                        <StatusBadge type={inscripcionStatusType(inscripcion.estado)} />
+                        <span style={s("font:700 15px Space Grotesk,sans-serif;color:#0E2A47;")}>{formatHora(item.claseFechaHora)} hs</span>
+                        <StatusBadge type={inscripcionStatusType(item.estado)} />
                       </div>
                       <div style={s("font:700 14.5px Manrope,sans-serif;color:#0E2A47;margin-bottom:3px;")}>
-                        {actividad.nombre} <span style={s("color:#9AAABA;font-weight:600;")}>· {cat?.nombre}</span>
+                        {item.actividadNombre} <span style={s("color:#9AAABA;font-weight:600;")}>· {cat?.nombre}</span>
                       </div>
-                      <div style={s("font-size:12.5px;color:#7A8C9E;font-weight:600;margin-bottom:9px;")}>
-                        {instructor ? `${instructor.nombre} ${instructor.apellido}` : ""}
-                      </div>
-                      <div style={s("display:flex;align-items:center;justify-content:space-between;font-size:13px;")}>
-                        <span style={s("color:#65788C;font-weight:700;display:flex;align-items:center;gap:5px;")}>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9AAABA" strokeWidth={2}>
-                            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                            <circle cx="9" cy="7" r="4" />
-                          </svg>
-                          {libres > 0 ? `${libres} cupos libres` : "Sin cupos"}
-                        </span>
-                        <span style={s("font:700 14px Space Grotesk,sans-serif;color:#0E2A47;")}>
-                          ${actividad.precio.toLocaleString("es-AR")}
-                        </span>
-                      </div>
+                      <div style={s("font-size:12.5px;color:#7A8C9E;font-weight:600;margin-bottom:9px;")}>{instructor ?? ""}</div>
+                      {actividad && (
+                        <div style={s("display:flex;align-items:center;justify-content:flex-end;font-size:13px;")}>
+                          <span style={s("font:700 14px Space Grotesk,sans-serif;color:#0E2A47;")}>
+                            ${actividad.precio.toLocaleString("es-AR")}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   );
                 })}

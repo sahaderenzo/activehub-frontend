@@ -1,5 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-import { AuthProvider } from "./context/AuthContext";
+import { AuthProvider, useAuth } from "./context/AuthContext";
 import { DataProvider } from "./context/DataContext";
 import RequireRole from "./components/RequireRole";
 
@@ -42,11 +42,19 @@ import AdminPenalizaciones from "./pages/admin/Penalizaciones";
 import AdminAuditoria from "./pages/admin/Auditoria";
 import AdminTrazabilidad from "./pages/admin/Trazabilidad";
 
-function App() {
+function AppRoutes() {
+  const { initializing } = useAuth();
+
+  if (initializing) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "#65788C" }}>
+        Cargando…
+      </div>
+    );
+  }
+
   return (
-    <AuthProvider>
-      <DataProvider>
-      <BrowserRouter>
+    <BrowserRouter>
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />
@@ -98,7 +106,15 @@ function App() {
           <Route path="/404" element={<Errores />} />
           <Route path="*" element={<Navigate to="/404" replace />} />
         </Routes>
-      </BrowserRouter>
+    </BrowserRouter>
+  );
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <DataProvider>
+        <AppRoutes />
       </DataProvider>
     </AuthProvider>
   );

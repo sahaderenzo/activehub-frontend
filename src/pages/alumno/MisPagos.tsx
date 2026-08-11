@@ -1,38 +1,31 @@
-import { useMemo } from "react";
+import { useEffect, useState } from "react";
 import AlumnoNav from "../../components/AlumnoNav";
 import StatusBadge from "../../components/StatusBadge";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
+import type { MiInscripcion } from "../../context/DataContext";
+import { ApiError } from "../../lib/api";
 import { formatFecha } from "../../lib/mockData";
 import { pagoStatusType } from "../../lib/status";
-import type { Actividad, Inscripcion, Pago } from "../../lib/types";
-
-interface PagoRow {
-  inscripcion: Inscripcion;
-  pago: Pago;
-  actividad: Actividad;
-}
+import type { EstadoPago } from "../../lib/types";
 
 export default function AlumnoMisPagos() {
   const { currentUser } = useAuth();
-  const { inscripciones, pagos, clases, actividades } = useData();
+  const { listarMisInscripciones } = useData();
+  const [filas, setFilas] = useState<(MiInscripcion & { pago: NonNullable<MiInscripcion["pago"]> })[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
-  const filas = useMemo(() => {
-    if (!currentUser) return [] as PagoRow[];
-    const rows: PagoRow[] = [];
-    for (const i of inscripciones) {
-      if (i.alumnoId !== currentUser.id || !i.pagoId) continue;
-      const pago = pagos.find((p) => p.id === i.pagoId);
-      if (!pago) continue;
-      const clase = clases.find((c) => c.id === i.claseId);
-      const actividad = clase ? actividades.find((a) => a.id === clase.actividadId) : undefined;
-      if (!actividad) continue;
-      rows.push({ inscripcion: i, pago, actividad });
-    }
-    rows.sort((a, b) => b.inscripcion.createdAt.localeCompare(a.inscripcion.createdAt));
-    return rows;
-  }, [inscripciones, pagos, clases, actividades, currentUser]);
+  useEffect(() => {
+    if (!currentUser) return;
+    listarMisInscripciones()
+      .then((todas) => {
+        const conPago = todas.filter((i): i is MiInscripcion & { pago: NonNullable<MiInscripcion["pago"]> } => !!i.pago);
+        conPago.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        setFilas(conPago);
+      })
+      .catch((err) => setError(err instanceof ApiError ? err.message : "No pudimos cargar tus pagos."));
+  }, [currentUser, listarMisInscripciones]);
 
   const totalPagado = filas.filter((f) => f.pago.estado === "Liberado" || f.pago.estado === "Efectivo").reduce((s2, f) => s2 + f.pago.monto, 0);
   const totalRetenido = filas.filter((f) => f.pago.estado === "Retenido").reduce((s2, f) => s2 + f.pago.monto, 0);
@@ -50,6 +43,16 @@ export default function AlumnoMisPagos() {
           <SummaryTile label="Retenido (Mercado Pago)" value={`$${totalRetenido.toLocaleString("es-AR")}`} color="#B9741A" />
           <SummaryTile label="Cantidad de pagos" value={`${filas.length}`} color="#0E2A47" />
         </div>
+
+        {error && (
+          <div
+            style={s(
+              "display:flex;align-items:center;gap:11px;background:#FBEAEB;border:1px solid #F3D2D3;border-radius:12px;padding:13px 15px;margin-bottom:18px;",
+            )}
+          >
+            <span style={s("font-size:13px;line-height:1.4;color:#BE3A3E;font-weight:600;")}>{error}</span>
+          </div>
+        )}
 
         {filas.length === 0 ? (
           <div
@@ -73,29 +76,29 @@ export default function AlumnoMisPagos() {
               <span>Monto</span>
               <span>Estado pago</span>
             </div>
-            {filas.map(({ inscripcion, pago, actividad }) => (
+            {filas.map((r) => (
               <div
-                key={pago.id}
+                key={r.pago.id}
                 className="ah-grid-5"
                 style={s("display:grid;grid-template-columns:2fr 1.3fr 1.1fr 1fr 130px;padding:14px 22px;border-bottom:1px solid #F1F4F8;align-items:center;")}
               >
                 <div>
-                  <div style={s("font:700 14px Manrope,sans-serif;color:#0E2A47;")}>{actividad.nombre}</div>
-                  <div style={s("font-size:12px;color:#9AAABA;font-weight:600;font-family:ui-monospace,Menlo,monospace;")}>{pago.id}</div>
+                  <div style={s("font:700 14px Manrope,sans-serif;color:#0E2A47;")}>{r.actividadNombre}</div>
+                  <div style={s("font-size:12px;color:#9AAABA;font-weight:600;font-family:ui-monospace,Menlo,monospace;")}>{r.pago.id}</div>
                 </div>
-                <span style={s("font-size:13px;color:#65788C;font-weight:600;")}>{formatFecha(inscripcion.createdAt)}</span>
+                <span style={s("font-size:13px;color:#65788C;font-weight:600;")}>{formatFecha(r.createdAt)}</span>
                 <span style={s("display:flex;align-items:center;gap:6px;font-size:13px;color:#41566B;font-weight:700;")}>
-                  {pago.metodo === "Mercado Pago" && (
+                  {r.pago.metodo === "Mercado Pago" && (
                     <span style={s("width:18px;height:18px;border-radius:5px;background:#009EE3;display:flex;align-items:center;justify-content:center;flex:none;")}>
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.4}>
                         <path d="M2 9a3 3 0 0 1 3-3h14a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3z" />
                       </svg>
                     </span>
                   )}
-                  {pago.metodo}
+                  {r.pago.metodo}
                 </span>
-                <span style={s("font:700 14px Space Grotesk,sans-serif;color:#0E2A47;")}>${pago.monto.toLocaleString("es-AR")}</span>
-                <StatusBadge type={pagoStatusType(pago.estado)} />
+                <span style={s("font:700 14px Space Grotesk,sans-serif;color:#0E2A47;")}>${r.pago.monto.toLocaleString("es-AR")}</span>
+                <StatusBadge type={pagoStatusType(r.pago.estado as EstadoPago)} />
               </div>
             ))}
           </div>

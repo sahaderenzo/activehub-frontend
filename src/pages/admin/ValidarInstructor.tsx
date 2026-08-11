@@ -1,22 +1,37 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
 import StatusBadge from "../../components/StatusBadge";
 import { s } from "../../lib/style";
-import { useAuth } from "../../context/AuthContext";
+import { useData } from "../../context/DataContext";
+import type { InstructorAdmin } from "../../context/DataContext";
+import { ApiError } from "../../lib/api";
 import { formatFecha } from "../../lib/mockData";
 
 export default function AdminValidarInstructor() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
-  const { users, updateUsuario } = useAuth();
+  const { obtenerInstructor, aprobarInstructor, rechazarInstructor } = useData();
+  const [instructor, setInstructor] = useState<InstructorAdmin | null | undefined>(undefined);
   const [motivoRechazo, setMotivoRechazo] = useState("");
   const [showRechazo, setShowRechazo] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
 
-  const instructor = users.find((u) => u.id === id && u.rol === "INSTRUCTOR");
   const goGestion = () => navigate("/admin/gestion/instructores");
 
-  if (!instructor || !instructor.perfilInstructor) {
+  const cargar = () => {
+    if (!id) return;
+    obtenerInstructor(id)
+      .then(setInstructor)
+      .catch(() => setInstructor(null));
+  };
+
+  useEffect(cargar, [id]);
+
+  if (instructor === undefined) return null;
+
+  if (!instructor) {
     return (
       <DashLayout role="admin" active="gestionadmin">
         <div style={s("background:#fff;border-bottom:1px solid #E7EDF3;padding:18px 32px;")}>
@@ -34,33 +49,46 @@ export default function AdminValidarInstructor() {
     );
   }
 
-  const perfil = instructor.perfilInstructor;
   const nombreCompleto = `${instructor.nombre} ${instructor.apellido}`;
-  const badgeType = perfil.estadoVerificacion === "APROBADO" ? "validado" : perfil.estadoVerificacion === "RECHAZADO" ? "rechazado" : "revision";
+  const badgeType = instructor.estadoVerificacion === "APROBADO" ? "validado" : instructor.estadoVerificacion === "RECHAZADO" ? "rechazado" : "revision";
 
   const datos: { label: string; value: string }[] = [
     { label: "Nombre completo", value: nombreCompleto },
     { label: "Correo electrónico", value: instructor.email },
     { label: "Teléfono", value: instructor.telefono ?? "—" },
     { label: "Fecha de nacimiento", value: instructor.fechaNacimiento ? formatFecha(instructor.fechaNacimiento) : "—" },
-    { label: "Especialidad declarada", value: perfil.especialidad },
-    { label: "Años de experiencia", value: perfil.aniosExperiencia != null ? `${perfil.aniosExperiencia} años` : "—" },
+    { label: "Especialidad declarada", value: instructor.especialidad },
+    { label: "Años de experiencia", value: instructor.aniosExperiencia != null ? `${instructor.aniosExperiencia} años` : "—" },
   ];
 
   const docs = [
     { name: "DNI (frente y dorso).pdf", meta: "Subido · 1.4 MB" },
     { name: "Certificado de antecedentes.pdf", meta: "Subido · 820 KB" },
-    { name: `Título o certificación — ${perfil.especialidad}.pdf`, meta: "Subido · 2.1 MB" },
+    { name: `Título o certificación — ${instructor.especialidad}.pdf`, meta: "Subido · 2.1 MB" },
   ];
 
-  const aprobar = () => {
-    updateUsuario(instructor.id, { perfilInstructor: { ...perfil, estadoVerificacion: "APROBADO", motivoRechazo: undefined } });
-    goGestion();
+  const aprobar = async () => {
+    setError(null);
+    setEnviando(true);
+    try {
+      await aprobarInstructor(instructor.id);
+      goGestion();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos aprobar al instructor.");
+      setEnviando(false);
+    }
   };
 
-  const confirmarRechazo = () => {
-    updateUsuario(instructor.id, { perfilInstructor: { ...perfil, estadoVerificacion: "RECHAZADO", motivoRechazo: motivoRechazo.trim() || undefined } });
-    goGestion();
+  const confirmarRechazo = async () => {
+    setError(null);
+    setEnviando(true);
+    try {
+      await rechazarInstructor(instructor.id, motivoRechazo.trim() || undefined);
+      goGestion();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos rechazar la solicitud.");
+      setEnviando(false);
+    }
   };
 
   return (
@@ -75,6 +103,16 @@ export default function AdminValidarInstructor() {
       </div>
 
       <div style={s("max-width:880px;margin:0 auto;padding:26px 32px 50px;")}>
+        {error && (
+          <div
+            style={s(
+              "display:flex;align-items:center;gap:11px;background:#FBEAEB;border:1px solid #F3D2D3;border-radius:12px;padding:13px 15px;margin-bottom:18px;",
+            )}
+          >
+            <span style={s("font-size:13px;line-height:1.4;color:#BE3A3E;font-weight:600;")}>{error}</span>
+          </div>
+        )}
+
         <div
           style={s(
             "display:flex;align-items:flex-start;gap:18px;background:#fff;border:1px solid #E7EDF3;border-radius:18px;padding:22px;margin-bottom:18px;box-shadow:0 1px 2px rgba(14,42,71,.04);",
@@ -96,10 +134,10 @@ export default function AdminValidarInstructor() {
               {instructor.email} · {instructor.telefono ?? "sin teléfono"}
             </div>
             <div style={s("font-size:12.5px;color:#90A1B2;font-weight:600;margin-top:4px;")}>
-              Solicitud enviada el {formatFecha(instructor.createdAt)} · Especialidad declarada: {perfil.especialidad}
+              Solicitud enviada el {formatFecha(instructor.createdAt)} · Especialidad declarada: {instructor.especialidad}
             </div>
-            {perfil.estadoVerificacion === "RECHAZADO" && perfil.motivoRechazo && (
-              <div style={s("margin-top:8px;font-size:12.5px;color:#BE3A3E;font-weight:700;")}>Motivo de rechazo: {perfil.motivoRechazo}</div>
+            {instructor.estadoVerificacion === "RECHAZADO" && instructor.motivoRechazo && (
+              <div style={s("margin-top:8px;font-size:12.5px;color:#BE3A3E;font-weight:700;")}>Motivo de rechazo: {instructor.motivoRechazo}</div>
             )}
           </div>
         </div>
@@ -144,17 +182,18 @@ export default function AdminValidarInstructor() {
         </div>
 
         <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:18px;padding:20px 22px;margin-top:18px;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
-          {perfil.estadoVerificacion !== "PENDIENTE" ? (
+          {instructor.estadoVerificacion !== "PENDIENTE" ? (
             <>
               <div style={s("font:700 15px Space Grotesk,sans-serif;margin-bottom:4px;")}>Solicitud ya procesada</div>
               <p style={s("font-size:13.5px;color:#7A8C9E;margin:0;line-height:1.5;")}>
-                Esta solicitud fue {perfil.estadoVerificacion === "APROBADO" ? "aprobada" : "rechazada"}. Podés volver a cambiar su estado desde acá si fue un error.
+                Esta solicitud fue {instructor.estadoVerificacion === "APROBADO" ? "aprobada" : "rechazada"}. Podés volver a cambiar su estado desde acá si fue un error.
               </p>
               <div style={s("display:flex;gap:11px;margin-top:16px;")}>
-                {perfil.estadoVerificacion !== "APROBADO" && (
+                {instructor.estadoVerificacion !== "APROBADO" && (
                   <button
                     className="ah-btn"
                     onClick={aprobar}
+                    disabled={enviando}
                     style={s(
                       "flex:1;background:#0FB8A9;color:#fff;border:none;border-radius:12px;padding:14px;font:700 14.5px Manrope,sans-serif;cursor:pointer;",
                     )}
@@ -162,10 +201,11 @@ export default function AdminValidarInstructor() {
                     Aceptar instructor
                   </button>
                 )}
-                {perfil.estadoVerificacion !== "RECHAZADO" && (
+                {instructor.estadoVerificacion !== "RECHAZADO" && (
                   <button
                     className="ah-btn"
                     onClick={() => setShowRechazo(true)}
+                    disabled={enviando}
                     style={s(
                       "flex:1;background:#FBEAEB;color:#BE3A3E;border:1px solid #F3D2D3;border-radius:12px;padding:14px;font:700 14.5px Manrope,sans-serif;cursor:pointer;",
                     )}
@@ -196,6 +236,7 @@ export default function AdminValidarInstructor() {
                 <button
                   className="ah-btn"
                   onClick={aprobar}
+                  disabled={enviando}
                   style={s(
                     "flex:1;background:#0FB8A9;color:#fff;border:none;border-radius:12px;padding:14px;font:700 14.5px Manrope,sans-serif;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 8px 18px rgba(15,184,169,.28);",
                   )}
@@ -208,6 +249,7 @@ export default function AdminValidarInstructor() {
                 <button
                   className="ah-btn"
                   onClick={() => (showRechazo ? confirmarRechazo() : setShowRechazo(true))}
+                  disabled={enviando}
                   style={s(
                     "flex:1;background:#FBEAEB;color:#BE3A3E;border:1px solid #F3D2D3;border-radius:12px;padding:14px;font:700 14.5px Manrope,sans-serif;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;",
                   )}

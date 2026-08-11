@@ -1,19 +1,15 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AlumnoNav from "../../components/AlumnoNav";
 import StatusBadge from "../../components/StatusBadge";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
-import { formatFecha, formatHora, getCategoria, getTipoActividad, getUsuario, tipoIngreso } from "../../lib/mockData";
+import type { MiInscripcion } from "../../context/DataContext";
+import { ApiError } from "../../lib/api";
+import { formatFecha, formatHora } from "../../lib/mockData";
 import { inscripcionStatusType } from "../../lib/status";
-import type { Actividad, Clase, EstadoInscripcion, Inscripcion } from "../../lib/types";
-
-interface Row {
-  inscripcion: Inscripcion;
-  clase: Clase;
-  actividad: Actividad;
-}
+import type { EstadoInscripcion } from "../../lib/types";
 
 const TABS: { key: EstadoInscripcion | "todas"; label: string }[] = [
   { key: "todas", label: "Todas" },
@@ -26,41 +22,50 @@ const TABS: { key: EstadoInscripcion | "todas"; label: string }[] = [
 export default function AlumnoMisClases() {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const { inscripciones, clases, actividades, pagos, cancelarInscripcion, crearDenuncia } = useData();
+  const { getActividad, getTipoActividad, getCategoria, instructorNombre, cancelarInscripcion, crearDenuncia, listarMisInscripciones } =
+    useData();
   const [tab, setTab] = useState<EstadoInscripcion | "todas">("todas");
   const [reportadas, setReportadas] = useState<Set<string>>(new Set());
+  const [todasFilas, setTodasFilas] = useState<MiInscripcion[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
-  const todasFilas = useMemo(() => {
-    if (!currentUser) return [] as Row[];
-    const rows: Row[] = [];
-    for (const i of inscripciones) {
-      if (i.alumnoId !== currentUser.id) continue;
-      const clase = clases.find((c) => c.id === i.claseId);
-      if (!clase) continue;
-      const actividad = actividades.find((a) => a.id === clase.actividadId);
-      if (!actividad) continue;
-      rows.push({ inscripcion: i, clase, actividad });
-    }
-    rows.sort((a, b) => b.clase.fechaHora.localeCompare(a.clase.fechaHora));
-    return rows;
-  }, [inscripciones, clases, actividades, currentUser]);
+  const cargar = () => {
+    listarMisInscripciones()
+      .then((filas) => setTodasFilas([...filas].sort((a, b) => b.claseFechaHora.localeCompare(a.claseFechaHora))))
+      .catch((err) => setError(err instanceof ApiError ? err.message : "No pudimos cargar tus clases."));
+  };
+
+  useEffect(() => {
+    if (currentUser) cargar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser]);
 
   const counts = useMemo(() => {
     const c: Record<string, number> = { todas: todasFilas.length };
-    for (const r of todasFilas) c[r.inscripcion.estado] = (c[r.inscripcion.estado] ?? 0) + 1;
+    for (const r of todasFilas) c[r.estado] = (c[r.estado] ?? 0) + 1;
     return c;
   }, [todasFilas]);
 
-  const filas = tab === "todas" ? todasFilas : todasFilas.filter((r) => r.inscripcion.estado === tab);
+  const filas = tab === "todas" ? todasFilas : todasFilas.filter((r) => r.estado === tab);
 
-  const reportarInasistencia = (r: Row) => {
+  const reportarInasistencia = (r: MiInscripcion) => {
     if (!currentUser) return;
     crearDenuncia({
-      claseId: r.clase.id,
+      claseId: r.claseId,
       alumnoId: currentUser.id,
-      motivo: `El instructor no se presentó a la clase de ${r.actividad.nombre} del ${formatFecha(r.clase.fechaHora)}.`,
+      motivo: `El instructor no se presentó a la clase de ${r.actividadNombre} del ${formatFecha(r.claseFechaHora)}.`,
     });
-    setReportadas((prev) => new Set(prev).add(r.inscripcion.id));
+    setReportadas((prev) => new Set(prev).add(r.id));
+  };
+
+  const cancelar = async (id: string) => {
+    setError(null);
+    try {
+      await cancelarInscripcion(id);
+      cargar();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos cancelar la inscripción.");
+    }
   };
 
   return (
@@ -97,6 +102,16 @@ export default function AlumnoMisClases() {
           })}
         </div>
 
+        {error && (
+          <div
+            style={s(
+              "display:flex;align-items:center;gap:11px;background:#FBEAEB;border:1px solid #F3D2D3;border-radius:12px;padding:13px 15px;margin-bottom:18px;",
+            )}
+          >
+            <span style={s("font-size:13px;line-height:1.4;color:#BE3A3E;font-weight:600;")}>{error}</span>
+          </div>
+        )}
+
         {filas.length === 0 ? (
           <div style={s("background:#fff;border:1px dashed #D6DEE7;border-radius:16px;padding:50px 20px;text-align:center;color:#7A8C9E;font-weight:600;")}>
             No hay clases en esta categoría.
@@ -104,46 +119,46 @@ export default function AlumnoMisClases() {
         ) : (
           <div style={s("display:flex;flex-direction:column;gap:14px;")}>
             {filas.map((r) => {
-              const tipo = getTipoActividad(r.actividad.tipoActividadId);
+              const actividad = getActividad(r.actividadId);
+              const tipo = actividad ? getTipoActividad(actividad.tipoActividadId) : undefined;
               const cat = tipo ? getCategoria(tipo.categoriaId) : undefined;
-              const instructor = getUsuario(r.actividad.instructorId);
-              const pago = r.inscripcion.pagoId ? pagos.find((p) => p.id === r.inscripcion.pagoId) : undefined;
-              const claseFutura = new Date(r.clase.fechaHora).getTime() > Date.now();
-              const ingreso = tipoIngreso(r.clase);
+              const instructor = actividad ? instructorNombre[actividad.instructorId] : undefined;
+              const claseFutura = new Date(r.claseFechaHora).getTime() > Date.now();
+              const diasHasta = (new Date(r.claseFechaHora).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+              const ingreso: "preinscripcion" | "inscripcion" = diasHasta > 4 ? "preinscripcion" : "inscripcion";
 
               let note = "";
-              if (r.inscripcion.estado === "PreInscripción") {
+              if (r.estado === "PreInscripción") {
                 note = ingreso === "inscripcion" ? "Ya podés inscribirte y pagar tu lugar." : "Esperá a que falten 4 días para inscribirte.";
-              } else if (r.inscripcion.estado === "PagoPendiente") {
+              } else if (r.estado === "PagoPendiente") {
                 note = "Pago pendiente: aboná en efectivo al instructor antes de la clase.";
-              } else if (r.inscripcion.estado === "Inscripto") {
-                note = pago?.metodo === "Mercado Pago" ? "Pago confirmado con Mercado Pago." : "Asistencia confirmada por el instructor.";
+              } else if (r.estado === "Inscripto") {
+                note = r.pago?.metodo === "Mercado Pago" ? "Pago confirmado con Mercado Pago." : "Asistencia confirmada por el instructor.";
               } else {
                 note = "Inscripción cancelada.";
               }
 
-              const primaryLabel =
-                r.inscripcion.estado === "PreInscripción" && ingreso === "inscripcion" ? "Inscribirme y pagar" : "Ver actividad";
+              const primaryLabel = r.estado === "PreInscripción" && ingreso === "inscripcion" ? "Inscribirme y pagar" : "Ver actividad";
               const primaryAction = () =>
-                r.inscripcion.estado === "PreInscripción" && ingreso === "inscripcion"
-                  ? navigate(`/alumno/inscripcion/${r.clase.id}`)
-                  : navigate(`/alumno/actividad/${r.actividad.id}`);
+                r.estado === "PreInscripción" && ingreso === "inscripcion"
+                  ? navigate(`/alumno/inscripcion/${r.claseId}`)
+                  : navigate(`/alumno/actividad/${r.actividadId}`);
 
-              const puedeCancelar = claseFutura && (r.inscripcion.estado === "PreInscripción" || r.inscripcion.estado === "PagoPendiente" || r.inscripcion.estado === "Inscripto");
+              const puedeCancelar = claseFutura && (r.estado === "PreInscripción" || r.estado === "PagoPendiente" || r.estado === "Inscripto");
 
-              const horasDesdeInicio = (Date.now() - new Date(r.clase.fechaHora).getTime()) / (1000 * 60 * 60);
-              const yaReportada = reportadas.has(r.inscripcion.id);
-              const repEnabled = r.inscripcion.estado === "Inscripto" && horasDesdeInicio >= 1 && !yaReportada;
-              const repDisabled = r.inscripcion.estado === "Inscripto" && horasDesdeInicio < 1 && !yaReportada;
+              const horasDesdeInicio = (Date.now() - new Date(r.claseFechaHora).getTime()) / (1000 * 60 * 60);
+              const yaReportada = reportadas.has(r.id);
+              const repEnabled = r.estado === "Inscripto" && horasDesdeInicio >= 1 && !yaReportada;
+              const repDisabled = r.estado === "Inscripto" && horasDesdeInicio < 1 && !yaReportada;
 
               return (
                 <div
-                  key={r.inscripcion.id}
+                  key={r.id}
                   style={s(
                     "background:#fff;border:1px solid #E7EDF3;border-radius:18px;padding:18px 20px;display:flex;align-items:center;gap:18px;box-shadow:0 1px 2px rgba(14,42,71,.04);flex-wrap:wrap;",
                   )}
                 >
-                  <div style={s(`width:88px;height:88px;border-radius:14px;flex:none;background:${r.actividad.photoTint};position:relative;`)}>
+                  <div style={s(`width:88px;height:88px;border-radius:14px;flex:none;background:${actividad?.photoTint ?? "#0E2A47"};position:relative;`)}>
                     <div style={s("position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.6);font:600 9px ui-monospace,Menlo,monospace;")}>
                       FOTO
                     </div>
@@ -151,23 +166,23 @@ export default function AlumnoMisClases() {
                   <div style={s("flex:1;min-width:220px;")}>
                     <div style={s("display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap;")}>
                       <span style={s("font:700 11px Manrope,sans-serif;color:#12B5A5;text-transform:uppercase;letter-spacing:.4px;")}>{cat?.nombre}</span>
-                      <StatusBadge type={inscripcionStatusType(r.inscripcion.estado)} />
+                      <StatusBadge type={inscripcionStatusType(r.estado)} />
                     </div>
-                    <div style={s("font:700 18px Manrope,sans-serif;color:#0E2A47;margin-bottom:6px;")}>{r.actividad.nombre}</div>
+                    <div style={s("font:700 18px Manrope,sans-serif;color:#0E2A47;margin-bottom:6px;")}>{r.actividadNombre}</div>
                     <div style={s("display:flex;flex-wrap:wrap;gap:16px;font-size:13px;color:#65788C;font-weight:600;")}>
                       <span style={s("display:flex;align-items:center;gap:6px;")}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9AAABA" strokeWidth={2}>
                           <rect x="3" y="4" width="18" height="18" rx="2" />
                           <path d="M16 2v4M8 2v4M3 10h18" />
                         </svg>
-                        {formatFecha(r.clase.fechaHora)} · {formatHora(r.clase.fechaHora)}
+                        {formatFecha(r.claseFechaHora)} · {formatHora(r.claseFechaHora)}
                       </span>
                       <span style={s("display:flex;align-items:center;gap:6px;")}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9AAABA" strokeWidth={2}>
                           <circle cx="12" cy="8" r="4" />
                           <path d="M4 21v-1a6 6 0 0 1 12 0v1" />
                         </svg>
-                        {instructor ? `${instructor.nombre} ${instructor.apellido}` : ""}
+                        {instructor ?? ""}
                       </span>
                     </div>
                     <div style={s("display:flex;align-items:center;gap:7px;margin-top:9px;font-size:12.5px;color:#8194A8;font-weight:600;")}>
@@ -190,7 +205,7 @@ export default function AlumnoMisClases() {
                       <button
                         className="ah-btn"
                         onClick={() => {
-                          if (window.confirm("¿Seguro que querés cancelar esta inscripción?")) cancelarInscripcion(r.inscripcion.id);
+                          if (window.confirm("¿Seguro que querés cancelar esta inscripción?")) cancelar(r.id);
                         }}
                         style={s("background:#fff;border:1px solid #E2E9F0;border-radius:11px;padding:11px;font:700 13.5px Manrope,sans-serif;color:#65788C;cursor:pointer;")}
                       >

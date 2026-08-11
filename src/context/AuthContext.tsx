@@ -2,17 +2,24 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { ReactNode } from "react";
 import type { PerfilAlumno, PerfilInstructor, RolNombre, Usuario } from "../lib/types";
 import { perfilesAlumno, perfilesInstructor, usuarios as seedUsuarios } from "../lib/mockData";
+import { api, ApiError, clearToken, getToken, setToken } from "../lib/api";
 
 /**
- * Mock/local auth store (no backend in this repo yet). Mirrors the request /
- * response shapes from design_handoff_activehub/03-CASOS-DE-USO-AUTH.md so a
- * real API can be swapped in later without touching the pages that call
- * useAuth(). Persisted to localStorage so a refresh keeps the session and any
- * accounts created at runtime.
+ * Auth real contra activehub-api (JWT). `users`/`updateUsuario` se mantienen
+ * como una lista mock local aparte: la usan pantallas que todavía no tienen
+ * backend (Roles, Reportes, denuncias) y necesitan un "directorio" de
+ * usuarios que la API real no expone por privacidad.
  */
+
+export { ApiError };
 
 export interface StoredUsuario extends Usuario {
   passwordMock: string;
+  perfilAlumno?: PerfilAlumno;
+  perfilInstructor?: PerfilInstructor;
+}
+
+export interface SesionUsuario extends Usuario {
   perfilAlumno?: PerfilAlumno;
   perfilInstructor?: PerfilInstructor;
 }
@@ -25,6 +32,7 @@ export interface RegistrarAlumnoInput {
   password: string;
   fechaNacimiento: string;
   intereses: string[];
+  aceptaTerminos: boolean;
 }
 
 export interface RegistrarInstructorInput {
@@ -37,6 +45,7 @@ export interface RegistrarInstructorInput {
   especialidad: string;
   aniosExperiencia?: number;
   descripcion?: string;
+  aceptaTerminos: boolean;
 }
 
 export interface RegistrarAdminInput {
@@ -47,26 +56,7 @@ export interface RegistrarAdminInput {
   password: string;
 }
 
-export type ApiErrorCode =
-  | "VALIDACION"
-  | "CREDENCIALES_INVALIDAS"
-  | "SIN_PERMISO"
-  | "NO_ENCONTRADO"
-  | "EMAIL_EN_USO"
-  | "USUARIO_SUSPENDIDO";
-
-export class ApiError extends Error {
-  code: ApiErrorCode;
-  fieldErrors?: Record<string, string>;
-  constructor(code: ApiErrorCode, message: string, fieldErrors?: Record<string, string>) {
-    super(message);
-    this.code = code;
-    this.fieldErrors = fieldErrors;
-  }
-}
-
 const USERS_KEY = "ah_users";
-const SESSION_KEY = "ah_session_user_id";
 
 function seedStore(): StoredUsuario[] {
   return seedUsuarios.map((u) => ({
@@ -93,10 +83,6 @@ function saveUsers(users: StoredUsuario[]) {
   localStorage.setItem(USERS_KEY, JSON.stringify(users));
 }
 
-function normalizeEmail(email: string): string {
-  return email.trim().toLowerCase();
-}
-
 function passwordStrength(password: string): { ok: boolean; label: string; color: string } {
   if (password.length < 8) return { ok: false, label: "Contraseña muy débil (mínimo 8 caracteres)", color: "#E5484D" };
   const hasLetter = /[a-zA-Z]/.test(password);
@@ -111,15 +97,59 @@ function passwordStrength(password: string): { ok: boolean; label: string; color
 
 export { passwordStrength };
 
+interface UsuarioRespuesta {
+  id: string;
+  nombre: string;
+  apellido: string;
+  email: string;
+  telefono?: string;
+  fechaNacimiento?: string;
+  rol: RolNombre;
+  estado: "ACTIVO" | "SUSPENDIDO";
+  cantidadPenalizaciones: number;
+  createdAt: string;
+}
+
+interface AuthRespuesta {
+  token: string;
+  usuario: UsuarioRespuesta;
+}
+
+interface MiPerfilInstructorRespuesta {
+  especialidad: string;
+  aniosExperiencia?: number;
+  descripcion?: string;
+  estadoVerificacion: "PENDIENTE" | "APROBADO" | "RECHAZADO";
+  motivoRechazo?: string;
+}
+
+async function fetchPerfilInstructorSiCorresponde(usuario: UsuarioRespuesta): Promise<PerfilInstructor | undefined> {
+  if (usuario.rol !== "INSTRUCTOR") return undefined;
+  try {
+    const perfil = await api.get<MiPerfilInstructorRespuesta>("/api/instructor/perfil");
+    return {
+      usuarioId: usuario.id,
+      especialidad: perfil.especialidad,
+      aniosExperiencia: perfil.aniosExperiencia,
+      descripcion: perfil.descripcion,
+      estadoVerificacion: perfil.estadoVerificacion,
+      motivoRechazo: perfil.motivoRechazo,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 interface AuthContextValue {
-  currentUser: StoredUsuario | null;
+  currentUser: SesionUsuario | null;
+  initializing: boolean;
   users: StoredUsuario[];
-  registerAlumno: (input: RegistrarAlumnoInput) => StoredUsuario;
-  registerInstructor: (input: RegistrarInstructorInput) => StoredUsuario;
-  login: (email: string, password: string) => StoredUsuario;
-  loginAsDemo: (rol: RolNombre) => StoredUsuario;
+  registerAlumno: (input: RegistrarAlumnoInput) => Promise<SesionUsuario>;
+  registerInstructor: (input: RegistrarInstructorInput) => Promise<SesionUsuario>;
+  login: (email: string, password: string) => Promise<SesionUsuario>;
+  loginAsDemo: (rol: RolNombre) => Promise<SesionUsuario>;
   logout: () => void;
-  createAdmin: (input: RegistrarAdminInput) => StoredUsuario;
+  createAdmin: (input: RegistrarAdminInput) => Promise<Usuario>;
   updateUsuario: (id: string, patch: Partial<StoredUsuario>) => void;
 }
 
@@ -127,164 +157,116 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [users, setUsers] = useState<StoredUsuario[]>(() => loadUsers());
-  const [currentUserId, setCurrentUserId] = useState<string | null>(() =>
-    typeof window === "undefined" ? null : localStorage.getItem(SESSION_KEY),
-  );
+  const [currentUser, setCurrentUser] = useState<SesionUsuario | null>(null);
+  const [initializing, setInitializing] = useState(true);
 
   useEffect(() => {
     saveUsers(users);
   }, [users]);
 
   useEffect(() => {
-    if (currentUserId) localStorage.setItem(SESSION_KEY, currentUserId);
-    else localStorage.removeItem(SESSION_KEY);
-  }, [currentUserId]);
-
-  const currentUser = useMemo(
-    () => users.find((u) => u.id === currentUserId) ?? null,
-    [users, currentUserId],
-  );
-
-  const assertEmailFree = useCallback(
-    (email: string) => {
-      const exists = users.some((u) => normalizeEmail(u.email) === normalizeEmail(email));
-      if (exists) {
-        throw new ApiError("EMAIL_EN_USO", "Ese correo ya está registrado.", {
-          email: "Ese correo ya está registrado.",
-        });
+    let cancelado = false;
+    async function restaurarSesion() {
+      const token = getToken();
+      if (!token) {
+        setInitializing(false);
+        return;
       }
-    },
-    [users],
-  );
-
-  const registerAlumno = useCallback(
-    (input: RegistrarAlumnoInput) => {
-      assertEmailFree(input.email);
-      const id = `u-${Date.now()}`;
-      const nuevo: StoredUsuario = {
-        id,
-        nombre: input.nombre,
-        apellido: input.apellido,
-        email: normalizeEmail(input.email),
-        telefono: input.telefono,
-        fechaNacimiento: input.fechaNacimiento,
-        rol: "ALUMNO",
-        estado: "ACTIVO",
-        cantidadPenalizaciones: 0,
-        createdAt: new Date().toISOString(),
-        passwordMock: input.password,
-        perfilAlumno: { usuarioId: id, intereses: input.intereses },
-      };
-      setUsers((prev) => [...prev, nuevo]);
-      setCurrentUserId(id);
-      return nuevo;
-    },
-    [assertEmailFree],
-  );
-
-  const registerInstructor = useCallback(
-    (input: RegistrarInstructorInput) => {
-      assertEmailFree(input.email);
-      const id = `u-${Date.now()}`;
-      const nuevo: StoredUsuario = {
-        id,
-        nombre: input.nombre,
-        apellido: input.apellido,
-        email: normalizeEmail(input.email),
-        telefono: input.telefono,
-        fechaNacimiento: input.fechaNacimiento,
-        rol: "INSTRUCTOR",
-        estado: "ACTIVO",
-        cantidadPenalizaciones: 0,
-        createdAt: new Date().toISOString(),
-        passwordMock: input.password,
-        perfilInstructor: {
-          usuarioId: id,
-          especialidad: input.especialidad,
-          aniosExperiencia: input.aniosExperiencia,
-          descripcion: input.descripcion,
-          estadoVerificacion: "PENDIENTE",
-        },
-      };
-      setUsers((prev) => [...prev, nuevo]);
-      setCurrentUserId(id);
-      return nuevo;
-    },
-    [assertEmailFree],
-  );
-
-  const login = useCallback(
-    (email: string, password: string) => {
-      const user = users.find((u) => normalizeEmail(u.email) === normalizeEmail(email));
-      if (!user || user.passwordMock !== password) {
-        throw new ApiError("CREDENCIALES_INVALIDAS", "Correo o contraseña incorrectos. Verificá tus datos e intentá de nuevo.");
+      try {
+        const usuario = await api.get<UsuarioRespuesta>("/api/auth/me");
+        const perfilInstructor = await fetchPerfilInstructorSiCorresponde(usuario);
+        if (!cancelado) setCurrentUser({ ...usuario, perfilInstructor });
+      } catch {
+        clearToken();
+        if (!cancelado) setCurrentUser(null);
+      } finally {
+        if (!cancelado) setInitializing(false);
       }
-      if (user.estado === "SUSPENDIDO") {
-        throw new ApiError("USUARIO_SUSPENDIDO", "Tu cuenta está suspendida. Contactá a soporte.");
-      }
-      setCurrentUserId(user.id);
-      return user;
-    },
-    [users],
-  );
+    }
+    restaurarSesion();
+    return () => {
+      cancelado = true;
+    };
+  }, []);
+
+  const registerAlumno = useCallback(async (input: RegistrarAlumnoInput) => {
+    const { usuario, token } = await api.post<AuthRespuesta>("/api/auth/registro/alumno", input);
+    setToken(token);
+    const sesion: SesionUsuario = {
+      ...usuario,
+      perfilAlumno: { usuarioId: usuario.id, intereses: input.intereses },
+    };
+    setCurrentUser(sesion);
+    return sesion;
+  }, []);
+
+  const registerInstructor = useCallback(async (input: RegistrarInstructorInput) => {
+    const { usuario, token } = await api.post<AuthRespuesta>("/api/auth/registro/instructor", input);
+    setToken(token);
+    const sesion: SesionUsuario = {
+      ...usuario,
+      perfilInstructor: {
+        usuarioId: usuario.id,
+        especialidad: input.especialidad,
+        aniosExperiencia: input.aniosExperiencia,
+        descripcion: input.descripcion,
+        estadoVerificacion: "PENDIENTE",
+      },
+    };
+    setCurrentUser(sesion);
+    return sesion;
+  }, []);
+
+  const login = useCallback(async (email: string, password: string) => {
+    const { usuario, token } = await api.post<AuthRespuesta>("/api/auth/login", { email, password });
+    setToken(token);
+    const perfilInstructor = await fetchPerfilInstructorSiCorresponde(usuario);
+    const sesion: SesionUsuario = { ...usuario, perfilInstructor };
+    setCurrentUser(sesion);
+    return sesion;
+  }, []);
 
   const loginAsDemo = useCallback(
     (rol: RolNombre) => {
-      const emailByRol: Record<RolNombre, string> = {
-        ALUMNO: "martina@email.com",
-        INSTRUCTOR: "mateo@email.com",
-        ADMIN: "roberto.admin@activehub.com",
+      const credencialesPorRol: Record<RolNombre, { email: string; password: string }> = {
+        ALUMNO: { email: "martina@email.com", password: "Activehub2026" },
+        INSTRUCTOR: { email: "mateo@email.com", password: "Activehub2026" },
+        ADMIN: { email: "roberto.admin@activehub.com", password: "Activehub2026" },
       };
-      const user = users.find((u) => u.email === emailByRol[rol]);
-      if (!user) throw new ApiError("NO_ENCONTRADO", "Usuario demo no encontrado.");
-      setCurrentUserId(user.id);
-      return user;
+      const { email, password } = credencialesPorRol[rol];
+      return login(email, password);
     },
-    [users],
+    [login],
   );
 
-  const logout = useCallback(() => setCurrentUserId(null), []);
+  const logout = useCallback(() => {
+    clearToken();
+    setCurrentUser(null);
+  }, []);
 
-  const createAdmin = useCallback(
-    (input: RegistrarAdminInput) => {
-      if (!currentUser || currentUser.rol !== "ADMIN") {
-        throw new ApiError("SIN_PERMISO", "Solo un administrador puede crear otro administrador.");
-      }
-      assertEmailFree(input.email);
-      const id = `u-${Date.now()}`;
-      const nuevo: StoredUsuario = {
-        id,
-        nombre: input.nombre,
-        apellido: input.apellido,
-        email: normalizeEmail(input.email),
-        telefono: input.telefono,
-        rol: "ADMIN",
-        estado: "ACTIVO",
-        cantidadPenalizaciones: 0,
-        createdAt: new Date().toISOString(),
-        passwordMock: input.password,
-      };
-      setUsers((prev) => [...prev, nuevo]);
-      return nuevo;
-    },
-    [assertEmailFree, currentUser],
-  );
+  const createAdmin = useCallback(async (input: RegistrarAdminInput) => {
+    return api.post<Usuario>("/api/admin/usuarios/admin", input);
+  }, []);
 
   const updateUsuario = useCallback((id: string, patch: Partial<StoredUsuario>) => {
     setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, ...patch } : u)));
   }, []);
 
-  const value: AuthContextValue = {
-    currentUser,
-    users,
-    registerAlumno,
-    registerInstructor,
-    login,
-    loginAsDemo,
-    logout,
-    createAdmin,
-    updateUsuario,
-  };
+  const value: AuthContextValue = useMemo(
+    () => ({
+      currentUser,
+      initializing,
+      users,
+      registerAlumno,
+      registerInstructor,
+      login,
+      loginAsDemo,
+      logout,
+      createAdmin,
+      updateUsuario,
+    }),
+    [currentUser, initializing, users, registerAlumno, registerInstructor, login, loginAsDemo, logout, createAdmin, updateUsuario],
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

@@ -15,12 +15,12 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const submit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
     try {
-      const user = login(email, password);
+      const user = await login(email, password);
       navigate(HOME_BY_ROL[user.rol]);
     } catch (err) {
       if (err instanceof ApiError) setError(err.message);
@@ -30,9 +30,15 @@ export default function Login() {
     }
   };
 
-  const demo = (rol: RolNombre) => {
-    const user = loginAsDemo(rol);
-    navigate(HOME_BY_ROL[user.rol]);
+  const demo = async (rol: RolNombre) => {
+    setError(null);
+    try {
+      const user = await loginAsDemo(rol);
+      navigate(HOME_BY_ROL[user.rol]);
+    } catch (err) {
+      if (err instanceof ApiError) setError(err.message);
+      else setError("Ocurrió un error inesperado. Intentá de nuevo.");
+    }
   };
 
   const fieldStyle = (invalid: boolean) =>

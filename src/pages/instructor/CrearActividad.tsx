@@ -4,7 +4,7 @@ import DashLayout from "../../components/DashLayout";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
-import { categorias, getTipoActividad } from "../../lib/mockData";
+import { ApiError } from "../../lib/api";
 import type { NivelIntensidad } from "../../lib/types";
 
 const NIVELES: NivelIntensidad[] = ["Física baja", "Física media", "Física alta"];
@@ -49,9 +49,16 @@ export default function InstructorCrearActividad() {
   const [precioRaw, setPrecioRaw] = useState(existing ? String(existing.precio) : "");
   const [ubicacion, setUbicacion] = useState(existing?.ubicacion ?? "");
   const [categoriaId, setCategoriaId] = useState(() => {
-    const tipo = existing ? getTipoActividad(existing.tipoActividadId) : undefined;
-    return tipo?.categoriaId ?? categorias[0]?.id ?? "";
+    const tipo = existing ? data.getTipoActividad(existing.tipoActividadId) : undefined;
+    return tipo?.categoriaId ?? data.categorias[0]?.id ?? "";
   });
+
+  useEffect(() => {
+    if (isEdit && id) {
+      data.cargarDetalleActividad(id).then((r) => setDescripcion(r.descripcion)).catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEdit, id]);
   const [tipoActividadId, setTipoActividadId] = useState(existing?.tipoActividadId ?? "");
   const [nivel, setNivel] = useState<NivelIntensidad>(existing?.nivelIntensidad ?? "Física media");
   const [photoTint] = useState(
@@ -75,36 +82,45 @@ export default function InstructorCrearActividad() {
     setPrecioRaw(raw.replace(/[^\d]/g, ""));
   };
 
-  const handleSave = (navigateAfter: boolean) => {
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSave = async (navigateAfter: boolean) => {
     if (!currentUser || !nombre.trim() || !tipoActividadId) return;
     const payload = {
       nombre: nombre.trim(),
       descripcion: descripcion.trim(),
       tipoActividadId,
       nivelIntensidad: nivel,
-      instructorId: currentUser.id,
       precio: Number(precioRaw) || 0,
       ubicacion: ubicacion.trim() || "Ubicación a confirmar",
       photoTint,
-      rating: existing?.rating ?? 0,
       cuposMax: existing?.cuposMax ?? 20,
     };
-    if (targetId) {
-      data.actualizarActividad(targetId, payload);
-      if (navigateAfter) {
-        navigate(`/instructor/actividades/${targetId}`);
-        return;
+    setError(null);
+    setGuardando(true);
+    try {
+      if (targetId) {
+        await data.actualizarActividad(targetId, payload);
+        if (navigateAfter) {
+          navigate(`/instructor/actividades/${targetId}`);
+          return;
+        }
+      } else {
+        const nueva = await data.crearActividad(payload);
+        setDraftId(nueva.id);
+        if (navigateAfter) {
+          navigate(`/instructor/actividades/${nueva.id}`);
+          return;
+        }
       }
-    } else {
-      const nueva = data.crearActividad(payload);
-      setDraftId(nueva.id);
-      if (navigateAfter) {
-        navigate(`/instructor/actividades/${nueva.id}`);
-        return;
-      }
+      setSavedMsg("Borrador guardado.");
+      window.setTimeout(() => setSavedMsg(""), 2500);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos guardar la actividad. Intentá de nuevo.");
+    } finally {
+      setGuardando(false);
     }
-    setSavedMsg("Borrador guardado.");
-    window.setTimeout(() => setSavedMsg(""), 2500);
   };
 
   if (!currentUser || !aprobado) return null;
@@ -171,7 +187,7 @@ export default function InstructorCrearActividad() {
               Categoría <span style={s("color:#E5484D;")}>*</span>
             </label>
             <div style={s("display:flex;flex-wrap:wrap;gap:8px;")}>
-              {categorias.map((c) => {
+              {data.categorias.map((c) => {
                 const on = c.id === categoriaId;
                 return (
                   <span
@@ -344,10 +360,21 @@ export default function InstructorCrearActividad() {
           </div>
         </div>
 
+        {error && (
+          <div
+            style={s(
+              "display:flex;align-items:center;gap:11px;background:#FBEAEB;border:1px solid #F3D2D3;border-radius:12px;padding:13px 15px;margin-top:18px;",
+            )}
+          >
+            <span style={s("font-size:13px;line-height:1.4;color:#BE3A3E;font-weight:600;")}>{error}</span>
+          </div>
+        )}
+
         <div style={s("display:flex;gap:12px;margin-top:20px;align-items:center;")}>
           <button
             className="ah-btn"
             onClick={() => handleSave(false)}
+            disabled={guardando}
             style={s(
               "background:#fff;border:1px solid #D6DEE7;border-radius:12px;padding:14px 24px;font:700 14.5px Manrope;color:#41566B;cursor:pointer;",
             )}
@@ -357,10 +384,10 @@ export default function InstructorCrearActividad() {
           <button
             className="ah-btn"
             onClick={() => handleSave(true)}
-            disabled={!nombre.trim() || !tipoActividadId}
+            disabled={!nombre.trim() || !tipoActividadId || guardando}
             style={s(
               `flex:1;background:#FF6A2B;color:#fff;border:none;border-radius:12px;padding:14px;font:700 15px Manrope;cursor:pointer;box-shadow:0 8px 18px rgba(255,106,43,.28);opacity:${
-                !nombre.trim() || !tipoActividadId ? ".6" : "1"
+                !nombre.trim() || !tipoActividadId || guardando ? ".6" : "1"
               };`,
             )}
           >

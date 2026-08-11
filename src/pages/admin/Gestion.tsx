@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
 import StatusBadge from "../../components/StatusBadge";
@@ -6,8 +6,10 @@ import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import type { StoredUsuario } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
+import type { InstructorAdmin } from "../../context/DataContext";
+import { ApiError } from "../../lib/api";
 import { denunciaStatusType } from "../../lib/status";
-import { formatFecha, getCategoria, getTipoActividad } from "../../lib/mockData";
+import { formatFecha } from "../../lib/mockData";
 
 type Tab = "usuarios" | "instructores" | "actividades" | "reclamos";
 
@@ -43,8 +45,23 @@ export default function AdminGestion() {
     : "usuarios";
 
   const { users, updateUsuario } = useAuth();
-  const { actividades, eliminarActividad, denuncias, inscripciones, pagos, actualizarEstadoDenuncia } = useData();
+  const {
+    actividades,
+    eliminarActividad,
+    denuncias,
+    inscripciones,
+    pagos,
+    actualizarEstadoDenuncia,
+    instructorNombre,
+    getTipoActividad,
+    getCategoria,
+    listarInstructores,
+    aprobarInstructor: aprobarInstructorReal,
+    rechazarInstructor: rechazarInstructorReal,
+  } = useData();
   const [query, setQuery] = useState("");
+  const [instructores, setInstructores] = useState<InstructorAdmin[]>([]);
+  const [errorInstructores, setErrorInstructores] = useState<string | null>(null);
 
   const goTab = (t: Tab) => navigate(`/admin/gestion/${t}`);
 
@@ -56,20 +73,39 @@ export default function AdminGestion() {
     );
   }, [users, query]);
 
-  const instructores = useMemo(() => users.filter((u) => u.rol === "INSTRUCTOR"), [users]);
+  const cargarInstructores = () => {
+    listarInstructores()
+      .then(setInstructores)
+      .catch((err) => setErrorInstructores(err instanceof ApiError ? err.message : "No pudimos cargar los instructores."));
+  };
+
+  useEffect(() => {
+    if (tab === "instructores") cargarInstructores();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
   const toggleSuspender = (u: StoredUsuario) => {
     updateUsuario(u.id, { estado: u.estado === "ACTIVO" ? "SUSPENDIDO" : "ACTIVO" });
   };
 
-  const aprobarInstructor = (u: StoredUsuario) => {
-    if (!u.perfilInstructor) return;
-    updateUsuario(u.id, { perfilInstructor: { ...u.perfilInstructor, estadoVerificacion: "APROBADO", motivoRechazo: undefined } });
+  const aprobarInstructor = async (ins: InstructorAdmin) => {
+    setErrorInstructores(null);
+    try {
+      await aprobarInstructorReal(ins.id);
+      cargarInstructores();
+    } catch (err) {
+      setErrorInstructores(err instanceof ApiError ? err.message : "No pudimos aprobar al instructor.");
+    }
   };
 
-  const rechazarInstructor = (u: StoredUsuario) => {
-    if (!u.perfilInstructor) return;
-    updateUsuario(u.id, { perfilInstructor: { ...u.perfilInstructor, estadoVerificacion: "RECHAZADO" } });
+  const rechazarInstructor = async (ins: InstructorAdmin) => {
+    setErrorInstructores(null);
+    try {
+      await rechazarInstructorReal(ins.id);
+      cargarInstructores();
+    } catch (err) {
+      setErrorInstructores(err instanceof ApiError ? err.message : "No pudimos rechazar al instructor.");
+    }
   };
 
   const montoDenuncia = (alumnoId: string, claseId: string): number | null => {
@@ -198,6 +234,11 @@ export default function AdminGestion() {
           {tab === "instructores" && (
             <div style={s("overflow-x:auto;")}>
               <div style={s("min-width:820px;")}>
+                {errorInstructores && (
+                  <div style={s("padding:13px 22px;background:#FBEAEB;border-bottom:1px solid #F3D2D3;")}>
+                    <span style={s("font-size:13px;color:#BE3A3E;font-weight:600;")}>{errorInstructores}</span>
+                  </div>
+                )}
                 <div
                   style={s(
                     "display:grid;grid-template-columns:2fr 1fr 1fr 160px 160px;padding:12px 22px;background:#F7FAFC;border-bottom:1px solid #EEF2F6;font:700 11.5px Manrope,sans-serif;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;",
@@ -211,7 +252,7 @@ export default function AdminGestion() {
                 </div>
                 {instructores.map((ins) => {
                   const [avBg, avFg] = avatarColor(ins.id);
-                  const estado = ins.perfilInstructor?.estadoVerificacion ?? "PENDIENTE";
+                  const estado = ins.estadoVerificacion;
                   const badgeType = estado === "APROBADO" ? "validado" : estado === "RECHAZADO" ? "rechazado" : "revision";
                   return (
                     <div
@@ -233,7 +274,7 @@ export default function AdminGestion() {
                           <div style={s("font-size:12px;color:#90A1B2;font-weight:600;")}>{ins.email}</div>
                         </div>
                       </div>
-                      <span style={s("font-size:13.5px;color:#41566B;font-weight:600;")}>{ins.perfilInstructor?.especialidad ?? "—"}</span>
+                      <span style={s("font-size:13.5px;color:#41566B;font-weight:600;")}>{ins.especialidad ?? "—"}</span>
                       <StatusBadge type={badgeType} />
                       <button
                         className="ah-btn"
@@ -299,7 +340,6 @@ export default function AdminGestion() {
                   <span>Acciones</span>
                 </div>
                 {actividades.map((act) => {
-                  const instructor = users.find((u) => u.id === act.instructorId);
                   const tipo = getTipoActividad(act.tipoActividadId);
                   const cat = tipo ? getCategoria(tipo.categoriaId) : undefined;
                   return (
@@ -309,7 +349,7 @@ export default function AdminGestion() {
                     >
                       <span style={s("font:700 14px Manrope,sans-serif;color:#0E2A47;")}>{act.nombre}</span>
                       <span style={s("font-size:13px;color:#65788C;font-weight:600;")}>
-                        {instructor ? `${instructor.nombre} ${instructor.apellido}` : "—"}
+                        {instructorNombre[act.instructorId] ?? "—"}
                       </span>
                       <span style={s("font-size:13px;color:#65788C;font-weight:600;")}>{cat?.nombre ?? "—"}</span>
                       <span style={s("font:700 14px Space Grotesk,sans-serif;color:#0E2A47;")}>${act.precio.toLocaleString("es-AR")}</span>
@@ -325,7 +365,7 @@ export default function AdminGestion() {
                         <button
                           className="ah-btn"
                           onClick={() => {
-                            if (window.confirm(`¿Quitar la actividad "${act.nombre}"?`)) eliminarActividad(act.id);
+                            if (window.confirm(`¿Quitar la actividad "${act.nombre}"?`)) eliminarActividad(act.id).catch(() => {});
                           }}
                           style={s("background:#FBEAEB;border:none;border-radius:8px;padding:7px 12px;font:700 12px Manrope,sans-serif;color:#BE3A3E;cursor:pointer;")}
                         >

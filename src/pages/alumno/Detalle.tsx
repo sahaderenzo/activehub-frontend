@@ -1,21 +1,12 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import AlumnoNav from "../../components/AlumnoNav";
 import StatusBadge from "../../components/StatusBadge";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
-import {
-  diasHastaClase,
-  disponibilidad,
-  formatFecha,
-  formatHora,
-  getCategoria,
-  getTipoActividad,
-  getUsuario,
-  perfilesInstructor,
-  tipoIngreso,
-} from "../../lib/mockData";
+import type { MiInscripcion } from "../../context/DataContext";
+import { diasHastaClase, disponibilidad, formatFecha, formatHora, getUsuario, tipoIngreso } from "../../lib/mockData";
 import type { Actividad, Clase, NivelIntensidad } from "../../lib/types";
 
 const BENEFICIOS_POR_NIVEL: Record<NivelIntensidad, string[]> = {
@@ -72,7 +63,8 @@ type AiState = "idle" | "loading" | "generated";
 export default function AlumnoDetalle() {
   const { id } = useParams<{ id: string }>();
   const { currentUser } = useAuth();
-  const { actividades, clases, resenias, favoritos, toggleFavorito } = useData();
+  const { actividades, clases, resenias, favoritos, toggleFavorito, getTipoActividad, getCategoria, instructorNombre, cargarDetalleActividad, listarMisInscripciones } =
+    useData();
 
   const actividad = actividades.find((a) => a.id === id);
 
@@ -80,6 +72,17 @@ export default function AlumnoDetalle() {
   const [aiState, setAiState] = useState<AiState>("idle");
   const [aiActualizado, setAiActualizado] = useState(false);
   const [aiFecha, setAiFecha] = useState<string>("");
+  const [misInscripciones, setMisInscripciones] = useState<MiInscripcion[]>([]);
+
+  useEffect(() => {
+    if (id) cargarDetalleActividad(id).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  useEffect(() => {
+    if (currentUser) listarMisInscripciones().then(setMisInscripciones).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser, id]);
 
   const clasesActividad = useMemo(
     () =>
@@ -109,7 +112,7 @@ export default function AlumnoDetalle() {
 
   const tipo = getTipoActividad(actividad.tipoActividadId);
   const cat = tipo ? getCategoria(tipo.categoriaId) : undefined;
-  const instructor = getUsuario(actividad.instructorId);
+  const instructorNombreCompleto = instructorNombre[actividad.instructorId];
 
   const intereses = currentUser?.perfilAlumno?.intereses ?? [];
 
@@ -227,18 +230,13 @@ export default function AlumnoDetalle() {
                   "width:50px;height:50px;border-radius:99px;background:linear-gradient(140deg,#12B5A5,#0E2A47);display:flex;align-items:center;justify-content:center;color:#fff;font:700 19px Space Grotesk,sans-serif;flex:none;",
                 )}
               >
-                {instructor?.nombre.charAt(0) ?? "?"}
+                {instructorNombreCompleto?.charAt(0) ?? "?"}
               </span>
               <div>
                 <div style={s("font:700 16px Manrope,sans-serif;color:#0E2A47;")}>
-                  {instructor ? `${instructor.nombre} ${instructor.apellido}` : "Instructor"}
+                  {instructorNombreCompleto ?? "Instructor"}
                 </div>
-                <div style={s("font-size:13px;color:#7A8C9E;font-weight:600;")}>
-                  Instructor
-                  {perfilesInstructor[actividad.instructorId]?.aniosExperiencia
-                    ? ` · ${perfilesInstructor[actividad.instructorId].aniosExperiencia} años de experiencia`
-                    : ""}
-                </div>
+                <div style={s("font-size:13px;color:#7A8C9E;font-weight:600;")}>Instructor</div>
               </div>
               <button
                 className="ah-btn"
@@ -545,7 +543,13 @@ export default function AlumnoDetalle() {
           </div>
 
           {/* RIGHT: BOOKING */}
-          <BookingPanel actividad={actividad} selectedClase={selectedClase} isFav={isFav} onToggleFav={() => currentUser && toggleFavorito(currentUser.id, actividad.id)} />
+          <BookingPanel
+            actividad={actividad}
+            selectedClase={selectedClase}
+            isFav={isFav}
+            onToggleFav={() => currentUser && toggleFavorito(currentUser.id, actividad.id)}
+            misInscripciones={misInscripciones}
+          />
         </div>
       </div>
     </div>
@@ -557,19 +561,20 @@ function BookingPanel({
   selectedClase,
   isFav,
   onToggleFav,
+  misInscripciones,
 }: {
   actividad: Actividad;
   selectedClase: Clase | undefined;
   isFav: boolean;
   onToggleFav: () => void;
+  misInscripciones: MiInscripcion[];
 }) {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const { inscripciones } = useData();
 
   const ingreso = selectedClase ? tipoIngreso(selectedClase) : null;
   const existente = selectedClase && currentUser
-    ? inscripciones.find((i) => i.claseId === selectedClase.id && i.alumnoId === currentUser.id && i.estado !== "Cancelada")
+    ? misInscripciones.find((i) => i.claseId === selectedClase.id && i.estado !== "Cancelada")
     : undefined;
 
   const dias = selectedClase ? diasHastaClase(selectedClase) : 0;

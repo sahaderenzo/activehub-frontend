@@ -5,14 +5,17 @@ import Logo from "../../components/Logo";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
-import { formatFecha, formatHora, getCategoria, getTipoActividad, getUsuario, tipoIngreso } from "../../lib/mockData";
+import { ApiError } from "../../lib/api";
+import { formatFecha, formatHora, tipoIngreso } from "../../lib/mockData";
 
 export default function AlumnoReserva() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const { clases, actividades, inscribirse } = useData();
+  const { clases, actividades, getTipoActividad, getCategoria, instructorNombre, inscribirse } = useData();
   const [confirmado, setConfirmado] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
 
   const clase = clases.find((c) => c.id === id);
   const actividad = clase ? actividades.find((a) => a.id === clase.actividadId) : undefined;
@@ -36,12 +39,20 @@ export default function AlumnoReserva() {
 
   const tipo = getTipoActividad(actividad.tipoActividadId);
   const cat = tipo ? getCategoria(tipo.categoriaId) : undefined;
-  const instructor = getUsuario(actividad.instructorId);
+  const instructor = instructorNombre[actividad.instructorId];
 
-  const confirmReserva = () => {
+  const confirmReserva = async () => {
     if (!currentUser) return;
-    inscribirse(clase.id, currentUser.id);
-    setConfirmado(true);
+    setError(null);
+    setEnviando(true);
+    try {
+      await inscribirse(clase, currentUser.id);
+      setConfirmado(true);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos confirmar la preinscripción. Intentá de nuevo.");
+    } finally {
+      setEnviando(false);
+    }
   };
 
   return (
@@ -103,7 +114,7 @@ export default function AlumnoReserva() {
                       <circle cx="12" cy="8" r="4" />
                       <path d="M4 21v-1a6 6 0 0 1 12 0v1" />
                     </svg>
-                    {instructor ? `${instructor.nombre} ${instructor.apellido}` : ""}
+                    {instructor ?? ""}
                   </div>
                 </div>
               </div>
@@ -146,6 +157,16 @@ export default function AlumnoReserva() {
               </div>
             </div>
 
+            {error && (
+              <div
+                style={s(
+                  "display:flex;align-items:center;gap:11px;background:#FBEAEB;border:1px solid #F3D2D3;border-radius:12px;padding:13px 15px;margin-bottom:18px;",
+                )}
+              >
+                <span style={s("font-size:13px;line-height:1.4;color:#BE3A3E;font-weight:600;")}>{error}</span>
+              </div>
+            )}
+
             <div style={s("display:flex;gap:12px;")}>
               <button
                 className="ah-btn"
@@ -157,14 +178,15 @@ export default function AlumnoReserva() {
               <button
                 className="ah-btn"
                 onClick={confirmReserva}
+                disabled={enviando}
                 style={s(
-                  "flex:1;background:#0FB8A9;color:#fff;border:none;border-radius:12px;padding:15px;font:700 15.5px Manrope,sans-serif;cursor:pointer;box-shadow:0 8px 18px rgba(15,184,169,.3);display:flex;align-items:center;justify-content:center;gap:9px;",
+                  `flex:1;background:#0FB8A9;color:#fff;border:none;border-radius:12px;padding:15px;font:700 15.5px Manrope,sans-serif;cursor:pointer;box-shadow:0 8px 18px rgba(15,184,169,.3);display:flex;align-items:center;justify-content:center;gap:9px;opacity:${enviando ? ".7" : "1"};`,
                 )}
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.2}>
                   <path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
                 </svg>
-                Confirmar preinscripción
+                {enviando ? "Confirmando…" : "Confirmar preinscripción"}
               </button>
             </div>
           </>

@@ -3,21 +3,30 @@ import AlumnoNav from "../../components/AlumnoNav";
 import ActivityCard from "../../components/ActivityCard";
 import { s } from "../../lib/style";
 import { useData } from "../../context/DataContext";
-import type { Actividad, Clase, NivelIntensidad } from "../../lib/types";
-import { categorias, disponibilidad, getCategoria, getTipoActividad, getUsuario } from "../../lib/mockData";
+import type { Actividad, Categoria, NivelIntensidad, TipoActividad } from "../../lib/types";
 
 const NIVELES: NivelIntensidad[] = ["Física baja", "Física media", "Física alta"];
 const SORTS = ["Relevancia", "Precio: menor", "Precio: mayor", "Mejor valoradas"] as const;
 type Sort = (typeof SORTS)[number];
 
-function cardProps(a: Actividad, clases: Clase[]) {
+function disponibilidadDe(a: Actividad): { label: string; type: "disponible" | "ultimos" | "sincupos" } {
+  const p = a.proximaClase;
+  if (!p) return { label: "Disponible", type: "disponible" };
+  const libres = p.cuposMax - p.cuposOcupados;
+  if (libres <= 0) return { label: "Sin cupos", type: "sincupos" };
+  if (libres <= 3) return { label: `${libres} cupos · Últimos`, type: "ultimos" };
+  return { label: "Disponible", type: "disponible" };
+}
+
+function cardProps(
+  a: Actividad,
+  getTipoActividad: (id: string) => TipoActividad | undefined,
+  getCategoria: (id: string) => Categoria | undefined,
+  instructorNombre: Record<string, string>,
+) {
   const tipo = getTipoActividad(a.tipoActividadId);
   const cat = tipo ? getCategoria(tipo.categoriaId) : undefined;
-  const instructor = getUsuario(a.instructorId);
-  const proxima = clases
-    .filter((c) => c.actividadId === a.id && c.estado !== "Cancelada" && c.estado !== "Finalizada")
-    .sort((x, y) => x.fechaHora.localeCompare(y.fechaHora))[0];
-  const disp = proxima ? disponibilidad(proxima) : { label: "Disponible", type: "disponible" as const };
+  const disp = disponibilidadDe(a);
   const cupColor = disp.type === "sincupos" ? "#BE3A3E" : disp.type === "ultimos" ? "#B9741A" : "#0C8576";
   return {
     id: a.id,
@@ -28,7 +37,7 @@ function cardProps(a: Actividad, clases: Clase[]) {
     statusType: disp.type,
     rating: a.rating,
     location: a.ubicacion,
-    instructor: instructor ? `${instructor.nombre} ${instructor.apellido}` : "",
+    instructor: instructorNombre[a.instructorId] ?? "",
     price: a.precio,
     cupText: disp.label,
     cupColor,
@@ -37,7 +46,7 @@ function cardProps(a: Actividad, clases: Clase[]) {
 }
 
 export default function AlumnoExplorar() {
-  const { actividades, clases, tiposActividad } = useData();
+  const { actividades, tiposActividad, categorias, getTipoActividad, getCategoria, instructorNombre } = useData();
   const [search, setSearch] = useState("");
   const [catSel, setCatSel] = useState<Set<string>>(new Set());
   const [tipoSel, setTipoSel] = useState<Set<string>>(new Set());
@@ -82,7 +91,7 @@ export default function AlumnoExplorar() {
       if (nivelSel.size > 0 && !nivelSel.has(a.nivelIntensidad)) return false;
       if (a.precio > maxPrecio) return false;
       if (soloDisponibles) {
-        const props = cardProps(a, clases);
+        const props = cardProps(a, getTipoActividad, getCategoria, instructorNombre);
         if (props.disp.type === "sincupos") return false;
       }
       return true;
@@ -92,7 +101,7 @@ export default function AlumnoExplorar() {
     else if (sort === "Precio: mayor") list.sort((x, y) => y.precio - x.precio);
     else if (sort === "Mejor valoradas") list.sort((x, y) => y.rating - x.rating);
     return list;
-  }, [actividades, search, catSel, tipoSel, nivelSel, maxPrecio, soloDisponibles, sort, clases]);
+  }, [actividades, search, catSel, tipoSel, nivelSel, maxPrecio, soloDisponibles, sort, getTipoActividad, getCategoria, instructorNombre]);
 
   return (
     <div className="ah-screen" style={s("min-height:100vh;background:#F4F7FA;")}>
@@ -272,7 +281,7 @@ export default function AlumnoExplorar() {
           ) : (
             <div className="ah-grid-3" style={s("display:grid;grid-template-columns:repeat(3,1fr);gap:20px;")}>
               {filtered.map((a) => (
-                <ActivityCard key={a.id} {...cardProps(a, clases)} />
+                <ActivityCard key={a.id} {...cardProps(a, getTipoActividad, getCategoria, instructorNombre)} />
               ))}
             </div>
           )}

@@ -5,7 +5,8 @@ import Logo from "../../components/Logo";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
-import { formatFecha, formatHora, getCategoria, getTipoActividad, getUsuario, tipoIngreso } from "../../lib/mockData";
+import { ApiError } from "../../lib/api";
+import { formatFecha, formatHora, tipoIngreso } from "../../lib/mockData";
 
 type Metodo = "Mercado Pago" | "Efectivo";
 
@@ -13,9 +14,11 @@ export default function AlumnoInscripcion() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const { clases, actividades, inscribirse } = useData();
+  const { clases, actividades, getTipoActividad, getCategoria, instructorNombre, inscribirse } = useData();
   const [metodo, setMetodo] = useState<Metodo>("Mercado Pago");
   const [confirmado, setConfirmado] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
 
   const clase = clases.find((c) => c.id === id);
   const actividad = clase ? actividades.find((a) => a.id === clase.actividadId) : undefined;
@@ -38,12 +41,21 @@ export default function AlumnoInscripcion() {
 
   const tipo = getTipoActividad(actividad.tipoActividadId);
   const cat = tipo ? getCategoria(tipo.categoriaId) : undefined;
-  const instructor = getUsuario(actividad.instructorId);
+  const instructor = instructorNombre[actividad.instructorId];
 
-  const confirmarPago = (m: Metodo) => {
+  const confirmarPago = async (m: Metodo) => {
     if (!currentUser) return;
-    inscribirse(clase.id, currentUser.id, m);
-    setConfirmado(true);
+    setError(null);
+    setEnviando(true);
+    try {
+      await inscribirse(clase, currentUser.id, m);
+      setMetodo(m);
+      setConfirmado(true);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos confirmar la inscripción. Intentá de nuevo.");
+    } finally {
+      setEnviando(false);
+    }
   };
 
   if (confirmado) {
@@ -199,6 +211,16 @@ export default function AlumnoInscripcion() {
               </div>
             </div>
 
+            {error && (
+              <div
+                style={s(
+                  "display:flex;align-items:center;gap:11px;background:#FBEAEB;border:1px solid #F3D2D3;border-radius:12px;padding:13px 15px;margin-bottom:16px;",
+                )}
+              >
+                <span style={s("font-size:13px;line-height:1.4;color:#BE3A3E;font-weight:600;")}>{error}</span>
+              </div>
+            )}
+
             {metodo === "Mercado Pago" ? (
               <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:16px;padding:20px;")}>
                 <div style={s("display:flex;align-items:center;gap:10px;margin-bottom:14px;")}>
@@ -217,11 +239,12 @@ export default function AlumnoInscripcion() {
                 <button
                   className="ah-btn"
                   onClick={() => confirmarPago("Mercado Pago")}
+                  disabled={enviando}
                   style={s(
-                    "width:100%;background:#009EE3;color:#fff;border:none;border-radius:12px;padding:15px;font:700 15.5px Manrope,sans-serif;cursor:pointer;box-shadow:0 8px 18px rgba(0,158,227,.28);",
+                    `width:100%;background:#009EE3;color:#fff;border:none;border-radius:12px;padding:15px;font:700 15.5px Manrope,sans-serif;cursor:pointer;box-shadow:0 8px 18px rgba(0,158,227,.28);opacity:${enviando ? ".7" : "1"};`,
                   )}
                 >
-                  Pagar ${actividad.precio.toLocaleString("es-AR")} con MercadoPago
+                  {enviando ? "Procesando…" : `Pagar $${actividad.precio.toLocaleString("es-AR")} con MercadoPago`}
                 </button>
               </div>
             ) : (
@@ -240,11 +263,12 @@ export default function AlumnoInscripcion() {
                 <button
                   className="ah-btn"
                   onClick={() => confirmarPago("Efectivo")}
+                  disabled={enviando}
                   style={s(
-                    "width:100%;background:#0FB8A9;color:#fff;border:none;border-radius:12px;padding:15px;font:700 15.5px Manrope,sans-serif;cursor:pointer;box-shadow:0 8px 18px rgba(15,184,169,.3);",
+                    `width:100%;background:#0FB8A9;color:#fff;border:none;border-radius:12px;padding:15px;font:700 15.5px Manrope,sans-serif;cursor:pointer;box-shadow:0 8px 18px rgba(15,184,169,.3);opacity:${enviando ? ".7" : "1"};`,
                   )}
                 >
-                  Confirmar inscripción (pago en efectivo)
+                  {enviando ? "Procesando…" : "Confirmar inscripción (pago en efectivo)"}
                 </button>
               </div>
             )}
@@ -267,7 +291,7 @@ export default function AlumnoInscripcion() {
             </div>
             <div style={s("display:flex;flex-direction:column;gap:10px;margin-bottom:16px;font-size:13.5px;")}>
               <Row label="Fecha" value={`${formatFecha(clase.fechaHora)} · ${formatHora(clase.fechaHora)}`} />
-              <Row label="Instructor" value={instructor ? `${instructor.nombre} ${instructor.apellido}` : ""} />
+              <Row label="Instructor" value={instructor ?? ""} />
               <Row label="Ubicación" value={actividad.ubicacion} />
             </div>
             <div style={s("border-top:1px solid #EEF2F6;padding-top:14px;display:flex;flex-direction:column;gap:9px;")}>

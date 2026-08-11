@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
 import { s } from "../../lib/style";
 import { useData } from "../../context/DataContext";
-import { categorias } from "../../lib/mockData";
+import { ApiError } from "../../lib/api";
 import type { NivelIntensidad } from "../../lib/types";
 
 type Tab = "tipos" | "niveles";
@@ -56,8 +56,9 @@ export default function AdminTaxonomia() {
   const navigate = useNavigate();
   const params = useParams<{ tab?: string }>();
   const tab: Tab = params.tab === "niveles" ? "niveles" : "tipos";
-  const { tiposActividad, actividades, crearTipoActividad, actualizarTipoActividad, eliminarTipoActividad } = useData();
+  const { tiposActividad, actividades, categorias, crearTipoActividad, actualizarTipoActividad, eliminarTipoActividad } = useData();
   const [form, setForm] = useState<TipoFormState | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const goTab = (t: Tab) => navigate(`/admin/taxonomia/${t}`);
 
@@ -83,11 +84,26 @@ export default function AdminTaxonomia() {
 
   const nivelesConCount = NIVELES.map((n) => ({ ...n, acts: actividades.filter((a) => a.nivelIntensidad === n.nombre).length }));
 
-  const submitForm = () => {
+  const submitForm = async () => {
     if (!form || !form.nombre.trim() || !form.categoriaId) return;
-    if (form.id) actualizarTipoActividad(form.id, { nombre: form.nombre.trim(), categoriaId: form.categoriaId });
-    else crearTipoActividad({ nombre: form.nombre.trim(), categoriaId: form.categoriaId });
-    setForm(null);
+    setError(null);
+    try {
+      if (form.id) await actualizarTipoActividad(form.id, { nombre: form.nombre.trim(), categoriaId: form.categoriaId });
+      else await crearTipoActividad({ nombre: form.nombre.trim(), categoriaId: form.categoriaId });
+      setForm(null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos guardar el tipo de actividad.");
+    }
+  };
+
+  const eliminarTipo = async (id: string, nombre: string) => {
+    if (window.confirm(`¿Quitar el tipo "${nombre}"?`)) {
+      try {
+        await eliminarTipoActividad(id);
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : "No pudimos quitar el tipo de actividad.");
+      }
+    }
   };
 
   return (
@@ -100,6 +116,15 @@ export default function AdminTaxonomia() {
       </div>
 
       <div style={s("padding:24px 32px 50px;")}>
+        {error && (
+          <div
+            style={s(
+              "display:flex;align-items:center;gap:11px;background:#FBEAEB;border:1px solid #F3D2D3;border-radius:12px;padding:13px 15px;margin-bottom:18px;",
+            )}
+          >
+            <span style={s("font-size:13px;line-height:1.4;color:#BE3A3E;font-weight:600;")}>{error}</span>
+          </div>
+        )}
         <div style={s("display:flex;gap:4px;border-bottom:1px solid #E2E9F0;margin-bottom:22px;")}>
           {(["tipos", "niveles"] as const).map((t) => (
             <span
@@ -208,7 +233,7 @@ export default function AdminTaxonomia() {
                             window.alert("No se puede quitar un tipo que tiene actividades asociadas.");
                             return;
                           }
-                          if (window.confirm(`¿Quitar el tipo "${t.nombre}"?`)) eliminarTipoActividad(t.id);
+                          eliminarTipo(t.id, t.nombre);
                         }}
                         style={s("background:#fff;border:1px solid #F3D2D3;border-radius:8px;padding:7px 12px;font:700 12px Manrope,sans-serif;color:#BE3A3E;cursor:pointer;")}
                       >

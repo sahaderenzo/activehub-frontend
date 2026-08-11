@@ -6,7 +6,8 @@ import StatusBadge from "../../components/StatusBadge";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
-import { formatFecha, formatHora, getCategoria, getTipoActividad } from "../../lib/mockData";
+import { ApiError } from "../../lib/api";
+import { formatFecha, formatHora } from "../../lib/mockData";
 import { claseStatusType } from "../../lib/status";
 
 function pad(n: number): string {
@@ -42,19 +43,25 @@ export default function InstructorActividadDetalle() {
     }
   }, [actividad, currentUser, navigate]);
 
+  useEffect(() => {
+    if (id) data.cargarDetalleActividad(id).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
   const [formOpen, setFormOpen] = useState(false);
   const [editingClaseId, setEditingClaseId] = useState<string | null>(null);
   const [fechaStr, setFechaStr] = useState("");
   const [horaStr, setHoraStr] = useState("");
   const [cuposStr, setCuposStr] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   if (!currentUser || !aprobado) return null;
   if (!actividad) return null;
 
-  const tipo = getTipoActividad(actividad.tipoActividadId);
-  const cat = tipo ? getCategoria(tipo.categoriaId) : undefined;
-  const clases = data.clases
-    .filter((c) => c.actividadId === actividad.id)
+  const tipo = data.getTipoActividad(actividad.tipoActividadId);
+  const cat = tipo ? data.getCategoria(tipo.categoriaId) : undefined;
+  const clases = data
+    .getClasesDeActividad(actividad.id)
     .sort((a, b) => new Date(a.fechaHora).getTime() - new Date(b.fechaHora).getTime());
 
   const openCrear = () => {
@@ -76,30 +83,43 @@ export default function InstructorActividadDetalle() {
     setFormOpen(true);
   };
 
-  const submitClase = (e: FormEvent) => {
+  const submitClase = async (e: FormEvent) => {
     e.preventDefault();
     if (!fechaStr || !horaStr) return;
+    setError(null);
     const dt = new Date(`${fechaStr}T${horaStr}:00`);
     const cupos = Number(cuposStr) || actividad.cuposMax;
-    if (editingClaseId) {
-      data.actualizarClase(editingClaseId, { fechaHora: dt.toISOString(), cuposMax: cupos });
-    } else {
-      data.crearClase({ actividadId: actividad.id, fechaHora: dt.toISOString(), estado: "Programada", cuposMax: cupos });
+    try {
+      if (editingClaseId) {
+        await data.actualizarClase(editingClaseId, actividad.id, { fechaHora: dt.toISOString(), cuposMax: cupos });
+      } else {
+        await data.crearClase(actividad.id, { fechaHora: dt.toISOString(), cuposMax: cupos });
+      }
+      setFormOpen(false);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos guardar la clase. Intentá de nuevo.");
     }
-    setFormOpen(false);
   };
 
-  const eliminarClase = (claseId: string) => {
+  const eliminarClase = async (claseId: string) => {
     if (window.confirm("¿Eliminar esta clase? Esta acción no se puede deshacer.")) {
-      data.eliminarClase(claseId);
+      try {
+        await data.eliminarClase(claseId, actividad.id);
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : "No pudimos eliminar la clase.");
+      }
     }
   };
 
-  const eliminarActividad = () => {
+  const eliminarActividad = async () => {
     if (window.confirm(`¿Eliminar la actividad "${actividad.nombre}" y todas sus clases? Esta acción no se puede deshacer.`)) {
-      clases.forEach((c) => data.eliminarClase(c.id));
-      data.eliminarActividad(actividad.id);
-      navigate("/instructor/actividades");
+      try {
+        for (const c of clases) await data.eliminarClase(c.id, actividad.id);
+        await data.eliminarActividad(actividad.id);
+        navigate("/instructor/actividades");
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : "No pudimos eliminar la actividad.");
+      }
     }
   };
 
@@ -118,6 +138,15 @@ export default function InstructorActividadDetalle() {
         </span>
       </div>
       <div style={s("padding:26px 32px 50px;")}>
+        {error && (
+          <div
+            style={s(
+              "display:flex;align-items:center;gap:11px;background:#FBEAEB;border:1px solid #F3D2D3;border-radius:12px;padding:13px 15px;margin-bottom:18px;",
+            )}
+          >
+            <span style={s("font-size:13px;line-height:1.4;color:#BE3A3E;font-weight:600;")}>{error}</span>
+          </div>
+        )}
         <div
           style={s(
             "display:flex;align-items:flex-start;gap:18px;background:#fff;border:1px solid #E7EDF3;border-radius:18px;padding:22px;margin-bottom:24px;box-shadow:0 1px 2px rgba(14,42,71,.04);flex-wrap:wrap;",

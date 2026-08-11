@@ -82,7 +82,7 @@ export default function Registro() {
     return e;
   };
 
-  const submit = (ev: FormEvent) => {
+  const submit = async (ev: FormEvent) => {
     ev.preventDefault();
     setSubmitAttempted(true);
     const clientErrors = validate();
@@ -92,7 +92,7 @@ export default function Registro() {
     }
     try {
       if (rol === "ALUMNO") {
-        const user = registerAlumno({
+        const user = await registerAlumno({
           nombre: form.nombre,
           apellido: form.apellido,
           email: form.email,
@@ -100,10 +100,11 @@ export default function Registro() {
           password: form.password,
           fechaNacimiento: toIsoDob(form.fechaNacimiento) ?? form.fechaNacimiento,
           intereses,
+          aceptaTerminos: form.aceptaTerminos,
         });
         navigate(HOME_BY_ROL[user.rol]);
       } else {
-        const user = registerInstructor({
+        const user = await registerInstructor({
           nombre: form.nombre,
           apellido: form.apellido,
           email: form.email,
@@ -113,11 +114,13 @@ export default function Registro() {
           especialidad: form.especialidad,
           aniosExperiencia: form.aniosExperiencia ? Number(form.aniosExperiencia) : undefined,
           descripcion: form.descripcion || undefined,
+          aceptaTerminos: form.aceptaTerminos,
         });
         navigate(HOME_BY_ROL[user.rol]);
       }
     } catch (err) {
       if (err instanceof ApiError && err.fieldErrors) setErrors(err.fieldErrors);
+      else if (err instanceof ApiError) setErrors({ email: err.message });
       else setErrors({ email: "No pudimos crear la cuenta. Intentá de nuevo." });
     }
   };

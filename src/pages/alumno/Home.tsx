@@ -5,24 +5,33 @@ import ActivityCard from "../../components/ActivityCard";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
-import type { Actividad, Clase } from "../../lib/types";
-import { categorias, disponibilidad, getCategoria, getTipoActividad, getUsuario } from "../../lib/mockData";
+import type { Actividad, Categoria, TipoActividad } from "../../lib/types";
 
 const CAT_ICON: Record<string, string> = {
-  "cat-bienestar": "🧘",
-  "cat-aventura": "🏔️",
-  "cat-formacion": "🎓",
-  "cat-defensa": "🥋",
+  Bienestar: "🧘",
+  Aventura: "🏔️",
+  "Formación Técnica": "🎓",
+  "Defensa Personal": "🥋",
 };
 
-function cardProps(a: Actividad, clases: Clase[]) {
+function disponibilidadDe(a: Actividad): { label: string; type: "disponible" | "ultimos" | "sincupos" } {
+  const p = a.proximaClase;
+  if (!p) return { label: "Disponible", type: "disponible" };
+  const libres = p.cuposMax - p.cuposOcupados;
+  if (libres <= 0) return { label: "Sin cupos", type: "sincupos" };
+  if (libres <= 3) return { label: `${libres} cupos · Últimos`, type: "ultimos" };
+  return { label: "Disponible", type: "disponible" };
+}
+
+function cardProps(
+  a: Actividad,
+  getTipoActividad: (id: string) => TipoActividad | undefined,
+  getCategoria: (id: string) => Categoria | undefined,
+  instructorNombre: Record<string, string>,
+) {
   const tipo = getTipoActividad(a.tipoActividadId);
   const cat = tipo ? getCategoria(tipo.categoriaId) : undefined;
-  const instructor = getUsuario(a.instructorId);
-  const proxima = clases
-    .filter((c) => c.actividadId === a.id && c.estado !== "Cancelada" && c.estado !== "Finalizada")
-    .sort((x, y) => x.fechaHora.localeCompare(y.fechaHora))[0];
-  const disp = proxima ? disponibilidad(proxima) : { label: "Disponible", type: "disponible" as const };
+  const disp = disponibilidadDe(a);
   const cupColor = disp.type === "sincupos" ? "#BE3A3E" : disp.type === "ultimos" ? "#B9741A" : "#0C8576";
   return {
     id: a.id,
@@ -33,7 +42,7 @@ function cardProps(a: Actividad, clases: Clase[]) {
     statusType: disp.type,
     rating: a.rating,
     location: a.ubicacion,
-    instructor: instructor ? `${instructor.nombre} ${instructor.apellido}` : "",
+    instructor: instructorNombre[a.instructorId] ?? "",
     price: a.precio,
     cupText: disp.label,
     cupColor,
@@ -43,7 +52,7 @@ function cardProps(a: Actividad, clases: Clase[]) {
 export default function AlumnoHome() {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const { actividades, clases } = useData();
+  const { actividades, categorias, getTipoActividad, getCategoria, instructorNombre } = useData();
 
   const goExplorar = () => navigate("/alumno/explorar");
   const goCalendario = () => navigate("/alumno/calendario");
@@ -58,7 +67,7 @@ export default function AlumnoHome() {
     });
     const rest = actividades.filter((a) => !matched.includes(a));
     return [...matched, ...rest].slice(0, 3);
-  }, [actividades, intereses]);
+  }, [actividades, intereses, getTipoActividad]);
 
   const cerca = useMemo(() => {
     const excluidas = new Set(recomendado.map((a) => a.id));
@@ -66,21 +75,11 @@ export default function AlumnoHome() {
   }, [actividades, recomendado]);
 
   const proximasClases = useMemo(() => {
-    const vistas = new Set<string>();
-    const result: Actividad[] = [];
-    const ordenadas = [...clases]
-      .filter((c) => c.estado === "Programada" || c.estado === "Habilitada")
-      .sort((x, y) => x.fechaHora.localeCompare(y.fechaHora));
-    for (const c of ordenadas) {
-      if (vistas.has(c.actividadId)) continue;
-      const a = actividades.find((act) => act.id === c.actividadId);
-      if (!a) continue;
-      vistas.add(c.actividadId);
-      result.push(a);
-      if (result.length >= 3) break;
-    }
-    return result;
-  }, [clases, actividades]);
+    return [...actividades]
+      .filter((a) => a.proximaClase && a.proximaClase.estado !== "Cancelada" && a.proximaClase.estado !== "Finalizada")
+      .sort((x, y) => x.proximaClase!.fechaHora.localeCompare(y.proximaClase!.fechaHora))
+      .slice(0, 3);
+  }, [actividades]);
 
   const fechaHoy = new Date().toLocaleDateString("es-AR", {
     weekday: "long",
@@ -164,7 +163,7 @@ export default function AlumnoHome() {
                 "display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #E2E9F0;border-radius:11px;padding:10px 16px;font:700 14px Manrope,sans-serif;color:#41566B;cursor:pointer;",
               )}
             >
-              <span>{CAT_ICON[c.id] ?? "•"}</span>
+              <span>{CAT_ICON[c.nombre] ?? "•"}</span>
               {c.nombre}
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9AAABA" strokeWidth={2}>
                 <path d="m6 9 6 6 6-6" />
@@ -186,7 +185,7 @@ export default function AlumnoHome() {
         </div>
         <div className="ah-grid-3" style={s("display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-bottom:42px;")}>
           {recomendado.map((a) => (
-            <ActivityCard key={a.id} {...cardProps(a, clases)} />
+            <ActivityCard key={a.id} {...cardProps(a, getTipoActividad, getCategoria, instructorNombre)} />
           ))}
         </div>
 
@@ -201,7 +200,7 @@ export default function AlumnoHome() {
         </div>
         <div className="ah-grid-3" style={s("display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-bottom:42px;")}>
           {cerca.map((a) => (
-            <ActivityCard key={a.id} {...cardProps(a, clases)} />
+            <ActivityCard key={a.id} {...cardProps(a, getTipoActividad, getCategoria, instructorNombre)} />
           ))}
         </div>
 
@@ -216,7 +215,7 @@ export default function AlumnoHome() {
         </div>
         <div className="ah-grid-3" style={s("display:grid;grid-template-columns:repeat(3,1fr);gap:20px;")}>
           {proximasClases.map((a) => (
-            <ActivityCard key={a.id} {...cardProps(a, clases)} />
+            <ActivityCard key={a.id} {...cardProps(a, getTipoActividad, getCategoria, instructorNombre)} />
           ))}
         </div>
       </div>

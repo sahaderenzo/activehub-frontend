@@ -5,8 +5,11 @@ import StatusBadge from "../../components/StatusBadge";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
-import { disponibilidad, formatFecha, formatHora, getCategoria, getTipoActividad, getUsuario } from "../../lib/mockData";
+import type { RosterClase } from "../../context/DataContext";
+import { ApiError } from "../../lib/api";
+import { disponibilidad, formatFecha, formatHora } from "../../lib/mockData";
 import { inscripcionStatusType } from "../../lib/status";
+import type { EstadoInscripcion } from "../../lib/types";
 
 export default function InstructorGestionClase() {
   const { id } = useParams<{ id: string }>();
@@ -33,23 +36,40 @@ export default function InstructorGestionClase() {
   }, [clase, actividad, currentUser, navigate]);
 
   const [asistencia, setAsistencia] = useState<Record<string, boolean>>({});
+  const [roster, setRoster] = useState<RosterClase | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const cargarRoster = () => {
+    if (!id) return;
+    data
+      .listarRosterClase(id)
+      .then(setRoster)
+      .catch((err) => setError(err instanceof ApiError ? err.message : "No pudimos cargar el listado de alumnos."));
+  };
+
+  useEffect(() => {
+    cargarRoster();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   if (!currentUser || !aprobado) return null;
   if (!clase || !actividad) return null;
 
-  const tipo = getTipoActividad(actividad.tipoActividadId);
-  const cat = tipo ? getCategoria(tipo.categoriaId) : undefined;
+  const tipo = data.getTipoActividad(actividad.tipoActividadId);
+  const cat = tipo ? data.getCategoria(tipo.categoriaId) : undefined;
   const disp = disponibilidad(clase);
 
-  const roster = data.inscripciones.filter(
-    (i) => i.claseId === clase.id && (i.estado === "Inscripto" || i.estado === "PagoPendiente"),
-  );
-  const pagoAprobado = roster.filter((i) => i.estado === "Inscripto").length;
-  const pendienteDePago = roster.filter((i) => i.estado === "PagoPendiente").length;
+  const alumnos = roster?.alumnos ?? [];
+  const pagoAprobado = alumnos.filter((a) => a.estado === "Inscripto").length;
+  const pendienteDePago = alumnos.filter((a) => a.estado === "PagoPendiente").length;
 
-  const cancelarClase = () => {
-    if (window.confirm("¿Cancelar esta clase? Se notificará a los alumnos inscriptos.")) {
-      data.actualizarClase(clase.id, { estado: "Cancelada" });
+  const confirmarCobro = async (inscripcionId: string) => {
+    setError(null);
+    try {
+      await data.confirmarCobroEfectivo(inscripcionId);
+      cargarRoster();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos confirmar el cobro.");
     }
   };
 
@@ -113,22 +133,30 @@ export default function InstructorGestionClase() {
             </button>
             <button
               className="ah-btn"
-              onClick={cancelarClase}
-              disabled={clase.estado === "Cancelada"}
+              disabled
+              title="Próximamente"
               style={s(
-                `background:#FBEAEB;border:1px solid #F3D2D3;border-radius:11px;padding:11px 16px;font:700 13.5px Manrope;color:#BE3A3E;cursor:pointer;opacity:${
-                  clase.estado === "Cancelada" ? ".55" : "1"
-                };`,
+                "background:#FBEAEB;border:1px solid #F3D2D3;border-radius:11px;padding:11px 16px;font:700 13.5px Manrope;color:#BE3A3E;cursor:not-allowed;opacity:.55;",
               )}
             >
-              {clase.estado === "Cancelada" ? "Clase cancelada" : "Cancelar clase"}
+              {clase.estado === "Cancelada" ? "Clase cancelada" : "Cancelar clase (próximamente)"}
             </button>
           </div>
         </div>
 
+        {error && (
+          <div
+            style={s(
+              "display:flex;align-items:center;gap:11px;background:#FBEAEB;border:1px solid #F3D2D3;border-radius:12px;padding:13px 15px;margin-bottom:18px;",
+            )}
+          >
+            <span style={s("font-size:13px;line-height:1.4;color:#BE3A3E;font-weight:600;")}>{error}</span>
+          </div>
+        )}
+
         <div className="ah-grid-4" style={s("display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px;")}>
           <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:14px;padding:16px;")}>
-            <div style={s("font:700 24px Space Grotesk;color:#0E2A47;")}>{roster.length}</div>
+            <div style={s("font:700 24px Space Grotesk;color:#0E2A47;")}>{alumnos.length}</div>
             <div style={s("font-size:12.5px;color:#65788C;font-weight:600;")}>Inscriptos</div>
           </div>
           <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:14px;padding:16px;")}>
@@ -163,18 +191,17 @@ export default function InstructorGestionClase() {
             <span>Pago efectivo</span>
             <span>Asistencia</span>
           </div>
-          {roster.length === 0 && (
+          {alumnos.length === 0 && (
             <div style={s("padding:26px 22px;color:#90A1B2;font-weight:600;font-size:13.5px;")}>
               Todavía no hay alumnos inscriptos en esta clase.
             </div>
           )}
-          {roster.map((insc) => {
-            const u = getUsuario(insc.alumnoId);
-            const avatar = u ? `${u.nombre.charAt(0)}${u.apellido.charAt(0)}`.toUpperCase() : "?";
-            const esPendiente = insc.estado === "PagoPendiente";
+          {alumnos.map((a) => {
+            const avatar = `${a.nombre.charAt(0)}${a.apellido.charAt(0)}`.toUpperCase();
+            const esPendiente = a.estado === "PagoPendiente";
             return (
               <div
-                key={insc.id}
+                key={a.inscripcionId}
                 className="ah-grid-5"
                 style={s(
                   "display:grid;grid-template-columns:1.6fr 1fr 1fr 130px 110px;padding:14px 22px;border-bottom:1px solid #F1F4F8;align-items:center;",
@@ -188,17 +215,15 @@ export default function InstructorGestionClase() {
                   >
                     {avatar}
                   </span>
-                  <span style={s("font:700 14px Manrope;color:#0E2A47;")}>
-                    {u ? `${u.nombre} ${u.apellido}` : "Alumno"}
-                  </span>
+                  <span style={s("font:700 14px Manrope;color:#0E2A47;")}>{a.nombre} {a.apellido}</span>
                 </div>
-                <span style={s("font-size:13px;color:#65788C;font-weight:600;")}>{u?.telefono ?? "—"}</span>
-                <StatusBadge type={inscripcionStatusType(insc.estado)} />
+                <span style={s("font-size:13px;color:#65788C;font-weight:600;")}>{a.telefono ?? "—"}</span>
+                <StatusBadge type={inscripcionStatusType(a.estado as EstadoInscripcion)} />
                 <div>
                   {esPendiente && (
                     <button
                       className="ah-btn"
-                      onClick={() => data.confirmarCobroEfectivo(insc.id)}
+                      onClick={() => confirmarCobro(a.inscripcionId)}
                       style={s(
                         "background:#E7F8F5;border:1px solid #CBEDE7;border-radius:9px;padding:8px 12px;font:700 12px Manrope;color:#0C8576;cursor:pointer;display:flex;align-items:center;gap:6px;",
                       )}
@@ -213,8 +238,8 @@ export default function InstructorGestionClase() {
                 <label style={s("display:flex;align-items:center;gap:7px;cursor:pointer;font-size:12.5px;color:#41566B;font-weight:600;")}>
                   <input
                     type="checkbox"
-                    checked={!!asistencia[insc.id]}
-                    onChange={() => toggleAsistencia(insc.id)}
+                    checked={!!asistencia[a.inscripcionId]}
+                    onChange={() => toggleAsistencia(a.inscripcionId)}
                     style={s("width:16px;height:16px;accent-color:#12B5A5;cursor:pointer;")}
                   />
                   Presente
