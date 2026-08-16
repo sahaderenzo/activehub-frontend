@@ -5,8 +5,8 @@ import StatusBadge from "../../components/StatusBadge";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
-import type { MiInscripcion } from "../../context/DataContext";
-import { diasHastaClase, disponibilidad, formatFecha, formatHora, getUsuario, tipoIngreso } from "../../lib/mockData";
+import type { MiInscripcion, ReseniaActividad } from "../../context/DataContext";
+import { diasHastaClase, disponibilidad, formatFecha, formatHora, tipoIngreso } from "../../lib/mockData";
 import type { Actividad, Clase, NivelIntensidad } from "../../lib/types";
 
 const BENEFICIOS_POR_NIVEL: Record<NivelIntensidad, string[]> = {
@@ -63,8 +63,18 @@ type AiState = "idle" | "loading" | "generated";
 export default function AlumnoDetalle() {
   const { id } = useParams<{ id: string }>();
   const { currentUser } = useAuth();
-  const { actividades, clases, resenias, favoritos, toggleFavorito, getTipoActividad, getCategoria, instructorNombre, cargarDetalleActividad, listarMisInscripciones } =
-    useData();
+  const {
+    actividades,
+    clases,
+    favoritos,
+    toggleFavorito,
+    getTipoActividad,
+    getCategoria,
+    instructorNombre,
+    cargarDetalleActividad,
+    listarMisInscripciones,
+    listarResenasActividad,
+  } = useData();
 
   const actividad = actividades.find((a) => a.id === id);
 
@@ -73,6 +83,7 @@ export default function AlumnoDetalle() {
   const [aiActualizado, setAiActualizado] = useState(false);
   const [aiFecha, setAiFecha] = useState<string>("");
   const [misInscripciones, setMisInscripciones] = useState<MiInscripcion[]>([]);
+  const [reviewsActividad, setReviewsActividad] = useState<ReseniaActividad[]>([]);
 
   useEffect(() => {
     if (id) cargarDetalleActividad(id).catch(() => {});
@@ -83,6 +94,11 @@ export default function AlumnoDetalle() {
     if (currentUser) listarMisInscripciones().then(setMisInscripciones).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, id]);
+
+  useEffect(() => {
+    if (id) listarResenasActividad(id).then(setReviewsActividad).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   const clasesActividad = useMemo(
     () =>
@@ -133,10 +149,6 @@ export default function AlumnoDetalle() {
     }, 1400);
   };
 
-  const reviewsActividad = resenias.filter((r) => {
-    const c = clases.find((cl) => cl.id === r.claseId);
-    return c?.actividadId === actividad.id && !r.enModeracion;
-  });
   const ratingProm = reviewsActividad.length
     ? reviewsActividad.reduce((sum, r) => sum + r.puntaje, 0) / reviewsActividad.length
     : actividad.rating;
@@ -500,7 +512,6 @@ export default function AlumnoDetalle() {
                 <div style={s("color:#9AAABA;font-size:13.5px;font-weight:600;")}>Todavía no hay opiniones publicadas para esta actividad.</div>
               )}
               {reviewsActividad.slice(0, 5).map((rv) => {
-                const alumno = getUsuario(rv.alumnoId);
                 return (
                   <div key={rv.id} style={s("background:#fff;border:1px solid #E7EDF3;border-radius:16px;padding:18px 20px;")}>
                     <div style={s("display:flex;align-items:center;gap:11px;margin-bottom:10px;")}>
@@ -509,11 +520,11 @@ export default function AlumnoDetalle() {
                           "width:38px;height:38px;border-radius:99px;background:#EEF4FB;color:#2D5BC8;display:flex;align-items:center;justify-content:center;font:700 15px Space Grotesk,sans-serif;",
                         )}
                       >
-                        {alumno?.nombre.charAt(0) ?? "?"}
+                        {rv.alumno.nombre.charAt(0)}
                       </span>
                       <div>
                         <div style={s("font:700 14.5px Manrope,sans-serif;color:#0E2A47;")}>
-                          {alumno ? `${alumno.nombre} ${alumno.apellido}` : "Alumno"}
+                          {rv.alumno.nombre} {rv.alumno.apellido}
                         </div>
                         <div style={s("font-size:12px;color:#9AAABA;font-weight:600;")}>{formatFecha(rv.createdAt)}</div>
                       </div>
@@ -622,6 +633,17 @@ function BookingPanel({
             <div style={s("height:8px;border-radius:99px;background:#E3EAF1;overflow:hidden;")}>
               <div style={s(`height:100%;width:${pct}%;background:linear-gradient(90deg,#12B5A5,#0FB8A9);border-radius:99px;`)} />
             </div>
+            {!!selectedClase.cantidadPreInscripcion && (
+              <div style={s("display:flex;align-items:center;gap:7px;margin-top:10px;font-size:12.5px;color:#7A8C9E;font-weight:600;")}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#90A1B2" strokeWidth={2}>
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M12 8v4l2.5 2.5" />
+                </svg>
+                {selectedClase.cantidadPreInscripcion === 1
+                  ? "1 persona ya se preinscribió"
+                  : `${selectedClase.cantidadPreInscripcion} personas ya se preinscribieron`}
+              </div>
+            )}
           </div>
         )}
 

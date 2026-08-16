@@ -1,10 +1,10 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import AlumnoNav from "../../components/AlumnoNav";
 import { s } from "../../lib/style";
-import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
-import { formatFecha, getUsuario } from "../../lib/mockData";
-import type { Actividad, Clase } from "../../lib/types";
+import type { MiInscripcion, MiResenia } from "../../context/DataContext";
+import { formatFecha } from "../../lib/mockData";
+import { ApiError } from "../../lib/api";
 
 function Stars({ n, onPick }: { n: number; onPick?: (v: number) => void }) {
   return (
@@ -35,37 +35,45 @@ interface FormState {
 }
 
 export default function AlumnoMisResenas() {
-  const { currentUser } = useAuth();
-  const { inscripciones, clases, actividades, resenias, crearResenia, moderarResenia } = useData();
+  const data = useData();
+  const [misInscripciones, setMisInscripciones] = useState<MiInscripcion[]>([]);
+  const [misResenias, setMisResenias] = useState<MiResenia[]>([]);
   const [form, setForm] = useState<FormState | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const cargar = useCallback(() => {
+    Promise.all([data.listarMisInscripciones("Inscripto"), data.listarMisResenas()])
+      .then(([insc, res]) => {
+        setMisInscripciones(insc);
+        setMisResenias(res);
+      })
+      .catch((err) => setError(err instanceof ApiError ? err.message : "No pudimos cargar tus reseñas."));
+  }, [data.listarMisInscripciones, data.listarMisResenas]);
+
+  useEffect(() => {
+    cargar();
+  }, [cargar]);
 
   const pendientes = useMemo(() => {
-    if (!currentUser) return [] as { clase: Clase; actividad: Actividad }[];
-    const result: { clase: Clase; actividad: Actividad }[] = [];
-    for (const i of inscripciones) {
-      if (i.alumnoId !== currentUser.id || i.estado !== "Inscripto") continue;
-      const clase = clases.find((c) => c.id === i.claseId);
-      if (!clase || clase.estado !== "Finalizada") continue;
-      const actividad = actividades.find((a) => a.id === clase.actividadId);
-      if (!actividad) continue;
-      const yaReseniada = resenias.some((r) => r.claseId === i.claseId && r.alumnoId === currentUser.id);
-      if (yaReseniada) continue;
-      result.push({ clase, actividad });
-    }
-    return result;
-  }, [inscripciones, clases, actividades, resenias, currentUser]);
+    const reseñadas = new Set(misResenias.map((r) => r.claseId));
+    return misInscripciones
+      .filter((i) => i.claseEstado === "Finalizada" && !reseñadas.has(i.claseId))
+      .map((i) => {
+        const actividad = data.actividades.find((a) => a.id === i.actividadId);
+        const instructor = actividad ? data.instructorNombre[actividad.instructorId] : undefined;
+        return {
+          claseId: i.claseId,
+          actividadNombre: i.actividadNombre,
+          claseFechaHora: i.claseFechaHora,
+          instructor,
+        };
+      });
+  }, [misInscripciones, misResenias, data.actividades, data.instructorNombre]);
 
-  const hechas = useMemo(() => {
-    if (!currentUser) return [];
-    return resenias
-      .filter((r) => r.alumnoId === currentUser.id)
-      .map((r) => {
-        const clase = clases.find((c) => c.id === r.claseId);
-        const actividad = clase ? actividades.find((a) => a.id === clase.actividadId) : undefined;
-        return { resenia: r, clase, actividad };
-      })
-      .sort((a, b) => b.resenia.createdAt.localeCompare(a.resenia.createdAt));
-  }, [resenias, clases, actividades, currentUser]);
+  const hechas = useMemo(
+    () => [...misResenias].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    [misResenias],
+  );
 
   const abrirNueva = (claseId: string, actividadNombre: string) => {
     setForm({ claseId, actividad: actividadNombre, puntaje: 5, comentario: "" });
@@ -75,15 +83,31 @@ export default function AlumnoMisResenas() {
     setForm({ claseId, actividad: actividadNombre, editingId: reseniaId, puntaje, comentario });
   };
 
-  const guardar = () => {
-    if (!form || !currentUser || !form.comentario.trim()) return;
-    if (form.editingId) {
-      // No hay mutador de edición: se elimina la reseña anterior y se crea
-      // una nueva (vuelve a quedar en moderación, ya que cambió el contenido).
-      moderarResenia(form.editingId, false);
+  const guardar = async () => {
+    if (!form || !form.comentario.trim()) return;
+    setError(null);
+    try {
+      if (form.editingId) {
+        // No hay mutador de edición: se elimina la reseña anterior y se crea
+        // una nueva (vuelve a quedar en moderación, ya que cambió el contenido).
+        await data.eliminarResenia(form.editingId);
+      }
+      await data.crearResenia(form.claseId, form.puntaje, form.comentario.trim());
+      setForm(null);
+      cargar();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos guardar la reseña.");
     }
-    crearResenia({ claseId: form.claseId, alumnoId: currentUser.id, puntaje: form.puntaje, comentario: form.comentario.trim() });
-    setForm(null);
+  };
+
+  const eliminar = async (id: string) => {
+    setError(null);
+    try {
+      await data.eliminarResenia(id);
+      cargar();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos eliminar la reseña.");
+    }
   };
 
   return (
@@ -96,13 +120,23 @@ export default function AlumnoMisResenas() {
           una clase finalizada.
         </p>
 
+        {error && (
+          <div
+            style={s(
+              "display:flex;align-items:center;gap:11px;background:#FBEAEB;border:1px solid #F3D2D3;border-radius:12px;padding:13px 15px;margin-bottom:18px;",
+            )}
+          >
+            <span style={s("font-size:13px;line-height:1.4;color:#BE3A3E;font-weight:600;")}>{error}</span>
+          </div>
+        )}
+
         {pendientes.length > 0 && (
           <>
             <div style={s("font:700 16px Space Grotesk,sans-serif;margin-bottom:14px;")}>Pendientes de reseñar</div>
             <div style={s("display:flex;flex-direction:column;gap:12px;margin-bottom:32px;")}>
-              {pendientes.map(({ clase, actividad }) => (
+              {pendientes.map((p) => (
                 <div
-                  key={clase.id}
+                  key={p.claseId}
                   style={s(
                     "background:#fff;border:1px solid #E7EDF3;border-radius:14px;padding:16px 18px;display:flex;align-items:center;gap:14px;box-shadow:0 1px 2px rgba(14,42,71,.04);",
                   )}
@@ -113,14 +147,14 @@ export default function AlumnoMisResenas() {
                     </svg>
                   </span>
                   <div style={s("flex:1;")}>
-                    <div style={s("font:700 15px Manrope,sans-serif;color:#0E2A47;")}>{actividad.nombre}</div>
+                    <div style={s("font:700 15px Manrope,sans-serif;color:#0E2A47;")}>{p.actividadNombre}</div>
                     <div style={s("font-size:12.5px;color:#90A1B2;font-weight:600;")}>
-                      {getUsuario(actividad.instructorId)?.nombre} · {formatFecha(clase.fechaHora)}
+                      {p.instructor} · {formatFecha(p.claseFechaHora)}
                     </div>
                   </div>
                   <button
                     className="ah-btn"
-                    onClick={() => abrirNueva(clase.id, actividad.nombre)}
+                    onClick={() => abrirNueva(p.claseId, p.actividadNombre)}
                     style={s("background:#FF6A2B;color:#fff;border:none;border-radius:10px;padding:10px 18px;font:700 13.5px Manrope,sans-serif;cursor:pointer;")}
                   >
                     Dejar reseña
@@ -138,34 +172,34 @@ export default function AlumnoMisResenas() {
           </div>
         ) : (
           <div style={s("display:flex;flex-direction:column;gap:14px;")}>
-            {hechas.map(({ resenia, clase, actividad }) => (
-              <div key={resenia.id} style={s("background:#fff;border:1px solid #E7EDF3;border-radius:16px;padding:18px 20px;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
+            {hechas.map((r) => (
+              <div key={r.id} style={s("background:#fff;border:1px solid #E7EDF3;border-radius:16px;padding:18px 20px;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
                 <div style={s("display:flex;align-items:center;gap:11px;margin-bottom:10px;")}>
                   <div style={s("flex:1;")}>
-                    <div style={s("font:700 15px Manrope,sans-serif;color:#0E2A47;")}>{actividad?.nombre ?? "Actividad"}</div>
+                    <div style={s("font:700 15px Manrope,sans-serif;color:#0E2A47;")}>{r.actividadNombre}</div>
                     <div style={s("font-size:12.5px;color:#9AAABA;font-weight:600;")}>
-                      {actividad ? getUsuario(actividad.instructorId)?.nombre : ""} · {clase ? formatFecha(clase.fechaHora) : formatFecha(resenia.createdAt)}
+                      {r.instructorNombre} · {formatFecha(r.claseFechaHora)}
                     </div>
                   </div>
-                  <Stars n={resenia.puntaje} />
+                  <Stars n={r.puntaje} />
                 </div>
-                <p style={s("font-size:14.5px;line-height:1.6;color:#54697E;margin:0 0 12px;")}>{resenia.comentario}</p>
+                <p style={s("font-size:14.5px;line-height:1.6;color:#54697E;margin:0 0 12px;")}>{r.comentario}</p>
                 <div style={s("display:flex;align-items:center;gap:9px;")}>
-                  {resenia.enModeracion && (
+                  {r.enModeracion && (
                     <span style={s("font:700 11px Manrope,sans-serif;background:#FFF3E0;color:#B9741A;border:1px solid #F6E2C0;padding:4px 10px;border-radius:99px;")}>
                       En moderación
                     </span>
                   )}
                   <button
                     className="ah-btn"
-                    onClick={() => abrirEdicion(resenia.id, resenia.claseId, actividad?.nombre ?? "", resenia.puntaje, resenia.comentario)}
+                    onClick={() => abrirEdicion(r.id, r.claseId, r.actividadNombre, r.puntaje, r.comentario)}
                     style={s("background:#fff;border:1px solid #E2E9F0;border-radius:9px;padding:7px 14px;font:700 12.5px Manrope,sans-serif;color:#41566B;cursor:pointer;")}
                   >
                     Editar
                   </button>
                   <button
                     className="ah-btn"
-                    onClick={() => moderarResenia(resenia.id, false)}
+                    onClick={() => eliminar(r.id)}
                     style={s("background:#fff;border:1px solid #F3D2D3;border-radius:9px;padding:7px 14px;font:700 12.5px Manrope,sans-serif;color:#BE3A3E;cursor:pointer;")}
                   >
                     Eliminar

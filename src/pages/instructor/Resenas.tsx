@@ -4,7 +4,8 @@ import DashLayout from "../../components/DashLayout";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
-import { formatFecha, getUsuario } from "../../lib/mockData";
+import type { ReseniaInstructor } from "../../context/DataContext";
+import { formatFecha } from "../../lib/mockData";
 
 const STAR_PATH = "m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14l-5-4.87 6.91-1.01L12 2z";
 
@@ -35,14 +36,10 @@ export default function InstructorResenas() {
     [data.actividades, currentUser],
   );
 
-  const misResenias = useMemo(() => {
-    const misActividadIds = new Set(misActividades.map((a) => a.id));
-    const misClases = data.clases.filter((c) => misActividadIds.has(c.actividadId));
-    const claseToActividad = new Map(misClases.map((c) => [c.id, c.actividadId]));
-    return data.resenias
-      .filter((r) => claseToActividad.has(r.claseId))
-      .map((r) => ({ ...r, actividadId: claseToActividad.get(r.claseId)! }));
-  }, [misActividades, data.clases, data.resenias]);
+  const [misResenias, setMisResenias] = useState<ReseniaInstructor[]>([]);
+  useEffect(() => {
+    if (aprobado) data.listarResenasInstructor().then(setMisResenias).catch(() => {});
+  }, [aprobado, data.listarResenasInstructor]);
 
   const sidebar = useMemo(
     () =>
@@ -201,8 +198,7 @@ export default function InstructorResenas() {
                 </div>
               )}
               {reviews.map((rv) => {
-                const u = getUsuario(rv.alumnoId);
-                const avatar = u ? `${u.nombre.charAt(0)}${u.apellido.charAt(0)}`.toUpperCase() : "?";
+                const avatar = `${rv.alumno.nombre.charAt(0)}${rv.alumno.apellido.charAt(0)}`.toUpperCase();
                 const respondiendoAbierto = rv.id in respondiendo;
                 return (
                   <div
@@ -220,7 +216,7 @@ export default function InstructorResenas() {
                         {avatar}
                       </span>
                       <div style={s("flex:1;min-width:0;")}>
-                        <div style={s("font:700 14.5px Manrope;color:#0E2A47;")}>{u ? `${u.nombre} ${u.apellido}` : "Alumno"}</div>
+                        <div style={s("font:700 14.5px Manrope;color:#0E2A47;")}>{rv.alumno.nombre} {rv.alumno.apellido}</div>
                         <div style={s("font-size:12px;color:#9AAABA;font-weight:600;")}>{formatFecha(rv.createdAt)}</div>
                       </div>
                       <Stars value={rv.puntaje} />

@@ -93,6 +93,8 @@ export interface Clase {
   estado: EstadoClase;
   cuposMax: number;
   cuposOcupados: number;
+  /** Solo presente cuando la clase viene del detalle de actividad (obteneractividad). */
+  cantidadPreInscripcion?: number;
 }
 
 export interface Pago {

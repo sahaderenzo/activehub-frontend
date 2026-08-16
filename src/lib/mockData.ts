@@ -16,7 +16,6 @@ import type {
   Penalizacion,
   PerfilAlumno,
   PerfilInstructor,
-  Resenia,
   TipoActividad,
   Usuario,
 } from "./types";
@@ -413,28 +412,7 @@ export const pagos: Pago[] = [
   { id: "pago-3", inscripcionId: "insc-4", estado: "Efectivo", monto: 6200, metodo: "Efectivo" },
 ];
 
-// --- Reseñas / denuncias / penalizaciones -----------------------------------
-
-export const resenias: Resenia[] = [
-  {
-    id: "res-1",
-    claseId: clases[0].id,
-    alumnoId: "u-lucia",
-    puntaje: 5,
-    comentario: "Excelente grupo y muy buena onda del profe Mateo. Repito seguro.",
-    enModeracion: false,
-    createdAt: addDays(NOW, -10).toISOString(),
-  },
-  {
-    id: "res-2",
-    claseId: clases[6].id,
-    alumnoId: "u-bruno",
-    puntaje: 4,
-    comentario: "Buena clase, el lugar de encuentro podría estar mejor señalizado.",
-    enModeracion: true,
-    createdAt: addDays(NOW, -4).toISOString(),
-  },
-];
+// --- Denuncias / penalizaciones ---------------------------------------------
 
 export const denuncias: Denuncia[] = [
   {

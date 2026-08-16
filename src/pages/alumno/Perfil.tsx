@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import AlumnoNav from "../../components/AlumnoNav";
@@ -6,6 +6,7 @@ import StatusBadge from "../../components/StatusBadge";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
+import type { MiResenia } from "../../context/DataContext";
 import { formatFecha, INTERESES } from "../../lib/mockData";
 import { inscripcionStatusType } from "../../lib/status";
 import type { Actividad, Clase, Inscripcion } from "../../lib/types";
@@ -32,7 +33,19 @@ function formatDDMMYYYY(iso?: string): string {
 export default function AlumnoPerfil() {
   const navigate = useNavigate();
   const { currentUser, updateUsuario, logout } = useAuth();
-  const { inscripciones, clases, actividades, resenias, denuncias } = useData();
+  const data = useData();
+  const { inscripciones, clases, actividades, denuncias } = data;
+
+  const [misResenias, setMisResenias] = useState<MiResenia[]>([]);
+  const [claseIdsInscriptoFinalizada, setClaseIdsInscriptoFinalizada] = useState<string[]>([]);
+  useEffect(() => {
+    if (!currentUser) return;
+    data.listarMisResenas().then(setMisResenias).catch(() => {});
+    data
+      .listarMisInscripciones("Inscripto")
+      .then((lista) => setClaseIdsInscriptoFinalizada(lista.filter((i) => i.claseEstado === "Finalizada").map((i) => i.claseId)))
+      .catch(() => {});
+  }, [currentUser, data.listarMisResenas, data.listarMisInscripciones]);
 
   const [editando, setEditando] = useState(false);
   const [nombre, setNombre] = useState(currentUser?.nombre ?? "");
@@ -64,18 +77,10 @@ export default function AlumnoPerfil() {
     return rows.slice(0, 4);
   }, [inscripciones, clases, actividades, currentUser]);
 
-  const misResenias = currentUser ? resenias.filter((r) => r.alumnoId === currentUser.id) : [];
   const reseniasPendientes = useMemo(() => {
-    if (!currentUser) return 0;
-    let n = 0;
-    for (const i of inscripciones) {
-      if (i.alumnoId !== currentUser.id || i.estado !== "Inscripto") continue;
-      const clase = clases.find((c) => c.id === i.claseId);
-      if (!clase || clase.estado !== "Finalizada") continue;
-      if (!resenias.some((r) => r.claseId === i.claseId && r.alumnoId === currentUser.id)) n++;
-    }
-    return n;
-  }, [inscripciones, clases, resenias, currentUser]);
+    const claseIdsReseñadas = new Set(misResenias.map((r) => r.claseId));
+    return claseIdsInscriptoFinalizada.filter((id) => !claseIdsReseñadas.has(id)).length;
+  }, [claseIdsInscriptoFinalizada, misResenias]);
 
   const misDenuncias = currentUser ? denuncias.filter((d) => d.alumnoId === currentUser.id) : [];
   const denunciasPendientes = misDenuncias.filter((d) => d.estado === "Pendiente").length;

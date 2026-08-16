@@ -6,18 +6,19 @@ import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import type { StoredUsuario } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
-import type { InstructorAdmin } from "../../context/DataContext";
+import type { InstructorAdmin, ReseniaPendiente } from "../../context/DataContext";
 import { ApiError } from "../../lib/api";
 import { denunciaStatusType } from "../../lib/status";
 import { formatFecha } from "../../lib/mockData";
 
-type Tab = "usuarios" | "instructores" | "actividades" | "reclamos";
+type Tab = "usuarios" | "instructores" | "actividades" | "reclamos" | "resenas";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "usuarios", label: "Usuarios" },
   { key: "instructores", label: "Instructores" },
   { key: "actividades", label: "Actividades" },
   { key: "reclamos", label: "Reclamos" },
+  { key: "resenas", label: "Reseñas" },
 ];
 
 const AVATAR_PALETTE: [string, string][] = [
@@ -40,7 +41,7 @@ function initials(nombre: string, apellido: string): string {
 export default function AdminGestion() {
   const navigate = useNavigate();
   const params = useParams<{ tab?: string }>();
-  const tab: Tab = (["usuarios", "instructores", "actividades", "reclamos"] as const).includes(params.tab as Tab)
+  const tab: Tab = (["usuarios", "instructores", "actividades", "reclamos", "resenas"] as const).includes(params.tab as Tab)
     ? (params.tab as Tab)
     : "usuarios";
 
@@ -58,10 +59,15 @@ export default function AdminGestion() {
     listarInstructores,
     aprobarInstructor: aprobarInstructorReal,
     rechazarInstructor: rechazarInstructorReal,
+    listarResenasPendientes,
+    aprobarResenia: aprobarReseniaReal,
+    rechazarResenia: rechazarReseniaReal,
   } = useData();
   const [query, setQuery] = useState("");
   const [instructores, setInstructores] = useState<InstructorAdmin[]>([]);
   const [errorInstructores, setErrorInstructores] = useState<string | null>(null);
+  const [resenas, setResenas] = useState<ReseniaPendiente[]>([]);
+  const [errorResenas, setErrorResenas] = useState<string | null>(null);
 
   const goTab = (t: Tab) => navigate(`/admin/gestion/${t}`);
 
@@ -79,8 +85,15 @@ export default function AdminGestion() {
       .catch((err) => setErrorInstructores(err instanceof ApiError ? err.message : "No pudimos cargar los instructores."));
   };
 
+  const cargarResenas = () => {
+    listarResenasPendientes()
+      .then(setResenas)
+      .catch((err) => setErrorResenas(err instanceof ApiError ? err.message : "No pudimos cargar las reseñas."));
+  };
+
   useEffect(() => {
     if (tab === "instructores") cargarInstructores();
+    if (tab === "resenas") cargarResenas();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
@@ -108,6 +121,26 @@ export default function AdminGestion() {
     }
   };
 
+  const aprobarResenia = async (r: ReseniaPendiente) => {
+    setErrorResenas(null);
+    try {
+      await aprobarReseniaReal(r.id);
+      cargarResenas();
+    } catch (err) {
+      setErrorResenas(err instanceof ApiError ? err.message : "No pudimos aprobar la reseña.");
+    }
+  };
+
+  const rechazarResenia = async (r: ReseniaPendiente) => {
+    setErrorResenas(null);
+    try {
+      await rechazarReseniaReal(r.id);
+      cargarResenas();
+    } catch (err) {
+      setErrorResenas(err instanceof ApiError ? err.message : "No pudimos rechazar la reseña.");
+    }
+  };
+
   const montoDenuncia = (alumnoId: string, claseId: string): number | null => {
     const insc = inscripciones.find((i) => i.alumnoId === alumnoId && i.claseId === claseId);
     if (!insc?.pagoId) return null;
@@ -119,7 +152,7 @@ export default function AdminGestion() {
     <DashLayout role="admin" active="gestionadmin">
       <div style={s("background:#fff;border-bottom:1px solid #E7EDF3;padding:18px 32px;")}>
         <h1 style={s("font:700 22px Space Grotesk,sans-serif;margin:0;")}>Gestión administrativa</h1>
-        <p style={s("font-size:13.5px;color:#7A8C9E;margin:3px 0 0;")}>Administrá usuarios, instructores, actividades y reclamos.</p>
+        <p style={s("font-size:13.5px;color:#7A8C9E;margin:3px 0 0;")}>Administrá usuarios, instructores, actividades, reclamos y reseñas.</p>
       </div>
 
       <div style={s("padding:24px 32px 50px;")}>
@@ -427,6 +460,68 @@ export default function AdminGestion() {
                 })}
                 {denuncias.length === 0 && (
                   <div style={s("padding:40px 22px;text-align:center;color:#90A1B2;font:600 13.5px Manrope,sans-serif;")}>No hay reclamos registrados.</div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {tab === "resenas" && (
+            <div style={s("overflow-x:auto;")}>
+              <div style={s("min-width:900px;")}>
+                {errorResenas && (
+                  <div style={s("padding:13px 22px;background:#FBEAEB;border-bottom:1px solid #F3D2D3;")}>
+                    <span style={s("font-size:13px;color:#BE3A3E;font-weight:600;")}>{errorResenas}</span>
+                  </div>
+                )}
+                <div
+                  style={s(
+                    "display:grid;grid-template-columns:1.2fr 1.2fr 80px 2fr 1fr 170px;padding:12px 22px;background:#F7FAFC;border-bottom:1px solid #EEF2F6;font:700 11.5px Manrope,sans-serif;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;",
+                  )}
+                >
+                  <span>Alumno</span>
+                  <span>Actividad</span>
+                  <span>Puntaje</span>
+                  <span>Comentario</span>
+                  <span>Fecha</span>
+                  <span>Acciones</span>
+                </div>
+                {resenas.map((r) => (
+                  <div
+                    key={r.id}
+                    style={s("display:grid;grid-template-columns:1.2fr 1.2fr 80px 2fr 1fr 170px;padding:14px 22px;border-bottom:1px solid #F1F4F8;align-items:center;")}
+                  >
+                    <span style={s("font:700 13.5px Manrope,sans-serif;color:#0E2A47;")}>
+                      {r.alumno.nombre} {r.alumno.apellido}
+                    </span>
+                    <span style={s("font-size:13px;color:#65788C;font-weight:600;")}>{r.actividadNombre}</span>
+                    <span style={s("display:flex;align-items:center;gap:4px;font:700 13.5px Space Grotesk,sans-serif;color:#0E2A47;")}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="#FFC53D" stroke="none">
+                        <path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14l-5-4.87 6.91-1.01L12 2z" />
+                      </svg>
+                      {r.puntaje}
+                    </span>
+                    <span style={s("font-size:13px;color:#65788C;font-weight:600;")}>{r.comentario}</span>
+                    <span style={s("font-size:13px;color:#65788C;font-weight:600;")}>{formatFecha(r.createdAt)}</span>
+                    <div style={s("display:flex;gap:7px;")}>
+                      <button
+                        className="ah-btn"
+                        onClick={() => aprobarResenia(r)}
+                        style={s("background:#E7F8F5;border:none;border-radius:8px;padding:7px 12px;font:700 12px Manrope,sans-serif;color:#0C8576;cursor:pointer;")}
+                      >
+                        Aprobar
+                      </button>
+                      <button
+                        className="ah-btn"
+                        onClick={() => rechazarResenia(r)}
+                        style={s("background:#FBEAEB;border:none;border-radius:8px;padding:7px 12px;font:700 12px Manrope,sans-serif;color:#BE3A3E;cursor:pointer;")}
+                      >
+                        Rechazar
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {resenas.length === 0 && (
+                  <div style={s("padding:40px 22px;text-align:center;color:#90A1B2;font:600 13.5px Manrope,sans-serif;")}>No hay reseñas pendientes de moderación.</div>
                 )}
               </div>
             </div>

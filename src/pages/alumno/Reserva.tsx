@@ -140,6 +140,17 @@ export default function AlumnoReserva() {
                   <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
                 </InfoTile>
               </div>
+              {!!clase.cantidadPreInscripcion && (
+                <div style={s("display:flex;align-items:center;gap:8px;padding:0 20px 18px;font-size:13px;color:#7A8C9E;font-weight:600;")}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#90A1B2" strokeWidth={2}>
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M12 8v4l2.5 2.5" />
+                  </svg>
+                  {clase.cantidadPreInscripcion === 1
+                    ? "1 persona ya se preinscribió a esta clase"
+                    : `${clase.cantidadPreInscripcion} personas ya se preinscribieron a esta clase`}
+                </div>
+              )}
             </div>
 
             <div style={s("display:flex;gap:11px;background:#EAF1FE;border:1px solid #D5E2FB;border-radius:14px;padding:15px 17px;margin-bottom:24px;")}>

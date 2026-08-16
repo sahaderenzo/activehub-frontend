@@ -34,15 +34,8 @@ const EMPTY: FormState = {
   aceptaTerminos: false,
 };
 
-const DOB_RE = /^\d{2}\/\d{2}\/\d{4}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function toIsoDob(ddmmaaaa: string): string | undefined {
-  const m = DOB_RE.exec(ddmmaaaa);
-  if (!m) return undefined;
-  const [d, mo, y] = ddmmaaaa.split("/");
-  return `${y}-${mo}-${d}`;
-}
+const HOY_ISO = new Date().toISOString().slice(0, 10);
 
 const HOME_BY_ROL: Record<RolNombre, string> = { ALUMNO: "/alumno", INSTRUCTOR: "/instructor", ADMIN: "/admin" };
 
@@ -71,11 +64,8 @@ export default function Registro() {
     else if (!EMAIL_RE.test(form.email)) e.email = "Ingresá un correo electrónico válido.";
     if (!form.telefono.trim()) e.telefono = "Este campo es obligatorio.";
     if (!form.password || !passwordStrength(form.password).ok) e.password = "La contraseña necesita al menos 8 caracteres, una letra y un número.";
-    if (rol === "ALUMNO") {
-      if (!form.fechaNacimiento.trim()) e.fechaNacimiento = "Este campo es obligatorio.";
-      else if (!DOB_RE.test(form.fechaNacimiento)) e.fechaNacimiento = "Usá el formato dd/mm/aaaa.";
-    } else if (form.fechaNacimiento.trim() && !DOB_RE.test(form.fechaNacimiento)) {
-      e.fechaNacimiento = "Usá el formato dd/mm/aaaa.";
+    if (rol === "ALUMNO" && !form.fechaNacimiento) {
+      e.fechaNacimiento = "Este campo es obligatorio.";
     }
     if (rol === "INSTRUCTOR" && !form.especialidad.trim()) e.especialidad = "Este campo es obligatorio.";
     if (!form.aceptaTerminos) e.aceptaTerminos = "Tenés que aceptar los términos para crear tu cuenta.";
@@ -98,7 +88,7 @@ export default function Registro() {
           email: form.email,
           telefono: form.telefono,
           password: form.password,
-          fechaNacimiento: toIsoDob(form.fechaNacimiento) ?? form.fechaNacimiento,
+          fechaNacimiento: form.fechaNacimiento,
           intereses,
           aceptaTerminos: form.aceptaTerminos,
         });
@@ -110,7 +100,7 @@ export default function Registro() {
           email: form.email,
           telefono: form.telefono,
           password: form.password,
-          fechaNacimiento: toIsoDob(form.fechaNacimiento),
+          fechaNacimiento: form.fechaNacimiento || undefined,
           especialidad: form.especialidad,
           aniosExperiencia: form.aniosExperiencia ? Number(form.aniosExperiencia) : undefined,
           descripcion: form.descripcion || undefined,
@@ -313,10 +303,10 @@ export default function Registro() {
                 )}
               </label>
               <input
-                type="text"
+                type="date"
                 value={form.fechaNacimiento}
                 onChange={(e) => set("fechaNacimiento", e.target.value)}
-                placeholder="dd/mm/aaaa"
+                max={HOY_ISO}
                 style={inputStyle("fechaNacimiento")}
               />
               {fieldError("fechaNacimiento")}

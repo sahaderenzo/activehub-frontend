@@ -12,7 +12,6 @@ import type {
   Inscripcion,
   Pago,
   Penalizacion,
-  Resenia,
   TipoActividad,
 } from "../lib/types";
 import {
@@ -21,7 +20,6 @@ import {
   inscripciones as seedInscripciones,
   pagos as seedPagos,
   penalizaciones as seedPenalizaciones,
-  resenias as seedResenias,
 } from "../lib/mockData";
 import { api } from "../lib/api";
 
@@ -34,7 +32,8 @@ import { api } from "../lib/api";
  * analítica/administración de alcance amplio (Dashboard, Reportes, Auditoría,
  * Métricas) para las que todavía no existe un endpoint "todas las
  * inscripciones de la plataforma" — quedan como estaban, sin tocar, igual que
- * reseñas/denuncias/penalizaciones/favoritos.
+ * denuncias/penalizaciones/favoritos. Reseñas ya está cableado a la API real
+ * (ver sección de reseñas más abajo).
  */
 
 const MOCK_KEY = "ah_data_mock";
@@ -42,7 +41,6 @@ const MOCK_KEY = "ah_data_mock";
 interface MockShape {
   inscripciones: Inscripcion[];
   pagos: Pago[];
-  resenias: Resenia[];
   denuncias: Denuncia[];
   penalizaciones: Penalizacion[];
   favoritos: ActividadFavorita[];
@@ -52,7 +50,6 @@ function seedMock(): MockShape {
   return {
     inscripciones: seedInscripciones,
     pagos: seedPagos,
-    resenias: seedResenias,
     denuncias: seedDenuncias,
     penalizaciones: seedPenalizaciones,
     favoritos: seedFavoritos,
@@ -114,9 +111,13 @@ interface ClaseResp {
   cuposOcupados: number;
 }
 
+interface ClaseDetalleResp extends ClaseResp {
+  cantidadPreInscripcion: number;
+}
+
 interface ActividadDetalleResp extends ActividadCamposComunes {
   descripcion: string;
-  clases: ClaseResp[];
+  clases: ClaseDetalleResp[];
 }
 
 export interface InstructorAdmin {
@@ -154,6 +155,7 @@ export interface RosterAlumno {
   apellido: string;
   telefono?: string;
   estado: string;
+  presente?: boolean | null;
 }
 
 export interface RosterClase {
@@ -163,7 +165,55 @@ export interface RosterClase {
   cuposLibres: number;
   cantidadInscripto: number;
   cantidadPagoPendiente: number;
+  cantidadPreInscripcion: number;
   alumnos: RosterAlumno[];
+}
+
+export interface ReseniaActividad {
+  id: string;
+  claseId: string;
+  alumno: { id: string; nombre: string; apellido: string };
+  puntaje: number;
+  comentario: string;
+  createdAt: string;
+}
+
+export interface MiResenia {
+  id: string;
+  claseId: string;
+  claseFechaHora: string;
+  actividadId: string;
+  actividadNombre: string;
+  instructorNombre: string;
+  puntaje: number;
+  comentario: string;
+  enModeracion: boolean;
+  createdAt: string;
+}
+
+export interface ReseniaInstructor {
+  id: string;
+  claseId: string;
+  claseFechaHora: string;
+  actividadId: string;
+  actividadNombre: string;
+  alumno: { id: string; nombre: string; apellido: string };
+  puntaje: number;
+  comentario: string;
+  enModeracion: boolean;
+  createdAt: string;
+}
+
+export interface ReseniaPendiente {
+  id: string;
+  claseId: string;
+  claseFechaHora: string;
+  actividadId: string;
+  actividadNombre: string;
+  alumno: { id: string; nombre: string; apellido: string };
+  puntaje: number;
+  comentario: string;
+  createdAt: string;
 }
 
 function aplanarActividad(r: ActividadCamposComunes, proximaClase?: ActividadListResp["proximaClase"]): Actividad {
@@ -190,7 +240,7 @@ function aplanarActividad(r: ActividadCamposComunes, proximaClase?: ActividadLis
   };
 }
 
-function aplanarClase(r: ClaseResp): Clase {
+function aplanarClase(r: ClaseResp | ClaseDetalleResp): Clase {
   return {
     id: r.id,
     actividadId: "",
@@ -198,6 +248,7 @@ function aplanarClase(r: ClaseResp): Clase {
     estado: r.estado as Clase["estado"],
     cuposMax: r.cuposMax,
     cuposOcupados: r.cuposOcupados,
+    cantidadPreInscripcion: "cantidadPreInscripcion" in r ? r.cantidadPreInscripcion : undefined,
   };
 }
 
@@ -244,6 +295,7 @@ interface DataContextValue {
   crearClase: (actividadId: string, input: ClaseInput) => Promise<Clase>;
   actualizarClase: (id: string, actividadId: string, input: ClaseInput) => Promise<Clase>;
   eliminarClase: (id: string, actividadId: string) => Promise<void>;
+  cancelarClase: (id: string) => Promise<void>;
 
   crearTipoActividad: (input: TipoActividadInput) => Promise<TipoActividad>;
   actualizarTipoActividad: (id: string, input: TipoActividadInput) => Promise<TipoActividad>;
@@ -253,6 +305,7 @@ interface DataContextValue {
   inscribirse: (clase: Clase, alumnoId: string, metodo?: "Mercado Pago" | "Efectivo") => Promise<void>;
   cancelarInscripcion: (id: string) => Promise<void>;
   confirmarCobroEfectivo: (inscripcionId: string) => Promise<void>;
+  marcarAsistencia: (inscripcionId: string, presente: boolean) => Promise<void>;
   listarMisInscripciones: (estado?: EstadoInscripcion) => Promise<MiInscripcion[]>;
   listarRosterClase: (claseId: string) => Promise<RosterClase>;
 
@@ -262,16 +315,23 @@ interface DataContextValue {
   aprobarInstructor: (id: string) => Promise<void>;
   rechazarInstructor: (id: string, motivo?: string) => Promise<void>;
 
+  // reseñas real
+  crearResenia: (claseId: string, puntaje: number, comentario: string) => Promise<void>;
+  eliminarResenia: (id: string) => Promise<void>;
+  listarResenasActividad: (actividadId: string) => Promise<ReseniaActividad[]>;
+  listarMisResenas: () => Promise<MiResenia[]>;
+  listarResenasInstructor: () => Promise<ReseniaInstructor[]>;
+  listarResenasPendientes: () => Promise<ReseniaPendiente[]>;
+  aprobarResenia: (id: string) => Promise<void>;
+  rechazarResenia: (id: string) => Promise<void>;
+
   // fuera de alcance: mock puro, sin tocar
   inscripciones: Inscripcion[];
   pagos: Pago[];
-  resenias: Resenia[];
   denuncias: Denuncia[];
   penalizaciones: Penalizacion[];
   favoritos: ActividadFavorita[];
   toggleFavorito: (usuarioId: string, actividadId: string) => void;
-  crearResenia: (input: Omit<Resenia, "id" | "createdAt" | "enModeracion">) => Resenia;
-  moderarResenia: (id: string, aprobar: boolean) => void;
   crearDenuncia: (input: Omit<Denuncia, "id" | "createdAt" | "estado">) => Denuncia;
   actualizarEstadoDenuncia: (id: string, estado: EstadoDenuncia) => void;
   aplicarPenalizacion: (input: Omit<Penalizacion, "id" | "createdAt">) => Penalizacion;
@@ -408,6 +468,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
     void actividadId;
   }, []);
 
+  const cancelarClase = useCallback(async (id: string) => {
+    await api.post(`/api/instructor/clases/${id}/cancelar`);
+    setClases((prev) => prev.map((c) => (c.id === id ? { ...c, estado: "Cancelada" } : c)));
+  }, []);
+
   const crearTipoActividad = useCallback(async (input: TipoActividadInput) => {
     const nuevo = await api.post<TipoActividadResp>("/api/admin/tipos-actividad", input);
     setTiposActividad((prev) => [...prev, nuevo]);
@@ -446,6 +511,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await api.post(`/api/instructor/inscripciones/${inscripcionId}/confirmar-cobro`);
   }, []);
 
+  const marcarAsistencia = useCallback(async (inscripcionId: string, presente: boolean) => {
+    await api.post(`/api/instructor/inscripciones/${inscripcionId}/asistencia`, { presente });
+  }, []);
+
   const listarMisInscripciones = useCallback(async (estado?: EstadoInscripcion) => {
     const query = estado ? `?estado=${encodeURIComponent(estado)}` : "";
     return api.get<MiInscripcion[]>(`/api/alumno/inscripciones${query}`);
@@ -472,7 +541,39 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await api.post(`/api/admin/instructores/${id}/rechazar`, { motivo });
   }, []);
 
-  // --- Fuera de alcance: mock puro (reseñas/denuncias/penalizaciones/favoritos) ---
+  const crearResenia = useCallback(async (claseId: string, puntaje: number, comentario: string) => {
+    await api.post(`/api/alumno/clases/${claseId}/resenas`, { puntaje, comentario });
+  }, []);
+
+  const eliminarResenia = useCallback(async (id: string) => {
+    await api.delete(`/api/alumno/resenas/${id}`);
+  }, []);
+
+  const listarResenasActividad = useCallback(async (actividadId: string) => {
+    return api.get<ReseniaActividad[]>(`/api/actividades/${actividadId}/resenas`);
+  }, []);
+
+  const listarMisResenas = useCallback(async () => {
+    return api.get<MiResenia[]>("/api/alumno/resenas");
+  }, []);
+
+  const listarResenasInstructor = useCallback(async () => {
+    return api.get<ReseniaInstructor[]>("/api/instructor/resenas");
+  }, []);
+
+  const listarResenasPendientes = useCallback(async () => {
+    return api.get<ReseniaPendiente[]>("/api/admin/resenas");
+  }, []);
+
+  const aprobarResenia = useCallback(async (id: string) => {
+    await api.post(`/api/admin/resenas/${id}/aprobar`);
+  }, []);
+
+  const rechazarResenia = useCallback(async (id: string) => {
+    await api.post(`/api/admin/resenas/${id}/rechazar`);
+  }, []);
+
+  // --- Fuera de alcance: mock puro (denuncias/penalizaciones/favoritos) ---
 
   const toggleFavorito = useCallback(
     (usuarioId: string, actividadId: string) => {
@@ -480,23 +581,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const exists = l.some((f) => f.usuarioId === usuarioId && f.actividadId === actividadId);
         return exists ? l.filter((f) => !(f.usuarioId === usuarioId && f.actividadId === actividadId)) : [...l, { usuarioId, actividadId }];
       });
-    },
-    [patchMock],
-  );
-
-  const crearResenia = useCallback(
-    (input: Omit<Resenia, "id" | "createdAt" | "enModeracion">) => {
-      const nueva: Resenia = { ...input, id: nextId("res"), createdAt: new Date().toISOString(), enModeracion: true };
-      patchMock("resenias", (l) => [...l, nueva]);
-      return nueva;
-    },
-    [patchMock],
-  );
-
-  const moderarResenia = useCallback(
-    (id: string, aprobar: boolean) => {
-      if (aprobar) patchMock("resenias", (l) => l.map((r) => (r.id === id ? { ...r, enModeracion: false } : r)));
-      else patchMock("resenias", (l) => l.filter((r) => r.id !== id));
     },
     [patchMock],
   );
@@ -543,27 +627,34 @@ export function DataProvider({ children }: { children: ReactNode }) {
       crearClase,
       actualizarClase,
       eliminarClase,
+      cancelarClase,
       crearTipoActividad,
       actualizarTipoActividad,
       eliminarTipoActividad,
       inscribirse,
       cancelarInscripcion,
       confirmarCobroEfectivo,
+      marcarAsistencia,
       listarMisInscripciones,
       listarRosterClase,
       listarInstructores,
       obtenerInstructor,
       aprobarInstructor,
       rechazarInstructor,
+      crearResenia,
+      eliminarResenia,
+      listarResenasActividad,
+      listarMisResenas,
+      listarResenasInstructor,
+      listarResenasPendientes,
+      aprobarResenia,
+      rechazarResenia,
       inscripciones: mock.inscripciones,
       pagos: mock.pagos,
-      resenias: mock.resenias,
       denuncias: mock.denuncias,
       penalizaciones: mock.penalizaciones,
       favoritos: mock.favoritos,
       toggleFavorito,
-      crearResenia,
-      moderarResenia,
       crearDenuncia,
       actualizarEstadoDenuncia,
       aplicarPenalizacion,
@@ -586,22 +677,30 @@ export function DataProvider({ children }: { children: ReactNode }) {
       crearClase,
       actualizarClase,
       eliminarClase,
+      cancelarClase,
       crearTipoActividad,
       actualizarTipoActividad,
       eliminarTipoActividad,
       inscribirse,
       cancelarInscripcion,
       confirmarCobroEfectivo,
+      marcarAsistencia,
       listarMisInscripciones,
       listarRosterClase,
       listarInstructores,
       obtenerInstructor,
       aprobarInstructor,
       rechazarInstructor,
+      crearResenia,
+      eliminarResenia,
+      listarResenasActividad,
+      listarMisResenas,
+      listarResenasInstructor,
+      listarResenasPendientes,
+      aprobarResenia,
+      rechazarResenia,
       mock,
       toggleFavorito,
-      crearResenia,
-      moderarResenia,
       crearDenuncia,
       actualizarEstadoDenuncia,
       aplicarPenalizacion,

@@ -35,9 +35,9 @@ export default function InstructorGestionClase() {
     }
   }, [clase, actividad, currentUser, navigate]);
 
-  const [asistencia, setAsistencia] = useState<Record<string, boolean>>({});
   const [roster, setRoster] = useState<RosterClase | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [cancelando, setCancelando] = useState(false);
 
   const cargarRoster = () => {
     if (!id) return;
@@ -62,6 +62,7 @@ export default function InstructorGestionClase() {
   const alumnos = roster?.alumnos ?? [];
   const pagoAprobado = alumnos.filter((a) => a.estado === "Inscripto").length;
   const pendienteDePago = alumnos.filter((a) => a.estado === "PagoPendiente").length;
+  const preinscriptos = roster?.cantidadPreInscripcion ?? 0;
 
   const confirmarCobro = async (inscripcionId: string) => {
     setError(null);
@@ -73,8 +74,28 @@ export default function InstructorGestionClase() {
     }
   };
 
-  const toggleAsistencia = (inscripcionId: string) => {
-    setAsistencia((prev) => ({ ...prev, [inscripcionId]: !prev[inscripcionId] }));
+  const toggleAsistencia = async (inscripcionId: string, presenteActual: boolean | null | undefined) => {
+    setError(null);
+    try {
+      await data.marcarAsistencia(inscripcionId, !presenteActual);
+      cargarRoster();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos marcar la asistencia.");
+    }
+  };
+
+  const cancelarClase = async () => {
+    if (!window.confirm("¿Cancelar esta clase? Se cancelan también las inscripciones de los alumnos anotados.")) return;
+    setError(null);
+    setCancelando(true);
+    try {
+      await data.cancelarClase(clase.id);
+      cargarRoster();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos cancelar la clase.");
+    } finally {
+      setCancelando(false);
+    }
   };
 
   return (
@@ -133,13 +154,15 @@ export default function InstructorGestionClase() {
             </button>
             <button
               className="ah-btn"
-              disabled
-              title="Próximamente"
+              onClick={cancelarClase}
+              disabled={clase.estado === "Cancelada" || cancelando}
               style={s(
-                "background:#FBEAEB;border:1px solid #F3D2D3;border-radius:11px;padding:11px 16px;font:700 13.5px Manrope;color:#BE3A3E;cursor:not-allowed;opacity:.55;",
+                `background:#FBEAEB;border:1px solid #F3D2D3;border-radius:11px;padding:11px 16px;font:700 13.5px Manrope;color:#BE3A3E;cursor:${
+                  clase.estado === "Cancelada" ? "not-allowed" : "pointer"
+                };opacity:${clase.estado === "Cancelada" || cancelando ? ".55" : "1"};`,
               )}
             >
-              {clase.estado === "Cancelada" ? "Clase cancelada" : "Cancelar clase (próximamente)"}
+              {clase.estado === "Cancelada" ? "Clase cancelada" : cancelando ? "Cancelando…" : "Cancelar clase"}
             </button>
           </div>
         </div>
@@ -154,10 +177,14 @@ export default function InstructorGestionClase() {
           </div>
         )}
 
-        <div className="ah-grid-4" style={s("display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px;")}>
+        <div className="ah-grid-5" style={s("display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:22px;")}>
           <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:14px;padding:16px;")}>
             <div style={s("font:700 24px Space Grotesk;color:#0E2A47;")}>{alumnos.length}</div>
             <div style={s("font-size:12.5px;color:#65788C;font-weight:600;")}>Inscriptos</div>
+          </div>
+          <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:14px;padding:16px;")}>
+            <div style={s("font:700 24px Space Grotesk;color:#2D5BC8;")}>{preinscriptos}</div>
+            <div style={s("font-size:12.5px;color:#65788C;font-weight:600;")}>Preinscriptos</div>
           </div>
           <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:14px;padding:16px;")}>
             <div style={s("font:700 24px Space Grotesk;color:#0C8576;")}>{pagoAprobado}</div>
@@ -238,8 +265,8 @@ export default function InstructorGestionClase() {
                 <label style={s("display:flex;align-items:center;gap:7px;cursor:pointer;font-size:12.5px;color:#41566B;font-weight:600;")}>
                   <input
                     type="checkbox"
-                    checked={!!asistencia[a.inscripcionId]}
-                    onChange={() => toggleAsistencia(a.inscripcionId)}
+                    checked={!!a.presente}
+                    onChange={() => toggleAsistencia(a.inscripcionId, a.presente)}
                     style={s("width:16px;height:16px;accent-color:#12B5A5;cursor:pointer;")}
                   />
                   Presente

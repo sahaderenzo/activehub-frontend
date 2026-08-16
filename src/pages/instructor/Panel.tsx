@@ -1,10 +1,11 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
 import StatusBadge from "../../components/StatusBadge";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
+import type { ReseniaInstructor } from "../../context/DataContext";
 import { formatFecha, formatHora, disponibilidad } from "../../lib/mockData";
 import { claseStatusType } from "../../lib/status";
 
@@ -20,6 +21,11 @@ export default function InstructorPanel() {
   useEffect(() => {
     if (currentUser && !aprobado) navigate("/instructor/solicitud", { replace: true });
   }, [currentUser, aprobado, navigate]);
+
+  const [resenasInstructor, setResenasInstructor] = useState<ReseniaInstructor[]>([]);
+  useEffect(() => {
+    if (aprobado) data.listarResenasInstructor().then(setResenasInstructor).catch(() => {});
+  }, [aprobado, data.listarResenasInstructor]);
 
   const misActividades = useMemo(
     () => (currentUser ? data.actividades.filter((a) => a.instructorId === currentUser.id) : []),
@@ -96,8 +102,7 @@ export default function InstructorPanel() {
       });
     }
 
-    const misClaseIds = new Set(misClases.map((c) => c.id));
-    const enModeracion = data.resenias.filter((r) => misClaseIds.has(r.claseId) && r.enModeracion).length;
+    const enModeracion = resenasInstructor.filter((r) => r.enModeracion).length;
     if (enModeracion > 0) {
       list.push({
         dot: "#3A6FF0",
@@ -109,7 +114,7 @@ export default function InstructorPanel() {
       list.push({ dot: "#9AAABA", text: "No tenés alertas nuevas por el momento." });
     }
     return list.slice(0, 3);
-  }, [data.inscripciones, data.clases, data.actividades, data.resenias, misActividadIds, misClases]);
+  }, [data.inscripciones, data.clases, data.actividades, resenasInstructor, misActividadIds, misClases]);
 
   const proximas = useMemo(() => {
     const now = new Date();
