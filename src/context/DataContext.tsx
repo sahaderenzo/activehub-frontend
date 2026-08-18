@@ -5,17 +5,17 @@ import type {
   ActividadFavorita,
   Categoria,
   Clase,
-  Denuncia,
   EstadoClase,
   EstadoDenuncia,
   EstadoInscripcion,
+  EstadoUsuario,
   Inscripcion,
   Pago,
   Penalizacion,
+  RolNombre,
   TipoActividad,
 } from "../lib/types";
 import {
-  denuncias as seedDenuncias,
   favoritos as seedFavoritos,
   inscripciones as seedInscripciones,
   pagos as seedPagos,
@@ -29,11 +29,11 @@ import { api } from "../lib/api";
  * (inscribirse/cancelarInscripcion/confirmarCobroEfectivo/listarMisInscripciones/
  * listarRosterClase). Los arrays `inscripciones`/`pagos` de acá abajo son un
  * mock estático sin relación con esas llamadas reales: los usan pantallas de
- * analítica/administración de alcance amplio (Dashboard, Reportes, Auditoría,
- * Métricas) para las que todavía no existe un endpoint "todas las
- * inscripciones de la plataforma" — quedan como estaban, sin tocar, igual que
- * denuncias/penalizaciones/favoritos. Reseñas ya está cableado a la API real
- * (ver sección de reseñas más abajo).
+ * analítica/administración de alcance amplio (Dashboard, Reportes, Métricas)
+ * para las que todavía no existe un endpoint "todas las inscripciones de la
+ * plataforma" — quedan como estaban, sin tocar, igual que
+ * penalizaciones/favoritos. Reseñas y denuncias ya están cableadas a la API
+ * real (ver secciones correspondientes más abajo).
  */
 
 const MOCK_KEY = "ah_data_mock";
@@ -41,7 +41,6 @@ const MOCK_KEY = "ah_data_mock";
 interface MockShape {
   inscripciones: Inscripcion[];
   pagos: Pago[];
-  denuncias: Denuncia[];
   penalizaciones: Penalizacion[];
   favoritos: ActividadFavorita[];
 }
@@ -50,7 +49,6 @@ function seedMock(): MockShape {
   return {
     inscripciones: seedInscripciones,
     pagos: seedPagos,
-    denuncias: seedDenuncias,
     penalizaciones: seedPenalizaciones,
     favoritos: seedFavoritos,
   };
@@ -134,6 +132,26 @@ export interface InstructorAdmin {
   motivoRechazo?: string;
 }
 
+export interface ClaseInstructorAdmin {
+  claseId: string;
+  actividadId: string;
+  actividadNombre: string;
+  fechaHora: string;
+  estado: EstadoClase;
+  cuposMax: number;
+  cuposOcupados: number;
+}
+
+export interface ClaseAdmin {
+  claseId: string;
+  actividadId: string;
+  actividadNombre: string;
+  fechaHora: string;
+  estado: EstadoClase;
+  cuposMax: number;
+  cuposOcupados: number;
+}
+
 export interface MiInscripcion {
   id: string;
   claseId: string;
@@ -213,6 +231,67 @@ export interface ReseniaPendiente {
   alumno: { id: string; nombre: string; apellido: string };
   puntaje: number;
   comentario: string;
+  createdAt: string;
+}
+
+export type AccionResolucion = "REINTEGRAR" | "SUSPENDER" | "PENALIZAR" | "DESESTIMAR";
+
+export interface InscripcionAdmin {
+  id: string;
+  claseId: string;
+  actividadId: string;
+  alumnoId: string;
+  estado: EstadoInscripcion;
+  createdAt: string;
+  pago: { id: string; estado: string; monto: number; metodo: string } | null;
+}
+
+export interface AuditoriaEntry {
+  id: string;
+  actorId: string | null;
+  actorNombre: string;
+  actorRol: RolNombre | null;
+  accion: string;
+  entidad: string;
+  entidadId: string;
+  metadata: string | null;
+  createdAt: string;
+}
+
+export interface MiDenuncia {
+  id: string;
+  claseId: string;
+  claseFechaHora: string;
+  actividadId: string;
+  actividadNombre: string;
+  motivo: string;
+  estado: EstadoDenuncia;
+  createdAt: string;
+}
+
+export interface UsuarioAdmin {
+  id: string;
+  nombre: string;
+  apellido: string;
+  email: string;
+  telefono?: string;
+  rol: RolNombre;
+  estado: EstadoUsuario;
+  cantidadPenalizaciones: number;
+  createdAt: string;
+}
+
+export interface DenunciaAdmin {
+  id: string;
+  claseId: string;
+  claseFechaHora: string;
+  actividadId: string;
+  actividadNombre: string;
+  alumno: { id: string; nombre: string; apellido: string };
+  instructor: { id: string; nombre: string; apellido: string };
+  motivo: string;
+  estado: EstadoDenuncia;
+  pago: { id: string; estado: string; monto: number; metodo: string } | null;
   createdAt: string;
 }
 
@@ -312,6 +391,8 @@ interface DataContextValue {
   // validación de instructores (admin, real)
   listarInstructores: (estado?: "PENDIENTE" | "APROBADO" | "RECHAZADO") => Promise<InstructorAdmin[]>;
   obtenerInstructor: (id: string) => Promise<InstructorAdmin>;
+  listarClasesInstructor: (id: string) => Promise<ClaseInstructorAdmin[]>;
+  listarClasesAdmin: () => Promise<ClaseAdmin[]>;
   aprobarInstructor: (id: string) => Promise<void>;
   rechazarInstructor: (id: string, motivo?: string) => Promise<void>;
 
@@ -325,15 +406,28 @@ interface DataContextValue {
   aprobarResenia: (id: string) => Promise<void>;
   rechazarResenia: (id: string) => Promise<void>;
 
+  // denuncias real
+  crearDenuncia: (claseId: string, motivo: string) => Promise<void>;
+  listarMisDenuncias: () => Promise<MiDenuncia[]>;
+  listarDenunciasAdmin: () => Promise<DenunciaAdmin[]>;
+  resolverDenuncia: (id: string, accion: AccionResolucion) => Promise<void>;
+
+  // gestión de usuarios real
+  listarUsuariosAdmin: () => Promise<UsuarioAdmin[]>;
+  actualizarEstadoUsuario: (id: string, estado: EstadoUsuario) => Promise<void>;
+
+  // auditoría real
+  listarAuditoria: () => Promise<AuditoriaEntry[]>;
+
+  // inscripciones/pagos de la plataforma (admin) real
+  listarInscripcionesAdmin: () => Promise<InscripcionAdmin[]>;
+
   // fuera de alcance: mock puro, sin tocar
   inscripciones: Inscripcion[];
   pagos: Pago[];
-  denuncias: Denuncia[];
   penalizaciones: Penalizacion[];
   favoritos: ActividadFavorita[];
   toggleFavorito: (usuarioId: string, actividadId: string) => void;
-  crearDenuncia: (input: Omit<Denuncia, "id" | "createdAt" | "estado">) => Denuncia;
-  actualizarEstadoDenuncia: (id: string, estado: EstadoDenuncia) => void;
   aplicarPenalizacion: (input: Omit<Penalizacion, "id" | "createdAt">) => Penalizacion;
 }
 
@@ -533,6 +627,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return api.get<InstructorAdmin>(`/api/admin/instructores/${id}`);
   }, []);
 
+  const listarClasesInstructor = useCallback(async (id: string) => {
+    return api.get<ClaseInstructorAdmin[]>(`/api/admin/instructores/${id}/clases`);
+  }, []);
+
+  const listarClasesAdmin = useCallback(async () => {
+    return api.get<ClaseAdmin[]>("/api/admin/clases");
+  }, []);
+
   const aprobarInstructor = useCallback(async (id: string) => {
     await api.post(`/api/admin/instructores/${id}/aprobar`);
   }, []);
@@ -573,7 +675,39 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await api.post(`/api/admin/resenas/${id}/rechazar`);
   }, []);
 
-  // --- Fuera de alcance: mock puro (denuncias/penalizaciones/favoritos) ---
+  const crearDenuncia = useCallback(async (claseId: string, motivo: string) => {
+    await api.post(`/api/alumno/clases/${claseId}/denuncias`, { motivo });
+  }, []);
+
+  const listarMisDenuncias = useCallback(async () => {
+    return api.get<MiDenuncia[]>("/api/alumno/denuncias");
+  }, []);
+
+  const listarDenunciasAdmin = useCallback(async () => {
+    return api.get<DenunciaAdmin[]>("/api/admin/denuncias");
+  }, []);
+
+  const resolverDenuncia = useCallback(async (id: string, accion: AccionResolucion) => {
+    await api.post(`/api/admin/denuncias/${id}/resolver`, { accion });
+  }, []);
+
+  const listarUsuariosAdmin = useCallback(async () => {
+    return api.get<UsuarioAdmin[]>("/api/admin/usuarios");
+  }, []);
+
+  const actualizarEstadoUsuario = useCallback(async (id: string, estado: EstadoUsuario) => {
+    await api.post(`/api/admin/usuarios/${id}/estado`, { estado });
+  }, []);
+
+  const listarAuditoria = useCallback(async () => {
+    return api.get<AuditoriaEntry[]>("/api/admin/auditoria");
+  }, []);
+
+  const listarInscripcionesAdmin = useCallback(async () => {
+    return api.get<InscripcionAdmin[]>("/api/admin/inscripciones");
+  }, []);
+
+  // --- Fuera de alcance: mock puro (penalizaciones/favoritos) ---
 
   const toggleFavorito = useCallback(
     (usuarioId: string, actividadId: string) => {
@@ -582,20 +716,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
         return exists ? l.filter((f) => !(f.usuarioId === usuarioId && f.actividadId === actividadId)) : [...l, { usuarioId, actividadId }];
       });
     },
-    [patchMock],
-  );
-
-  const crearDenuncia = useCallback(
-    (input: Omit<Denuncia, "id" | "createdAt" | "estado">) => {
-      const nueva: Denuncia = { ...input, id: nextId("den"), createdAt: new Date().toISOString(), estado: "Pendiente" };
-      patchMock("denuncias", (l) => [...l, nueva]);
-      return nueva;
-    },
-    [patchMock],
-  );
-
-  const actualizarEstadoDenuncia = useCallback(
-    (id: string, estado: EstadoDenuncia) => patchMock("denuncias", (l) => l.map((d) => (d.id === id ? { ...d, estado } : d))),
     [patchMock],
   );
 
@@ -639,6 +759,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       listarRosterClase,
       listarInstructores,
       obtenerInstructor,
+      listarClasesInstructor,
+      listarClasesAdmin,
       aprobarInstructor,
       rechazarInstructor,
       crearResenia,
@@ -649,14 +771,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
       listarResenasPendientes,
       aprobarResenia,
       rechazarResenia,
+      crearDenuncia,
+      listarMisDenuncias,
+      listarDenunciasAdmin,
+      resolverDenuncia,
+      listarUsuariosAdmin,
+      actualizarEstadoUsuario,
+      listarAuditoria,
+      listarInscripcionesAdmin,
       inscripciones: mock.inscripciones,
       pagos: mock.pagos,
-      denuncias: mock.denuncias,
       penalizaciones: mock.penalizaciones,
       favoritos: mock.favoritos,
       toggleFavorito,
-      crearDenuncia,
-      actualizarEstadoDenuncia,
       aplicarPenalizacion,
     }),
     [
@@ -689,6 +816,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       listarRosterClase,
       listarInstructores,
       obtenerInstructor,
+      listarClasesInstructor,
+      listarClasesAdmin,
       aprobarInstructor,
       rechazarInstructor,
       crearResenia,
@@ -699,10 +828,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
       listarResenasPendientes,
       aprobarResenia,
       rechazarResenia,
+      crearDenuncia,
+      listarMisDenuncias,
+      listarDenunciasAdmin,
+      resolverDenuncia,
+      listarUsuariosAdmin,
+      actualizarEstadoUsuario,
+      listarAuditoria,
+      listarInscripcionesAdmin,
       mock,
       toggleFavorito,
-      crearDenuncia,
-      actualizarEstadoDenuncia,
       aplicarPenalizacion,
     ],
   );

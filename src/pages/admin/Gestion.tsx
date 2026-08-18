@@ -4,12 +4,12 @@ import DashLayout from "../../components/DashLayout";
 import StatusBadge from "../../components/StatusBadge";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
-import type { StoredUsuario } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
-import type { InstructorAdmin, ReseniaPendiente } from "../../context/DataContext";
+import type { AccionResolucion, DenunciaAdmin, InstructorAdmin, ReseniaPendiente, UsuarioAdmin } from "../../context/DataContext";
 import { ApiError } from "../../lib/api";
 import { denunciaStatusType } from "../../lib/status";
 import { formatFecha } from "../../lib/mockData";
+import type { RolNombre } from "../../lib/types";
 
 type Tab = "usuarios" | "instructores" | "actividades" | "reclamos" | "resenas";
 
@@ -45,14 +45,12 @@ export default function AdminGestion() {
     ? (params.tab as Tab)
     : "usuarios";
 
-  const { users, updateUsuario } = useAuth();
+  const { currentUser } = useAuth();
   const {
     actividades,
     eliminarActividad,
-    denuncias,
-    inscripciones,
-    pagos,
-    actualizarEstadoDenuncia,
+    listarDenunciasAdmin,
+    resolverDenuncia,
     instructorNombre,
     getTipoActividad,
     getCategoria,
@@ -62,22 +60,38 @@ export default function AdminGestion() {
     listarResenasPendientes,
     aprobarResenia: aprobarReseniaReal,
     rechazarResenia: rechazarReseniaReal,
+    listarUsuariosAdmin,
+    actualizarEstadoUsuario,
   } = useData();
   const [query, setQuery] = useState("");
+  const [rolFiltro, setRolFiltro] = useState<RolNombre | "todos">("todos");
+  const [queryActividades, setQueryActividades] = useState("");
   const [instructores, setInstructores] = useState<InstructorAdmin[]>([]);
   const [errorInstructores, setErrorInstructores] = useState<string | null>(null);
   const [resenas, setResenas] = useState<ReseniaPendiente[]>([]);
   const [errorResenas, setErrorResenas] = useState<string | null>(null);
+  const [denuncias, setDenuncias] = useState<DenunciaAdmin[]>([]);
+  const [errorDenuncias, setErrorDenuncias] = useState<string | null>(null);
+  const [usuarios, setUsuarios] = useState<UsuarioAdmin[]>([]);
+  const [errorUsuarios, setErrorUsuarios] = useState<string | null>(null);
+  const [errorActividades, setErrorActividades] = useState<string | null>(null);
 
   const goTab = (t: Tab) => navigate(`/admin/gestion/${t}`);
 
   const usuariosFiltrados = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return users;
-    return users.filter(
-      (u) => `${u.nombre} ${u.apellido}`.toLowerCase().includes(q) || u.email.toLowerCase().includes(q),
-    );
-  }, [users, query]);
+    return usuarios.filter((u) => {
+      const coincideQuery = !q || `${u.nombre} ${u.apellido}`.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
+      const coincideRol = rolFiltro === "todos" || u.rol === rolFiltro;
+      return coincideQuery && coincideRol;
+    });
+  }, [usuarios, query, rolFiltro]);
+
+  const actividadesFiltradas = useMemo(() => {
+    const q = queryActividades.trim().toLowerCase();
+    if (!q) return actividades;
+    return actividades.filter((a) => a.nombre.toLowerCase().includes(q));
+  }, [actividades, queryActividades]);
 
   const cargarInstructores = () => {
     listarInstructores()
@@ -91,14 +105,34 @@ export default function AdminGestion() {
       .catch((err) => setErrorResenas(err instanceof ApiError ? err.message : "No pudimos cargar las reseñas."));
   };
 
+  const cargarDenuncias = () => {
+    listarDenunciasAdmin()
+      .then(setDenuncias)
+      .catch((err) => setErrorDenuncias(err instanceof ApiError ? err.message : "No pudimos cargar los reclamos."));
+  };
+
+  const cargarUsuarios = () => {
+    listarUsuariosAdmin()
+      .then(setUsuarios)
+      .catch((err) => setErrorUsuarios(err instanceof ApiError ? err.message : "No pudimos cargar los usuarios."));
+  };
+
   useEffect(() => {
+    if (tab === "usuarios") cargarUsuarios();
     if (tab === "instructores") cargarInstructores();
     if (tab === "resenas") cargarResenas();
+    if (tab === "reclamos") cargarDenuncias();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
-  const toggleSuspender = (u: StoredUsuario) => {
-    updateUsuario(u.id, { estado: u.estado === "ACTIVO" ? "SUSPENDIDO" : "ACTIVO" });
+  const toggleSuspender = async (u: UsuarioAdmin) => {
+    setErrorUsuarios(null);
+    try {
+      await actualizarEstadoUsuario(u.id, u.estado === "ACTIVO" ? "SUSPENDIDO" : "ACTIVO");
+      cargarUsuarios();
+    } catch (err) {
+      setErrorUsuarios(err instanceof ApiError ? err.message : "No pudimos actualizar el estado del usuario.");
+    }
   };
 
   const aprobarInstructor = async (ins: InstructorAdmin) => {
@@ -141,11 +175,14 @@ export default function AdminGestion() {
     }
   };
 
-  const montoDenuncia = (alumnoId: string, claseId: string): number | null => {
-    const insc = inscripciones.find((i) => i.alumnoId === alumnoId && i.claseId === claseId);
-    if (!insc?.pagoId) return null;
-    const pago = pagos.find((p) => p.id === insc.pagoId);
-    return pago ? pago.monto : null;
+  const resolverReclamo = async (d: DenunciaAdmin, accion: AccionResolucion) => {
+    setErrorDenuncias(null);
+    try {
+      await resolverDenuncia(d.id, accion);
+      cargarDenuncias();
+    } catch (err) {
+      setErrorDenuncias(err instanceof ApiError ? err.message : "No pudimos resolver el reclamo.");
+    }
   };
 
   return (
@@ -172,7 +209,7 @@ export default function AdminGestion() {
         </div>
 
         {tab === "usuarios" && (
-          <div style={s("display:flex;align-items:center;gap:12px;margin-bottom:18px;")}>
+          <div style={s("display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap;")}>
             <div
               style={s(
                 "flex:1;display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #E2E9F0;border-radius:12px;padding:11px 15px;max-width:340px;",
@@ -189,12 +226,50 @@ export default function AdminGestion() {
                 style={s("border:none;outline:none;background:transparent;font:600 13.5px Manrope,sans-serif;color:#0E2A47;width:100%;")}
               />
             </div>
+            <select
+              value={rolFiltro}
+              onChange={(e) => setRolFiltro(e.target.value as RolNombre | "todos")}
+              style={s(
+                "background:#fff;border:1px solid #E2E9F0;border-radius:12px;padding:11px 15px;font:600 13.5px Manrope,sans-serif;color:#0E2A47;cursor:pointer;",
+              )}
+            >
+              <option value="todos">Todos los roles</option>
+              <option value="ALUMNO">Alumno</option>
+              <option value="INSTRUCTOR">Instructor</option>
+              <option value="ADMIN">Admin</option>
+            </select>
+          </div>
+        )}
+
+        {tab === "actividades" && (
+          <div style={s("display:flex;align-items:center;gap:12px;margin-bottom:18px;")}>
+            <div
+              style={s(
+                "flex:1;display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #E2E9F0;border-radius:12px;padding:11px 15px;max-width:340px;",
+              )}
+            >
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#9AAABA" strokeWidth={2}>
+                <circle cx="11" cy="11" r="7" />
+                <path d="m21 21-4.3-4.3" />
+              </svg>
+              <input
+                value={queryActividades}
+                onChange={(e) => setQueryActividades(e.target.value)}
+                placeholder="Buscar actividad…"
+                style={s("border:none;outline:none;background:transparent;font:600 13.5px Manrope,sans-serif;color:#0E2A47;width:100%;")}
+              />
+            </div>
           </div>
         )}
 
         <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:16px;overflow:hidden;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
           {tab === "usuarios" && (
             <div style={s("overflow-x:auto;")}>
+              {errorUsuarios && (
+                <div style={s("padding:13px 22px;background:#FBEAEB;border-bottom:1px solid #F3D2D3;")}>
+                  <span style={s("font-size:13px;color:#BE3A3E;font-weight:600;")}>{errorUsuarios}</span>
+                </div>
+              )}
               <div style={s("min-width:760px;")}>
                 <div
                   className="ah-grid-5"
@@ -209,6 +284,7 @@ export default function AdminGestion() {
                   <span>Acciones</span>
                 </div>
                 {usuariosFiltrados.map((u) => {
+                  const esUnoMismo = u.id === currentUser?.id;
                   const [avBg, avFg] = avatarColor(u.id);
                   return (
                     <div
@@ -247,8 +323,10 @@ export default function AdminGestion() {
                         <button
                           className="ah-btn"
                           onClick={() => toggleSuspender(u)}
+                          disabled={esUnoMismo}
+                          title={esUnoMismo ? "No podés cambiar tu propio estado" : undefined}
                           style={s(
-                            `background:${u.estado === "ACTIVO" ? "#FBEAEB" : "#E7F8F5"};border:none;border-radius:8px;padding:7px 12px;font:700 12px Manrope,sans-serif;color:${u.estado === "ACTIVO" ? "#BE3A3E" : "#0C8576"};cursor:pointer;`,
+                            `background:${u.estado === "ACTIVO" ? "#FBEAEB" : "#E7F8F5"};border:none;border-radius:8px;padding:7px 12px;font:700 12px Manrope,sans-serif;color:${u.estado === "ACTIVO" ? "#BE3A3E" : "#0C8576"};cursor:pointer;${esUnoMismo ? "opacity:.5;cursor:not-allowed;" : ""}`,
                           )}
                         >
                           {u.estado === "ACTIVO" ? "Suspender" : "Reactivar"}
@@ -360,6 +438,11 @@ export default function AdminGestion() {
 
           {tab === "actividades" && (
             <div style={s("overflow-x:auto;")}>
+              {errorActividades && (
+                <div style={s("padding:13px 22px;background:#FBEAEB;border-bottom:1px solid #F3D2D3;")}>
+                  <span style={s("font-size:13px;color:#BE3A3E;font-weight:600;")}>{errorActividades}</span>
+                </div>
+              )}
               <div style={s("min-width:780px;")}>
                 <div
                   style={s(
@@ -372,7 +455,7 @@ export default function AdminGestion() {
                   <span>Precio</span>
                   <span>Acciones</span>
                 </div>
-                {actividades.map((act) => {
+                {actividadesFiltradas.map((act) => {
                   const tipo = getTipoActividad(act.tipoActividadId);
                   const cat = tipo ? getCategoria(tipo.categoriaId) : undefined;
                   return (
@@ -398,7 +481,11 @@ export default function AdminGestion() {
                         <button
                           className="ah-btn"
                           onClick={() => {
-                            if (window.confirm(`¿Quitar la actividad "${act.nombre}"?`)) eliminarActividad(act.id).catch(() => {});
+                            if (!window.confirm(`¿Quitar la actividad "${act.nombre}"?`)) return;
+                            setErrorActividades(null);
+                            eliminarActividad(act.id).catch((err) =>
+                              setErrorActividades(err instanceof ApiError ? err.message : "No pudimos quitar la actividad."),
+                            );
                           }}
                           style={s("background:#FBEAEB;border:none;border-radius:8px;padding:7px 12px;font:700 12px Manrope,sans-serif;color:#BE3A3E;cursor:pointer;")}
                         >
@@ -408,8 +495,10 @@ export default function AdminGestion() {
                     </div>
                   );
                 })}
-                {actividades.length === 0 && (
-                  <div style={s("padding:40px 22px;text-align:center;color:#90A1B2;font:600 13.5px Manrope,sans-serif;")}>No hay actividades cargadas.</div>
+                {actividadesFiltradas.length === 0 && (
+                  <div style={s("padding:40px 22px;text-align:center;color:#90A1B2;font:600 13.5px Manrope,sans-serif;")}>
+                    {actividades.length === 0 ? "No hay actividades cargadas." : "Sin resultados."}
+                  </div>
                 )}
               </div>
             </div>
@@ -417,37 +506,42 @@ export default function AdminGestion() {
 
           {tab === "reclamos" && (
             <div style={s("overflow-x:auto;")}>
-              <div style={s("min-width:820px;")}>
+              {errorDenuncias && (
+                <div style={s("padding:13px 22px;background:#FBEAEB;border-bottom:1px solid #F3D2D3;")}>
+                  <span style={s("font-size:13px;color:#BE3A3E;font-weight:600;")}>{errorDenuncias}</span>
+                </div>
+              )}
+              <div style={s("min-width:1020px;")}>
                 <div
                   style={s(
-                    "display:grid;grid-template-columns:1fr 1.3fr 2fr 1fr 1fr 130px;padding:12px 22px;background:#F7FAFC;border-bottom:1px solid #EEF2F6;font:700 11.5px Manrope,sans-serif;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;",
+                    "display:grid;grid-template-columns:1.1fr 1.1fr 1.1fr 1.6fr 1fr 1fr 130px;padding:12px 22px;background:#F7FAFC;border-bottom:1px solid #EEF2F6;font:700 11.5px Manrope,sans-serif;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;",
                   )}
                 >
-                  <span>ID</span>
-                  <span>Usuario</span>
+                  <span>Denunciante</span>
+                  <span>Denunciado</span>
+                  <span>Actividad</span>
                   <span>Motivo</span>
                   <span>Monto</span>
                   <span>Estado</span>
                   <span>Acciones</span>
                 </div>
                 {denuncias.map((d) => {
-                  const user = users.find((u) => u.id === d.alumnoId);
-                  const monto = montoDenuncia(d.alumnoId, d.claseId);
                   return (
                     <div
                       key={d.id}
-                      style={s("display:grid;grid-template-columns:1fr 1.3fr 2fr 1fr 1fr 130px;padding:14px 22px;border-bottom:1px solid #F1F4F8;align-items:center;")}
+                      style={s("display:grid;grid-template-columns:1.1fr 1.1fr 1.1fr 1.6fr 1fr 1fr 130px;padding:14px 22px;border-bottom:1px solid #F1F4F8;align-items:center;")}
                     >
-                      <span style={s("font:700 12.5px ui-monospace,Menlo,monospace;color:#0E2A47;")}>{d.id}</span>
-                      <span style={s("font-size:13.5px;color:#41566B;font-weight:600;")}>{user ? `${user.nombre} ${user.apellido}` : "—"}</span>
+                      <span style={s("font-size:13.5px;color:#41566B;font-weight:600;")}>{d.alumno.nombre} {d.alumno.apellido}</span>
+                      <span style={s("font-size:13.5px;color:#41566B;font-weight:600;")}>{d.instructor.nombre} {d.instructor.apellido}</span>
+                      <span style={s("font-size:13px;color:#65788C;font-weight:600;")}>{d.actividadNombre}</span>
                       <span style={s("font-size:13px;color:#65788C;font-weight:600;")}>{d.motivo}</span>
-                      <span style={s("font:700 14px Space Grotesk,sans-serif;color:#0E2A47;")}>{monto != null ? `$${monto.toLocaleString("es-AR")}` : "—"}</span>
+                      <span style={s("font:700 14px Space Grotesk,sans-serif;color:#0E2A47;")}>{d.pago ? `$${d.pago.monto.toLocaleString("es-AR")}` : "—"}</span>
                       <StatusBadge type={denunciaStatusType(d.estado)} />
                       <div style={s("display:flex;gap:7px;")}>
                         <button
                           className="ah-btn"
                           disabled={d.estado === "Resuelta"}
-                          onClick={() => actualizarEstadoDenuncia(d.id, "Resuelta")}
+                          onClick={() => resolverReclamo(d, "REINTEGRAR")}
                           style={s(
                             `background:#E7F8F5;border:none;border-radius:8px;padding:7px 12px;font:700 12px Manrope,sans-serif;color:#0C8576;cursor:pointer;${d.estado === "Resuelta" ? "opacity:.5;cursor:not-allowed;" : ""}`,
                           )}

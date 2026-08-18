@@ -1,22 +1,31 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
 import StatusBadge from "../../components/StatusBadge";
 import { s } from "../../lib/style";
 import { useData } from "../../context/DataContext";
-import type { InstructorAdmin } from "../../context/DataContext";
+import type { ClaseInstructorAdmin, InstructorAdmin } from "../../context/DataContext";
 import { ApiError } from "../../lib/api";
-import { formatFecha } from "../../lib/mockData";
+import { formatFecha, formatHora } from "../../lib/mockData";
+import { claseStatusType } from "../../lib/status";
+import type { EstadoClase } from "../../lib/types";
+
+const ESTADOS_CLASE: EstadoClase[] = ["Programada", "Habilitada", "Cancelada", "Finalizada"];
 
 export default function AdminValidarInstructor() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
-  const { obtenerInstructor, aprobarInstructor, rechazarInstructor } = useData();
+  const { obtenerInstructor, aprobarInstructor, rechazarInstructor, listarClasesInstructor } = useData();
   const [instructor, setInstructor] = useState<InstructorAdmin | null | undefined>(undefined);
   const [motivoRechazo, setMotivoRechazo] = useState("");
   const [showRechazo, setShowRechazo] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
+  const [clases, setClases] = useState<ClaseInstructorAdmin[]>([]);
+  const [errorClases, setErrorClases] = useState<string | null>(null);
+  const [queryClases, setQueryClases] = useState("");
+  const [estadoFiltro, setEstadoFiltro] = useState<EstadoClase | "todos">("todos");
+  const [ordenFecha, setOrdenFecha] = useState<"asc" | "desc">("asc");
 
   const goGestion = () => navigate("/admin/gestion/instructores");
 
@@ -25,9 +34,25 @@ export default function AdminValidarInstructor() {
     obtenerInstructor(id)
       .then(setInstructor)
       .catch(() => setInstructor(null));
+    listarClasesInstructor(id)
+      .then(setClases)
+      .catch((err) => setErrorClases(err instanceof ApiError ? err.message : "No pudimos cargar las clases."));
   };
 
   useEffect(cargar, [id]);
+
+  const clasesFiltradas = useMemo(() => {
+    const q = queryClases.trim().toLowerCase();
+    const filtradas = clases.filter((c) => {
+      const coincideQuery = !q || c.actividadNombre.toLowerCase().includes(q);
+      const coincideEstado = estadoFiltro === "todos" || c.estado === estadoFiltro;
+      return coincideQuery && coincideEstado;
+    });
+    return [...filtradas].sort((a, b) => {
+      const diff = new Date(a.fechaHora).getTime() - new Date(b.fechaHora).getTime();
+      return ordenFecha === "asc" ? diff : -diff;
+    });
+  }, [clases, queryClases, estadoFiltro, ordenFecha]);
 
   if (instructor === undefined) return null;
 
@@ -177,6 +202,97 @@ export default function AdminValidarInstructor() {
                   </span>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+
+        <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:18px;overflow:hidden;margin-top:18px;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
+          <div style={s("padding:16px 20px;border-bottom:1px solid #EEF2F6;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;")}>
+            <div style={s("font:700 15px Space Grotesk,sans-serif;")}>Clases del instructor</div>
+            <div style={s("display:flex;align-items:center;gap:9px;flex-wrap:wrap;")}>
+              <div
+                style={s(
+                  "display:flex;align-items:center;gap:9px;background:#F7FAFC;border:1px solid #E2E9F0;border-radius:11px;padding:9px 13px;min-width:200px;",
+                )}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9AAABA" strokeWidth={2}>
+                  <circle cx="11" cy="11" r="7" />
+                  <path d="m21 21-4.3-4.3" />
+                </svg>
+                <input
+                  value={queryClases}
+                  onChange={(e) => setQueryClases(e.target.value)}
+                  placeholder="Buscar por actividad…"
+                  style={s("border:none;outline:none;background:transparent;font:600 13px Manrope,sans-serif;color:#0E2A47;width:100%;")}
+                />
+              </div>
+              <select
+                value={estadoFiltro}
+                onChange={(e) => setEstadoFiltro(e.target.value as EstadoClase | "todos")}
+                style={s(
+                  "background:#F7FAFC;border:1px solid #E2E9F0;border-radius:11px;padding:9px 13px;font:600 13px Manrope,sans-serif;color:#0E2A47;cursor:pointer;",
+                )}
+              >
+                <option value="todos">Todos los estados</option>
+                {ESTADOS_CLASE.map((estado) => (
+                  <option key={estado} value={estado}>
+                    {estado}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="ah-btn"
+                onClick={() => setOrdenFecha((prev) => (prev === "asc" ? "desc" : "asc"))}
+                title={ordenFecha === "asc" ? "Más antiguas primero" : "Más nuevas primero"}
+                style={s(
+                  "display:flex;align-items:center;gap:7px;background:#F7FAFC;border:1px solid #E2E9F0;border-radius:11px;padding:9px 13px;font:600 13px Manrope,sans-serif;color:#0E2A47;cursor:pointer;",
+                )}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#65788C" strokeWidth={2}>
+                  {ordenFecha === "asc" ? <path d="M12 19V5M5 12l7-7 7 7" /> : <path d="M12 5v14M5 12l7 7 7-7" />}
+                </svg>
+                Fecha
+              </button>
+            </div>
+          </div>
+          {errorClases && (
+            <div style={s("padding:13px 20px;background:#FBEAEB;border-bottom:1px solid #F3D2D3;")}>
+              <span style={s("font-size:13px;color:#BE3A3E;font-weight:600;")}>{errorClases}</span>
+            </div>
+          )}
+          <div style={s("overflow-x:auto;")}>
+            <div style={s("min-width:620px;")}>
+              <div
+                style={s(
+                  "display:grid;grid-template-columns:1.6fr 1.2fr 1fr 1fr;padding:10px 20px;background:#F7FAFC;border-bottom:1px solid #EEF2F6;font:700 11px Manrope,sans-serif;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;",
+                )}
+              >
+                <span>Actividad</span>
+                <span>Fecha y hora</span>
+                <span>Estado</span>
+                <span>Cupos</span>
+              </div>
+              {clasesFiltradas.map((c) => (
+                <div
+                  key={c.claseId}
+                  style={s("display:grid;grid-template-columns:1.6fr 1.2fr 1fr 1fr;padding:12px 20px;border-bottom:1px solid #F1F4F8;align-items:center;")}
+                >
+                  <span style={s("font:700 13.5px Manrope,sans-serif;color:#0E2A47;")}>{c.actividadNombre}</span>
+                  <span style={s("font-size:12.5px;color:#65788C;font-weight:600;")}>
+                    {formatFecha(c.fechaHora)} · {formatHora(c.fechaHora)}
+                  </span>
+                  <StatusBadge type={claseStatusType(c.estado)} />
+                  <span style={s("font-size:12.5px;color:#65788C;font-weight:600;")}>
+                    {c.cuposOcupados}/{c.cuposMax}
+                  </span>
+                </div>
+              ))}
+              {clasesFiltradas.length === 0 && (
+                <div style={s("padding:30px 20px;text-align:center;color:#90A1B2;font:600 13px Manrope,sans-serif;")}>
+                  {clases.length === 0 ? "Este instructor todavía no tiene clases." : "Sin resultados."}
+                </div>
+              )}
             </div>
           </div>
         </div>

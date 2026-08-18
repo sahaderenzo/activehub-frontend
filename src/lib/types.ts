@@ -147,14 +147,3 @@ export interface ActividadFavorita {
   usuarioId: string;
   actividadId: string;
 }
-
-export interface AuditLogEntry {
-  id: string;
-  actorId: string | null;
-  actorNombre: string;
-  accion: string;
-  entidad: string;
-  entidadId: string;
-  timestamp: string;
-  metadata?: string;
-}

@@ -8,14 +8,17 @@ import { useData } from "../../context/DataContext";
 import type { MiInscripcion } from "../../context/DataContext";
 import { ApiError } from "../../lib/api";
 import { formatFecha, formatHora } from "../../lib/mockData";
-import { inscripcionStatusType } from "../../lib/status";
-import type { EstadoInscripcion } from "../../lib/types";
+import { claseStatusType, inscripcionStatusType } from "../../lib/status";
+import type { EstadoClase, EstadoInscripcion } from "../../lib/types";
 
-const TABS: { key: EstadoInscripcion | "todas"; label: string }[] = [
+type TabKey = EstadoInscripcion | "todas" | "finalizadas";
+
+const TABS: { key: TabKey; label: string }[] = [
   { key: "todas", label: "Todas" },
   { key: "PreInscripción", label: "Preinscripto" },
   { key: "PagoPendiente", label: "Pago pendiente" },
   { key: "Inscripto", label: "Inscripto" },
+  { key: "finalizadas", label: "Finalizadas" },
   { key: "Cancelada", label: "Canceladas" },
 ];
 
@@ -24,7 +27,7 @@ export default function AlumnoMisClases() {
   const { currentUser } = useAuth();
   const { getActividad, getTipoActividad, getCategoria, instructorNombre, cancelarInscripcion, crearDenuncia, listarMisInscripciones } =
     useData();
-  const [tab, setTab] = useState<EstadoInscripcion | "todas">("todas");
+  const [tab, setTab] = useState<TabKey>("todas");
   const [reportadas, setReportadas] = useState<Set<string>>(new Set());
   const [todasFilas, setTodasFilas] = useState<MiInscripcion[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -40,22 +43,37 @@ export default function AlumnoMisClases() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser]);
 
+  // Una vez que la clase finaliza, una inscripción "Inscripto" deja de ser
+  // algo vigente (no hay nada para pagar/cancelar) y pasa a ser pura
+  // historia: cuenta para "Finalizadas", no para "Inscripto".
+  const esInscriptoVigente = (r: MiInscripcion) => r.estado === "Inscripto" && r.claseEstado !== "Finalizada";
+
   const counts = useMemo(() => {
-    const c: Record<string, number> = { todas: todasFilas.length };
-    for (const r of todasFilas) c[r.estado] = (c[r.estado] ?? 0) + 1;
+    const c: Record<string, number> = {
+      todas: todasFilas.length,
+      finalizadas: todasFilas.filter((r) => r.claseEstado === "Finalizada").length,
+    };
+    for (const r of todasFilas) {
+      if (r.estado === "Inscripto" && !esInscriptoVigente(r)) continue;
+      c[r.estado] = (c[r.estado] ?? 0) + 1;
+    }
     return c;
   }, [todasFilas]);
 
-  const filas = tab === "todas" ? todasFilas : todasFilas.filter((r) => r.estado === tab);
+  const filas =
+    tab === "todas"
+      ? todasFilas
+      : tab === "finalizadas"
+        ? todasFilas.filter((r) => r.claseEstado === "Finalizada")
+        : tab === "Inscripto"
+          ? todasFilas.filter(esInscriptoVigente)
+          : todasFilas.filter((r) => r.estado === tab);
 
   const reportarInasistencia = (r: MiInscripcion) => {
     if (!currentUser) return;
-    crearDenuncia({
-      claseId: r.claseId,
-      alumnoId: currentUser.id,
-      motivo: `El instructor no se presentó a la clase de ${r.actividadNombre} del ${formatFecha(r.claseFechaHora)}.`,
-    });
-    setReportadas((prev) => new Set(prev).add(r.id));
+    crearDenuncia(r.claseId, `El instructor no se presentó a la clase de ${r.actividadNombre} del ${formatFecha(r.claseFechaHora)}.`)
+      .then(() => setReportadas((prev) => new Set(prev).add(r.id)))
+      .catch((err) => setError(err instanceof ApiError ? err.message : "No pudimos enviar el reporte."));
   };
 
   const cancelar = async (id: string) => {
@@ -167,6 +185,7 @@ export default function AlumnoMisClases() {
                     <div style={s("display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap;")}>
                       <span style={s("font:700 11px Manrope,sans-serif;color:#12B5A5;text-transform:uppercase;letter-spacing:.4px;")}>{cat?.nombre}</span>
                       <StatusBadge type={inscripcionStatusType(r.estado)} />
+                      {r.claseEstado === "Finalizada" && <StatusBadge type={claseStatusType(r.claseEstado as EstadoClase)} />}
                     </div>
                     <div style={s("font:700 18px Manrope,sans-serif;color:#0E2A47;margin-bottom:6px;")}>{r.actividadNombre}</div>
                     <div style={s("display:flex;flex-wrap:wrap;gap:16px;font-size:13px;color:#65788C;font-weight:600;")}>

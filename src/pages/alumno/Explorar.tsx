@@ -51,9 +51,16 @@ export default function AlumnoExplorar() {
   const [catSel, setCatSel] = useState<Set<string>>(new Set());
   const [tipoSel, setTipoSel] = useState<Set<string>>(new Set());
   const [nivelSel, setNivelSel] = useState<Set<NivelIntensidad>>(new Set());
-  const [maxPrecio, setMaxPrecio] = useState(8000);
+  // null = sin tocar el filtro todavía (sin límite). El rango del slider se
+  // calcula de los precios reales en vez de un tope fijo, que quedaba
+  // desactualizado apenas una actividad costaba más que ese tope.
+  const [maxPrecio, setMaxPrecio] = useState<number | null>(null);
   const [soloDisponibles, setSoloDisponibles] = useState(false);
   const [sort, setSort] = useState<Sort>("Relevancia");
+
+  const precioMin = actividades.length ? Math.min(...actividades.map((a) => a.precio)) : 0;
+  const precioMax = actividades.length ? Math.max(...actividades.map((a) => a.precio)) : 10000;
+  const precioSlider = maxPrecio ?? precioMax;
 
   const toggle = <T,>(set: Set<T>, value: T, setter: (s: Set<T>) => void) => {
     const next = new Set(set);
@@ -66,7 +73,7 @@ export default function AlumnoExplorar() {
     setCatSel(new Set());
     setTipoSel(new Set());
     setNivelSel(new Set());
-    setMaxPrecio(8000);
+    setMaxPrecio(null);
     setSoloDisponibles(false);
     setSearch("");
   };
@@ -89,7 +96,7 @@ export default function AlumnoExplorar() {
       if (catSel.size > 0 && (!tipo || !catSel.has(tipo.categoriaId))) return false;
       if (tipoSel.size > 0 && !tipoSel.has(a.tipoActividadId)) return false;
       if (nivelSel.size > 0 && !nivelSel.has(a.nivelIntensidad)) return false;
-      if (a.precio > maxPrecio) return false;
+      if (maxPrecio !== null && a.precio > maxPrecio) return false;
       if (soloDisponibles) {
         const props = cardProps(a, getTipoActividad, getCategoria, instructorNombre);
         if (props.disp.type === "sincupos") return false;
@@ -215,15 +222,15 @@ export default function AlumnoExplorar() {
           <div style={s("font:700 13px Manrope,sans-serif;color:#41566B;margin-bottom:14px;")}>Precio máximo</div>
           <input
             type="range"
-            min={2000}
-            max={8000}
-            value={maxPrecio}
+            min={precioMin}
+            max={precioMax}
+            value={precioSlider}
             onChange={(e) => setMaxPrecio(Number(e.target.value))}
             style={s("width:100%;accent-color:#FF6A2B;")}
           />
           <div style={s("display:flex;justify-content:space-between;font-size:12px;color:#9AAABA;font-weight:600;margin-top:6px;")}>
-            <span>$2.000</span>
-            <span>${maxPrecio.toLocaleString("es-AR")}</span>
+            <span>${precioMin.toLocaleString("es-AR")}</span>
+            <span>${precioSlider.toLocaleString("es-AR")}</span>
           </div>
           <div style={s("font:700 13px Manrope,sans-serif;color:#41566B;margin:22px 0 11px;")}>Disponibilidad</div>
           <label

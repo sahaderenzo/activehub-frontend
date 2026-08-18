@@ -1,10 +1,9 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
 import { s } from "../../lib/style";
-import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
-import { categorias, getTipoActividad } from "../../lib/mockData";
+import type { InscripcionAdmin, UsuarioAdmin } from "../../context/DataContext";
 
 const MONTH_ABBR = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 const DONUT_COLORS = ["#12B5A5", "#FF6A2B", "#2D5BC8", "#7A52D9", "#F5A623"];
@@ -45,18 +44,27 @@ interface AccesoDef {
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
-  const { users } = useAuth();
-  const { actividades, tiposActividad, clases, inscripciones, denuncias } = useData();
+  const { actividades, tiposActividad, categorias, getTipoActividad, listarDenunciasAdmin, listarUsuariosAdmin, listarInstructores, listarInscripcionesAdmin } =
+    useData();
+  const [usuarios, setUsuarios] = useState<UsuarioAdmin[]>([]);
+  const [instructoresPendientes, setInstructoresPendientes] = useState(0);
+  const [reclamosPendientes, setReclamosPendientes] = useState(0);
+  const [inscripciones, setInscripciones] = useState<InscripcionAdmin[]>([]);
+
+  useEffect(() => {
+    listarUsuariosAdmin().then(setUsuarios).catch(() => {});
+    listarInstructores("PENDIENTE").then((lista) => setInstructoresPendientes(lista.length)).catch(() => {});
+    listarDenunciasAdmin()
+      .then((lista) => setReclamosPendientes(lista.filter((d) => d.estado === "Pendiente").length))
+      .catch(() => {});
+    listarInscripcionesAdmin().then(setInscripciones).catch(() => {});
+  }, [listarUsuariosAdmin, listarInstructores, listarDenunciasAdmin, listarInscripcionesAdmin]);
 
   const stats = useMemo(() => {
-    const activos = users.filter((u) => u.estado === "ACTIVO").length;
-    const suspendidos = users.length - activos;
-    const instructoresPendientes = users.filter(
-      (u) => u.rol === "INSTRUCTOR" && u.perfilInstructor?.estadoVerificacion === "PENDIENTE",
-    ).length;
-    const reclamosPendientes = denuncias.filter((d) => d.estado === "Pendiente").length;
+    const activos = usuarios.filter((u) => u.estado === "ACTIVO").length;
+    const suspendidos = usuarios.length - activos;
     return { activos, suspendidos, instructoresPendientes, reclamosPendientes };
-  }, [users, denuncias]);
+  }, [usuarios, instructoresPendientes, reclamosPendientes]);
 
   const kpis: KpiDef[] = [
     {
@@ -114,8 +122,7 @@ export default function AdminDashboard() {
   const donut = useMemo(() => {
     const counts = categorias.map((cat) => {
       const n = inscripciones.filter((insc) => {
-        const clase = clases.find((c) => c.id === insc.claseId);
-        const act = clase && actividades.find((a) => a.id === clase.actividadId);
+        const act = actividades.find((a) => a.id === insc.actividadId);
         const tipo = act && getTipoActividad(act.tipoActividadId);
         return tipo?.categoriaId === cat.id;
       }).length;
@@ -127,7 +134,7 @@ export default function AdminDashboard() {
       p: `${Math.round((c.n / total) * 100)}%`,
       c: DONUT_COLORS[i % DONUT_COLORS.length],
     }));
-  }, [inscripciones, clases, actividades]);
+  }, [categorias, inscripciones, actividades, getTipoActividad]);
 
   const accesos: AccesoDef[] = [
     {

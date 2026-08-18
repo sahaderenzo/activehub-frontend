@@ -1,9 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import DashLayout from "../../components/DashLayout";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
-import { categorias } from "../../lib/mockData";
+import type { ClaseAdmin, DenunciaAdmin, InscripcionAdmin, UsuarioAdmin } from "../../context/DataContext";
 
 type ReportTab = "desempeno" | "financiero" | "actividades" | "reclamos";
 
@@ -23,10 +23,35 @@ function money(n: number): string {
 }
 
 export default function AdminReportes() {
-  const { currentUser, users } = useAuth();
-  const { actividades, tiposActividad, clases, inscripciones, pagos, denuncias, penalizaciones } = useData();
+  const { currentUser } = useAuth();
+  const {
+    actividades,
+    tiposActividad,
+    categorias,
+    penalizaciones,
+    listarDenunciasAdmin,
+    listarUsuariosAdmin,
+    listarInscripcionesAdmin,
+    listarClasesAdmin,
+  } = useData();
   const [reportTab, setReportTab] = useState<ReportTab>("desempeno");
   const [modalOpen, setModalOpen] = useState(false);
+  const [denuncias, setDenuncias] = useState<DenunciaAdmin[]>([]);
+  const [usuarios, setUsuarios] = useState<UsuarioAdmin[]>([]);
+  const [inscripciones, setInscripciones] = useState<InscripcionAdmin[]>([]);
+  const [clasesAdmin, setClasesAdmin] = useState<ClaseAdmin[]>([]);
+
+  useEffect(() => {
+    listarDenunciasAdmin().then(setDenuncias).catch(() => {});
+    listarUsuariosAdmin().then(setUsuarios).catch(() => {});
+    listarInscripcionesAdmin().then(setInscripciones).catch(() => {});
+    listarClasesAdmin().then(setClasesAdmin).catch(() => {});
+  }, [listarDenunciasAdmin, listarUsuariosAdmin, listarInscripcionesAdmin, listarClasesAdmin]);
+
+  const pagos = useMemo(
+    () => inscripciones.map((i) => i.pago).filter((p): p is NonNullable<InscripcionAdmin["pago"]> => p !== null),
+    [inscripciones],
+  );
 
   // --- Datos reales de la plataforma (page-level, siempre visibles) --------
   const globalKpis = useMemo(() => {
@@ -58,12 +83,8 @@ export default function AdminReportes() {
     return categorias.map((cat, i) => {
       const tipoIds = tiposActividad.filter((t) => t.categoriaId === cat.id).map((t) => t.id);
       const actIds = actividades.filter((a) => tipoIds.includes(a.tipoActividadId)).map((a) => a.id);
-      const claseIds = clases.filter((c) => actIds.includes(c.actividadId)).map((c) => c.id);
-      const reservasCat = inscripciones.filter((insc) => claseIds.includes(insc.claseId));
-      const ingresosCat = reservasCat.reduce((sum, insc) => {
-        const pago = insc.pagoId ? pagos.find((p) => p.id === insc.pagoId) : undefined;
-        return sum + (pago ? pago.monto : 0);
-      }, 0);
+      const reservasCat = inscripciones.filter((insc) => actIds.includes(insc.actividadId));
+      const ingresosCat = reservasCat.reduce((sum, insc) => sum + (insc.pago ? insc.pago.monto : 0), 0);
       const instructorCounts = new Map<string, number>();
       actividades.filter((a) => actIds.includes(a.id)).forEach((a) => instructorCounts.set(a.instructorId, (instructorCounts.get(a.instructorId) ?? 0) + 1));
       let topInstructorId: string | null = null;
@@ -74,7 +95,7 @@ export default function AdminReportes() {
           topInstructorId = id;
         }
       });
-      const topInstructor = topInstructorId ? users.find((u) => u.id === topInstructorId) : undefined;
+      const topInstructor = topInstructorId ? usuarios.find((u) => u.id === topInstructorId) : undefined;
       return {
         cat: cat.nombre,
         reservas: reservasCat.length,
@@ -83,7 +104,7 @@ export default function AdminReportes() {
         color: DONUT_COLORS[i % DONUT_COLORS.length],
       };
     });
-  }, [actividades, tiposActividad, clases, inscripciones, pagos, users]);
+  }, [categorias, actividades, tiposActividad, inscripciones, usuarios]);
 
   const donut = useMemo(() => {
     const total = Math.max(1, categoriaStats.reduce((sum, c) => sum + c.reservas, 0));
@@ -96,12 +117,12 @@ export default function AdminReportes() {
       [...actividades]
         .map((a) => ({
           nombre: a.nombre,
-          instructor: users.find((u) => u.id === a.instructorId),
-          reservas: clases.filter((c) => c.actividadId === a.id).reduce((sum, c) => sum + c.cuposOcupados, 0),
+          instructor: usuarios.find((u) => u.id === a.instructorId),
+          reservas: inscripciones.filter((insc) => insc.actividadId === a.id).length,
           rating: a.rating,
         }))
         .sort((x, y) => y.reservas - x.reservas),
-    [actividades, clases, users],
+    [actividades, inscripciones, usuarios],
   );
 
   const reclamosStats = useMemo(() => {
@@ -134,8 +155,8 @@ export default function AdminReportes() {
       case "actividades": {
         const top = actividadRanking[0];
         const ratingProm = actividades.length > 0 ? actividades.reduce((s, a) => s + a.rating, 0) / actividades.length : 0;
-        const cuposTotales = clases.reduce((s, c) => s + c.cuposMax, 0);
-        const cuposOcupados = clases.reduce((s, c) => s + c.cuposOcupados, 0);
+        const cuposTotales = clasesAdmin.reduce((s, c) => s + c.cuposMax, 0);
+        const cuposOcupados = clasesAdmin.reduce((s, c) => s + c.cuposOcupados, 0);
         return [
           { l: "Actividades publicadas", v: String(actividades.length) },
           { l: "Actividad más reservada", v: top ? top.nombre : "—" },
@@ -151,7 +172,7 @@ export default function AdminReportes() {
           { l: "Penalizaciones aplicadas", v: String(penalizaciones.length) },
         ];
     }
-  }, [reportTab, globalKpis, actividades, pagos, actividadRanking, clases, reclamosStats, penalizaciones]);
+  }, [reportTab, globalKpis, actividades, pagos, actividadRanking, clasesAdmin, reclamosStats, penalizaciones]);
 
   const activeTab = TABS.find((t) => t.key === reportTab)!;
   const now = new Date();

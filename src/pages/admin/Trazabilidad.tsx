@@ -1,8 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import DashLayout from "../../components/DashLayout";
 import { s } from "../../lib/style";
-import { useAuth } from "../../context/AuthContext";
-import { auditLog, formatFecha, formatHora } from "../../lib/mockData";
+import { useData } from "../../context/DataContext";
+import type { AuditoriaEntry } from "../../context/DataContext";
+import { ApiError } from "../../lib/api";
+import { formatFecha, formatHora } from "../../lib/mockData";
 import type { RolNombre } from "../../lib/types";
 
 type RolFiltro = RolNombre | "SISTEMA" | "TODOS";
@@ -43,34 +45,36 @@ function accionStyle(accion: string): [string, string, string, string] {
   return ACCION_PALETTE[hashStr(accion) % ACCION_PALETTE.length];
 }
 
-function pseudoIp(seed: string): string {
-  const h = hashStr(seed);
-  return `192.168.${(h >> 8) % 255}.${h % 255}`;
-}
-
 function sameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
 export default function AdminTrazabilidad() {
-  const { users } = useAuth();
+  const { listarAuditoria } = useData();
+  const [auditLog, setAuditLog] = useState<AuditoriaEntry[]>([]);
+  const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [rolFiltro, setRolFiltro] = useState<RolFiltro>("TODOS");
   const [accFiltro, setAccFiltro] = useState<string>("TODAS");
   const [rolOpen, setRolOpen] = useState(false);
   const [accOpen, setAccOpen] = useState(false);
 
-  const accionesUnicas = useMemo(() => Array.from(new Set(auditLog.map((e) => e.accion))).sort(), []);
+  useEffect(() => {
+    listarAuditoria()
+      .then(setAuditLog)
+      .catch((err) => setError(err instanceof ApiError ? err.message : "No pudimos cargar la auditoría."));
+  }, [listarAuditoria]);
+
+  const accionesUnicas = useMemo(() => Array.from(new Set(auditLog.map((e) => e.accion))).sort(), [auditLog]);
 
   const entries = useMemo(
     () =>
-      auditLog.map((e) => {
-        const actor = e.actorId ? users.find((u) => u.id === e.actorId) : undefined;
-        const rol: RolNombre | "SISTEMA" = e.actorId === null ? "SISTEMA" : actor?.rol ?? "SISTEMA";
-        const nombre = actor ? `${actor.nombre} ${actor.apellido}` : e.actorNombre;
-        return { ...e, rol, nombre };
-      }),
-    [users],
+      auditLog.map((e) => ({
+        ...e,
+        rol: (e.actorRol ?? "SISTEMA") as RolNombre | "SISTEMA",
+        nombre: e.actorNombre,
+      })),
+    [auditLog],
   );
 
   const filtered = useMemo(() => {
@@ -91,14 +95,14 @@ export default function AdminTrazabilidad() {
 
   const kpis = useMemo(() => {
     const now = new Date();
-    const hoy = auditLog.filter((e) => sameDay(new Date(e.timestamp), now)).length;
+    const hoy = auditLog.filter((e) => sameDay(new Date(e.createdAt), now)).length;
     const usuarios = new Set(auditLog.filter((e) => e.actorId).map((e) => e.actorId)).size;
     return [
       { l: "Total de eventos", v: auditLog.length, c: "#0E2A47" },
       { l: "Eventos de hoy", v: hoy, c: "#2D5BC8" },
       { l: "Usuarios distintos", v: usuarios, c: "#0C8576" },
     ];
-  }, []);
+  }, [auditLog]);
 
   const clearFiltros = () => {
     setQuery("");
@@ -147,6 +151,16 @@ export default function AdminTrazabilidad() {
       </div>
 
       <div style={s("padding:24px 32px 50px;")}>
+        {error && (
+          <div
+            style={s(
+              "display:flex;align-items:center;gap:11px;background:#FBEAEB;border:1px solid #F3D2D3;border-radius:12px;padding:13px 15px;margin-bottom:18px;",
+            )}
+          >
+            <span style={s("font-size:13px;line-height:1.4;color:#BE3A3E;font-weight:600;")}>{error}</span>
+          </div>
+        )}
+
         <div className="ah-grid-3" style={s("display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px;")}>
           {kpis.map((k) => (
             <div key={k.l} style={s("background:#fff;border:1px solid #E7EDF3;border-radius:16px;padding:18px;")}>
@@ -305,10 +319,10 @@ export default function AdminTrazabilidad() {
 
         <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:18px;overflow:hidden;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
           <div style={s("overflow-x:auto;")}>
-            <div style={s("min-width:900px;")}>
+            <div style={s("min-width:820px;")}>
               <div
                 style={s(
-                  "display:grid;grid-template-columns:148px 1.5fr 124px 1.4fr 2.3fr 104px;padding:12px 22px;background:#F7FAFC;border-bottom:1px solid #EEF2F6;font:700 11.5px Manrope,sans-serif;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;",
+                  "display:grid;grid-template-columns:148px 1.5fr 124px 1.4fr 2.3fr;padding:12px 22px;background:#F7FAFC;border-bottom:1px solid #EEF2F6;font:700 11.5px Manrope,sans-serif;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;",
                 )}
               >
                 <span>Fecha y hora</span>
@@ -316,7 +330,6 @@ export default function AdminTrazabilidad() {
                 <span>Acción</span>
                 <span>Entidad</span>
                 <span>Detalle</span>
-                <span>IP</span>
               </div>
               {filtered.map((l) => {
                 const [rolBg, rolFg] = ROL_STYLE[l.rol];
@@ -326,12 +339,12 @@ export default function AdminTrazabilidad() {
                   <div
                     key={l.id}
                     className="ah-row"
-                    style={s("display:grid;grid-template-columns:148px 1.5fr 124px 1.4fr 2.3fr 104px;padding:14px 22px;border-bottom:1px solid #F1F4F8;align-items:center;")}
+                    style={s("display:grid;grid-template-columns:148px 1.5fr 124px 1.4fr 2.3fr;padding:14px 22px;border-bottom:1px solid #F1F4F8;align-items:center;")}
                   >
                     <span style={s("font:700 12px ui-monospace,Menlo,monospace;color:#0E2A47;line-height:1.5;")}>
-                      {formatFecha(l.timestamp)}
+                      {formatFecha(l.createdAt)}
                       <br />
-                      <span style={s("color:#90A1B2;font-weight:600;")}>{formatHora(l.timestamp)}</span>
+                      <span style={s("color:#90A1B2;font-weight:600;")}>{formatHora(l.createdAt)}</span>
                     </span>
                     <div style={s("display:flex;align-items:center;gap:9px;min-width:0;")}>
                       <span
@@ -357,7 +370,6 @@ export default function AdminTrazabilidad() {
                     </span>
                     <span style={s("font:700 12.5px Manrope,sans-serif;color:#33485E;")}>{l.entidad}</span>
                     <span style={s("font-size:12.5px;color:#65788C;font-weight:600;line-height:1.45;")}>{detalle}</span>
-                    <span style={s("font:600 11.5px ui-monospace,Menlo,monospace;color:#90A1B2;")}>{pseudoIp(l.id)}</span>
                   </div>
                 );
               })}

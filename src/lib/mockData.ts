@@ -7,10 +7,8 @@ import type {
   Actividad,
   ActividadFavorita,
   AgendaClases,
-  AuditLogEntry,
   Categoria,
   Clase,
-  Denuncia,
   Inscripcion,
   Pago,
   Penalizacion,
@@ -412,26 +410,7 @@ export const pagos: Pago[] = [
   { id: "pago-3", inscripcionId: "insc-4", estado: "Efectivo", monto: 6200, metodo: "Efectivo" },
 ];
 
-// --- Denuncias / penalizaciones ---------------------------------------------
-
-export const denuncias: Denuncia[] = [
-  {
-    id: "den-1",
-    claseId: clases[1].id,
-    alumnoId: "u-facundo",
-    motivo: "El instructor canceló la clase sin previo aviso y no hubo reintegro.",
-    estado: "En Auditoría",
-    createdAt: addDays(NOW, -6).toISOString(),
-  },
-  {
-    id: "den-2",
-    claseId: clases[3].id,
-    alumnoId: "u-valentina",
-    motivo: "Se cobraron cupos que no estaban disponibles al momento de inscribirme.",
-    estado: "Pendiente",
-    createdAt: addDays(NOW, -1).toISOString(),
-  },
-];
+// --- Penalizaciones -----------------------------------------------------
 
 export const penalizaciones: Penalizacion[] = [
   {
@@ -453,55 +432,6 @@ export const penalizaciones: Penalizacion[] = [
 export const favoritos: ActividadFavorita[] = [
   { usuarioId: "u-martina", actividadId: "act-trekking" },
   { usuarioId: "u-martina", actividadId: "act-yoga" },
-];
-
-export const auditLog: AuditLogEntry[] = [
-  {
-    id: "audit-1",
-    actorId: null,
-    actorNombre: "Sistema",
-    accion: "REGISTRO_ALUMNO",
-    entidad: "Usuario",
-    entidadId: "u-martina",
-    timestamp: "2026-01-14T10:00:00Z",
-  },
-  {
-    id: "audit-2",
-    actorId: null,
-    actorNombre: "Sistema",
-    accion: "REGISTRO_INSTRUCTOR",
-    entidad: "Usuario",
-    entidadId: "u-mateo",
-    timestamp: "2025-11-02T10:00:00Z",
-  },
-  {
-    id: "audit-3",
-    actorId: "u-roberto",
-    actorNombre: "Roberto Diaz",
-    accion: "ADMIN_CREADO",
-    entidad: "Usuario",
-    entidadId: "u-roberto",
-    timestamp: "2025-09-01T10:00:00Z",
-    metadata: "Admin sembrado (seed)",
-  },
-  {
-    id: "audit-4",
-    actorId: "u-roberto",
-    actorNombre: "Roberto Diaz",
-    accion: "INSTRUCTOR_VALIDADO",
-    entidad: "PerfilInstructor",
-    entidadId: "u-mateo",
-    timestamp: addDays(NOW, -30).toISOString(),
-  },
-  {
-    id: "audit-5",
-    actorId: "u-facundo",
-    actorNombre: "Facundo Molina",
-    accion: "LOGIN_FALLIDO",
-    entidad: "Usuario",
-    entidadId: "u-facundo",
-    timestamp: addDays(NOW, -2).toISOString(),
-  },
 ];
 
 // --- Helpers -----------------------------------------------------------------

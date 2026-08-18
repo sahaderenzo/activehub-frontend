@@ -6,7 +6,7 @@ import StatusBadge from "../../components/StatusBadge";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
-import type { MiResenia } from "../../context/DataContext";
+import type { MiDenuncia, MiResenia } from "../../context/DataContext";
 import { formatFecha, INTERESES } from "../../lib/mockData";
 import { inscripcionStatusType } from "../../lib/status";
 import type { Actividad, Clase, Inscripcion } from "../../lib/types";
@@ -34,10 +34,11 @@ export default function AlumnoPerfil() {
   const navigate = useNavigate();
   const { currentUser, updateUsuario, logout } = useAuth();
   const data = useData();
-  const { inscripciones, clases, actividades, denuncias } = data;
+  const { inscripciones, clases, actividades } = data;
 
   const [misResenias, setMisResenias] = useState<MiResenia[]>([]);
   const [claseIdsInscriptoFinalizada, setClaseIdsInscriptoFinalizada] = useState<string[]>([]);
+  const [misDenuncias, setMisDenuncias] = useState<MiDenuncia[]>([]);
   useEffect(() => {
     if (!currentUser) return;
     data.listarMisResenas().then(setMisResenias).catch(() => {});
@@ -45,7 +46,8 @@ export default function AlumnoPerfil() {
       .listarMisInscripciones("Inscripto")
       .then((lista) => setClaseIdsInscriptoFinalizada(lista.filter((i) => i.claseEstado === "Finalizada").map((i) => i.claseId)))
       .catch(() => {});
-  }, [currentUser, data.listarMisResenas, data.listarMisInscripciones]);
+    data.listarMisDenuncias().then(setMisDenuncias).catch(() => {});
+  }, [currentUser, data.listarMisResenas, data.listarMisInscripciones, data.listarMisDenuncias]);
 
   const [editando, setEditando] = useState(false);
   const [nombre, setNombre] = useState(currentUser?.nombre ?? "");
@@ -82,7 +84,6 @@ export default function AlumnoPerfil() {
     return claseIdsInscriptoFinalizada.filter((id) => !claseIdsReseñadas.has(id)).length;
   }, [claseIdsInscriptoFinalizada, misResenias]);
 
-  const misDenuncias = currentUser ? denuncias.filter((d) => d.alumnoId === currentUser.id) : [];
   const denunciasPendientes = misDenuncias.filter((d) => d.estado === "Pendiente").length;
   const denunciasAuditoria = misDenuncias.filter((d) => d.estado === "En Auditoría").length;
 
