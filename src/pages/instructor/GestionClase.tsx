@@ -38,6 +38,7 @@ export default function InstructorGestionClase() {
   const [roster, setRoster] = useState<RosterClase | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cancelando, setCancelando] = useState(false);
+  const [notificando, setNotificando] = useState(false);
 
   const cargarRoster = () => {
     if (!id) return;
@@ -58,6 +59,9 @@ export default function InstructorGestionClase() {
   const tipo = data.getTipoActividad(actividad.tipoActividadId);
   const cat = tipo ? data.getCategoria(tipo.categoriaId) : undefined;
   const disp = disponibilidad(clase);
+
+  const CUATRO_DIAS_MS = 4 * 24 * 60 * 60 * 1000;
+  const dentroDeVentanaDePago = new Date(clase.fechaHora).getTime() - Date.now() <= CUATRO_DIAS_MS;
 
   const alumnos = roster?.alumnos ?? [];
   const pagoAprobado = alumnos.filter((a) => a.estado === "Inscripto").length;
@@ -95,6 +99,26 @@ export default function InstructorGestionClase() {
       setError(err instanceof ApiError ? err.message : "No pudimos cancelar la clase.");
     } finally {
       setCancelando(false);
+    }
+  };
+
+  const notificarAusencia = async () => {
+    if (
+      !window.confirm(
+        "¿Notificar que no vas a poder dar esta clase? Se cancela la clase, se reintegran los pagos y cada alumno anotado recibe una notificación.",
+      )
+    )
+      return;
+    setError(null);
+    setNotificando(true);
+    try {
+      const mensaje = `El instructor avisó que no podrá dar la clase de "${actividad.nombre}" del ${formatFecha(clase.fechaHora)} a las ${formatHora(clase.fechaHora)} hs. La clase fue cancelada.`;
+      await data.notificarAusenciaProfesor(clase.id, mensaje);
+      cargarRoster();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos notificar la ausencia.");
+    } finally {
+      setNotificando(false);
     }
   };
 
@@ -164,6 +188,25 @@ export default function InstructorGestionClase() {
             >
               {clase.estado === "Cancelada" ? "Clase cancelada" : cancelando ? "Cancelando…" : "Cancelar clase"}
             </button>
+            {clase.estado !== "Cancelada" && clase.estado !== "Finalizada" && (
+              <button
+                className="ah-btn"
+                onClick={notificarAusencia}
+                disabled={notificando || !dentroDeVentanaDePago}
+                title={
+                  dentroDeVentanaDePago
+                    ? undefined
+                    : "Disponible a partir de los 4 días previos a la clase, cuando los alumnos ya pagaron su inscripción."
+                }
+                style={s(
+                  `background:#FFF3E0;border:1px solid #F3DBAE;border-radius:11px;padding:11px 16px;font:700 13.5px Manrope;color:#B9741A;cursor:${
+                    dentroDeVentanaDePago ? "pointer" : "not-allowed"
+                  };opacity:${notificando || !dentroDeVentanaDePago ? ".55" : "1"};`,
+                )}
+              >
+                {notificando ? "Notificando…" : "Notificar ausencia"}
+              </button>
+            )}
           </div>
         </div>
 

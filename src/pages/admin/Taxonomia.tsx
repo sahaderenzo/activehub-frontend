@@ -52,12 +52,28 @@ interface TipoFormState {
   categoriaId: string;
 }
 
+interface CategoriaFormState {
+  id: string | null;
+  nombre: string;
+}
+
 export default function AdminTaxonomia() {
   const navigate = useNavigate();
   const params = useParams<{ tab?: string }>();
   const tab: Tab = params.tab === "niveles" ? "niveles" : "tipos";
-  const { tiposActividad, actividades, categorias, crearTipoActividad, actualizarTipoActividad, eliminarTipoActividad } = useData();
+  const {
+    tiposActividad,
+    actividades,
+    categorias,
+    crearTipoActividad,
+    actualizarTipoActividad,
+    eliminarTipoActividad,
+    crearCategoria,
+    actualizarCategoria,
+    eliminarCategoria,
+  } = useData();
   const [form, setForm] = useState<TipoFormState | null>(null);
+  const [catForm, setCatForm] = useState<CategoriaFormState | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const goTab = (t: Tab) => navigate(`/admin/taxonomia/${t}`);
@@ -69,7 +85,7 @@ export default function AdminTaxonomia() {
         const n = actividades.filter((a) => tipos.some((t) => t.id === a.tipoActividadId)).length;
         return { ...c, tiposCount: tipos.length, n };
       }),
-    [tiposActividad, actividades],
+    [categorias, tiposActividad, actividades],
   );
 
   const tiposConCount = useMemo(
@@ -79,7 +95,7 @@ export default function AdminTaxonomia() {
         const acts = actividades.filter((a) => a.tipoActividadId === t.id).length;
         return { ...t, catNombre: cat?.nombre ?? "—", acts };
       }),
-    [tiposActividad, actividades],
+    [tiposActividad, actividades, categorias],
   );
 
   const nivelesConCount = NIVELES.map((n) => ({ ...n, acts: actividades.filter((a) => a.nivelIntensidad === n.nombre).length }));
@@ -102,6 +118,28 @@ export default function AdminTaxonomia() {
         await eliminarTipoActividad(id);
       } catch (err) {
         setError(err instanceof ApiError ? err.message : "No pudimos quitar el tipo de actividad.");
+      }
+    }
+  };
+
+  const submitCatForm = async () => {
+    if (!catForm || !catForm.nombre.trim()) return;
+    setError(null);
+    try {
+      if (catForm.id) await actualizarCategoria(catForm.id, { nombre: catForm.nombre.trim() });
+      else await crearCategoria({ nombre: catForm.nombre.trim() });
+      setCatForm(null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos guardar la categoría.");
+    }
+  };
+
+  const eliminarCat = async (id: string, nombre: string) => {
+    if (window.confirm(`¿Quitar la categoría "${nombre}"?`)) {
+      try {
+        await eliminarCategoria(id);
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : "No pudimos quitar la categoría.");
       }
     }
   };
@@ -149,10 +187,9 @@ export default function AdminTaxonomia() {
               </div>
               <button
                 className="ah-btn"
-                disabled
-                title="Las categorías son fijas en este demo"
+                onClick={() => setCatForm({ id: null, nombre: "" })}
                 style={s(
-                  "background:#fff;border:1px solid #E2E9F0;border-radius:11px;padding:10px 16px;font:700 13px Manrope,sans-serif;color:#41566B;cursor:not-allowed;opacity:.6;display:flex;align-items:center;gap:7px;",
+                  "background:#fff;border:1px solid #E2E9F0;border-radius:11px;padding:10px 16px;font:700 13px Manrope,sans-serif;color:#41566B;cursor:pointer;display:flex;align-items:center;gap:7px;",
                 )}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#41566B" strokeWidth={2.4}>
@@ -163,13 +200,37 @@ export default function AdminTaxonomia() {
             </div>
             <div className="ah-grid-4" style={s("display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:26px;")}>
               {catStats.map((c) => (
-                <div key={c.id} style={s("background:#0E2A47;border-radius:14px;padding:16px 18px;color:#fff;")}>
-                  <div style={s("font:700 15px Manrope,sans-serif;margin-bottom:4px;")}>{c.nombre}</div>
-                  <div style={s("font-size:12px;color:#9DB3C9;font-weight:600;margin-bottom:8px;")}>
-                    {c.tiposCount} {c.tiposCount === 1 ? "tipo" : "tipos"}
+                <div key={c.id} style={s("background:#0E2A47;border-radius:14px;padding:16px 18px;color:#fff;display:flex;flex-direction:column;gap:10px;")}>
+                  <div>
+                    <div style={s("font:700 15px Manrope,sans-serif;margin-bottom:4px;")}>{c.nombre}</div>
+                    <div style={s("font-size:12px;color:#9DB3C9;font-weight:600;margin-bottom:8px;")}>
+                      {c.tiposCount} {c.tiposCount === 1 ? "tipo" : "tipos"}
+                    </div>
+                    <div style={s("font:700 20px Space Grotesk,sans-serif;")}>
+                      {c.n} <span style={s("font-size:12px;color:#9DB3C9;font-weight:600;")}>actividades</span>
+                    </div>
                   </div>
-                  <div style={s("font:700 20px Space Grotesk,sans-serif;")}>
-                    {c.n} <span style={s("font-size:12px;color:#9DB3C9;font-weight:600;")}>actividades</span>
+                  <div style={s("display:flex;gap:7px;")}>
+                    <button
+                      className="ah-btn"
+                      onClick={() => setCatForm({ id: c.id, nombre: c.nombre })}
+                      style={s("flex:1;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.14);border-radius:8px;padding:7px 10px;font:700 12px Manrope,sans-serif;color:#fff;cursor:pointer;")}
+                    >
+                      Editar
+                    </button>
+                    <button
+                      className="ah-btn"
+                      onClick={() => {
+                        if (c.tiposCount > 0) {
+                          window.alert("No se puede quitar una categoría que tiene tipos de actividad asociados.");
+                          return;
+                        }
+                        eliminarCat(c.id, c.nombre);
+                      }}
+                      style={s("flex:1;background:rgba(190,58,62,.18);border:1px solid rgba(243,210,211,.3);border-radius:8px;padding:7px 10px;font:700 12px Manrope,sans-serif;color:#FF9A9D;cursor:pointer;")}
+                    >
+                      Quitar
+                    </button>
                   </div>
                 </div>
               ))}
@@ -334,6 +395,38 @@ export default function AdminTaxonomia() {
               <button
                 className="ah-btn"
                 onClick={submitForm}
+                style={s("flex:1;background:#FF6A2B;color:#fff;border:none;border-radius:10px;padding:11px;font:700 13.5px Manrope,sans-serif;cursor:pointer;")}
+              >
+                Guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {catForm && (
+        <div style={s("position:fixed;inset:0;z-index:80;background:rgba(8,22,38,.5);display:flex;align-items:center;justify-content:center;")}>
+          <div style={s("width:100%;max-width:380px;background:#fff;border-radius:16px;padding:22px;box-shadow:0 26px 64px rgba(0,0,0,.3);")}>
+            <div style={s("font:700 16px Space Grotesk,sans-serif;color:#0E2A47;margin-bottom:14px;")}>
+              {catForm.id ? "Editar categoría" : "Nueva categoría"}
+            </div>
+            <label style={s("display:block;font:700 12px Manrope,sans-serif;color:#41566B;margin-bottom:6px;")}>Nombre</label>
+            <input
+              value={catForm.nombre}
+              onChange={(e) => setCatForm({ ...catForm, nombre: e.target.value })}
+              style={s("width:100%;border:1px solid #E2E9F0;border-radius:10px;padding:10px 12px;font:600 13.5px Manrope,sans-serif;color:#0E2A47;margin-bottom:20px;")}
+            />
+            <div style={s("display:flex;gap:10px;")}>
+              <button
+                className="ah-btn"
+                onClick={() => setCatForm(null)}
+                style={s("flex:1;background:#F4F7FA;color:#41566B;border:none;border-radius:10px;padding:11px;font:700 13.5px Manrope,sans-serif;cursor:pointer;")}
+              >
+                Cancelar
+              </button>
+              <button
+                className="ah-btn"
+                onClick={submitCatForm}
                 style={s("flex:1;background:#FF6A2B;color:#fff;border:none;border-radius:10px;padding:11px;font:700 13.5px Manrope,sans-serif;cursor:pointer;")}
               >
                 Guardar

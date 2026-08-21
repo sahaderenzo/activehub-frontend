@@ -69,6 +69,31 @@ export default function AlumnoExplorar() {
     setter(next);
   };
 
+  const toggleCategoria = (categoriaId: string) => {
+    const next = new Set(catSel);
+    if (next.has(categoriaId)) {
+      next.delete(categoriaId);
+      // Al ocultar los tipos de esta categoría, sacamos también los que
+      // hubiera seleccionados: si no, seguirían filtrando en silencio sin
+      // aparecer ya ningún chip que lo explique.
+      setTipoSel((prev) => {
+        const pruned = new Set(prev);
+        for (const t of tiposActividad) {
+          if (t.categoriaId === categoriaId) pruned.delete(t.id);
+        }
+        return pruned;
+      });
+    } else {
+      next.add(categoriaId);
+    }
+    setCatSel(next);
+  };
+
+  const tiposVisibles = useMemo(
+    () => tiposActividad.filter((t) => catSel.has(t.categoriaId)),
+    [tiposActividad, catSel],
+  );
+
   const clearFilters = () => {
     setCatSel(new Set());
     setTipoSel(new Set());
@@ -164,7 +189,7 @@ export default function AlumnoExplorar() {
                 <label
                   key={c.id}
                   style={s("display:flex;align-items:center;gap:10px;font-size:14px;color:#41566B;font-weight:600;cursor:pointer;")}
-                  onClick={() => toggle(catSel, c.id, setCatSel)}
+                  onClick={() => toggleCategoria(c.id)}
                 >
                   <span
                     style={s(
@@ -185,7 +210,14 @@ export default function AlumnoExplorar() {
           </div>
           <div style={s("font:700 13px Manrope,sans-serif;color:#41566B;margin-bottom:11px;")}>Tipo de actividad</div>
           <div style={s("display:flex;flex-wrap:wrap;gap:7px;margin-bottom:22px;")}>
-            {tiposActividad.map((t) => {
+            {tiposVisibles.length === 0 && (
+              <span style={s("font-size:12.5px;color:#9AAABA;font-weight:600;")}>
+                {catSel.size === 0
+                  ? "Elegí una categoría para ver sus tipos."
+                  : "Esta categoría todavía no tiene tipos de actividad."}
+              </span>
+            )}
+            {tiposVisibles.map((t) => {
               const on = tipoSel.has(t.id);
               return (
                 <span

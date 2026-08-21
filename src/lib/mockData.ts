@@ -5,7 +5,6 @@
 // field is consumed across the prototype's screens (a.name, a.rating, etc.).
 import type {
   Actividad,
-  ActividadFavorita,
   AgendaClases,
   Categoria,
   Clase,
@@ -427,11 +426,6 @@ export const penalizaciones: Penalizacion[] = [
     motivo: "Cancelación fuera de término con reintegro parcial.",
     createdAt: addDays(NOW, -8).toISOString(),
   },
-];
-
-export const favoritos: ActividadFavorita[] = [
-  { usuarioId: "u-martina", actividadId: "act-trekking" },
-  { usuarioId: "u-martina", actividadId: "act-yoga" },
 ];
 
 // --- Helpers -----------------------------------------------------------------

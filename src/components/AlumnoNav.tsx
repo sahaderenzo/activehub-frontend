@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { s } from "../lib/style";
 import Logo from "./Logo";
+import NotificationBell from "./NotificationBell";
 import { useAuth } from "../context/AuthContext";
 
 type AlumnoNavKey = "home" | "explorar" | "calendario" | "favoritos" | "misreservas";
@@ -56,22 +57,7 @@ export default function AlumnoNav({ active }: { active: AlumnoNavKey }) {
             </svg>
             <span style={s("font-size:13.5px;color:#9AAABA;font-weight:600;")}>Buscar actividad…</span>
           </div>
-          <button
-            className="ah-btn"
-            style={s(
-              "position:relative;width:40px;height:40px;border-radius:11px;border:1px solid #E7EDF3;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;",
-            )}
-          >
-            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#41566B" strokeWidth={2}>
-              <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
-              <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
-            </svg>
-            <span
-              style={s(
-                "position:absolute;top:8px;right:9px;width:8px;height:8px;border-radius:99px;background:#FF6A2B;border:1.5px solid #fff;",
-              )}
-            />
-          </button>
+          <NotificationBell />
           <div
             onClick={() => navigate("/alumno/perfil")}
             className="ah-btn"

@@ -66,8 +66,9 @@ export default function AlumnoDetalle() {
   const {
     actividades,
     clases,
-    favoritos,
-    toggleFavorito,
+    listarMisFavoritos,
+    agregarFavorito,
+    quitarFavorito,
     getTipoActividad,
     getCategoria,
     instructorNombre,
@@ -84,11 +85,17 @@ export default function AlumnoDetalle() {
   const [aiFecha, setAiFecha] = useState<string>("");
   const [misInscripciones, setMisInscripciones] = useState<MiInscripcion[]>([]);
   const [reviewsActividad, setReviewsActividad] = useState<ReseniaActividad[]>([]);
+  const [misFavoritos, setMisFavoritos] = useState<string[]>([]);
 
   useEffect(() => {
     if (id) cargarDetalleActividad(id).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  useEffect(() => {
+    if (currentUser) listarMisFavoritos().then(setMisFavoritos).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser]);
 
   useEffect(() => {
     if (currentUser) listarMisInscripciones().then(setMisInscripciones).catch(() => {});
@@ -158,7 +165,17 @@ export default function AlumnoDetalle() {
     return { star, n, pct };
   });
 
-  const isFav = !!currentUser && favoritos.some((f) => f.usuarioId === currentUser.id && f.actividadId === actividad.id);
+  const isFav = misFavoritos.includes(actividad.id);
+
+  const onToggleFav = async () => {
+    if (isFav) {
+      setMisFavoritos((prev) => prev.filter((a) => a !== actividad.id));
+      await quitarFavorito(actividad.id).catch(() => setMisFavoritos((prev) => [...prev, actividad.id]));
+    } else {
+      setMisFavoritos((prev) => [...prev, actividad.id]);
+      await agregarFavorito(actividad.id).catch(() => setMisFavoritos((prev) => prev.filter((a) => a !== actividad.id)));
+    }
+  };
 
   return (
     <div className="ah-screen" style={s("min-height:100vh;background:#F4F7FA;")}>
@@ -558,7 +575,7 @@ export default function AlumnoDetalle() {
             actividad={actividad}
             selectedClase={selectedClase}
             isFav={isFav}
-            onToggleFav={() => currentUser && toggleFavorito(currentUser.id, actividad.id)}
+            onToggleFav={onToggleFav}
             misInscripciones={misInscripciones}
           />
         </div>

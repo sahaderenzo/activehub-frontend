@@ -2,7 +2,6 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { ReactNode } from "react";
 import type {
   Actividad,
-  ActividadFavorita,
   Categoria,
   Clase,
   EstadoClase,
@@ -16,7 +15,6 @@ import type {
   TipoActividad,
 } from "../lib/types";
 import {
-  favoritos as seedFavoritos,
   inscripciones as seedInscripciones,
   pagos as seedPagos,
   penalizaciones as seedPenalizaciones,
@@ -31,9 +29,9 @@ import { api } from "../lib/api";
  * mock estático sin relación con esas llamadas reales: los usan pantallas de
  * analítica/administración de alcance amplio (Dashboard, Reportes, Métricas)
  * para las que todavía no existe un endpoint "todas las inscripciones de la
- * plataforma" — quedan como estaban, sin tocar, igual que
- * penalizaciones/favoritos. Reseñas y denuncias ya están cableadas a la API
- * real (ver secciones correspondientes más abajo).
+ * plataforma" — quedan como estaban, sin tocar, igual que penalizaciones.
+ * Reseñas, denuncias y favoritos ya están cableados a la API real (ver
+ * secciones correspondientes más abajo).
  */
 
 const MOCK_KEY = "ah_data_mock";
@@ -42,7 +40,6 @@ interface MockShape {
   inscripciones: Inscripcion[];
   pagos: Pago[];
   penalizaciones: Penalizacion[];
-  favoritos: ActividadFavorita[];
 }
 
 function seedMock(): MockShape {
@@ -50,7 +47,6 @@ function seedMock(): MockShape {
     inscripciones: seedInscripciones,
     pagos: seedPagos,
     penalizaciones: seedPenalizaciones,
-    favoritos: seedFavoritos,
   };
 }
 
@@ -236,6 +232,15 @@ export interface ReseniaPendiente {
 
 export type AccionResolucion = "REINTEGRAR" | "SUSPENDER" | "PENALIZAR" | "DESESTIMAR";
 
+export interface Notificacion {
+  id: string;
+  tipo: string;
+  mensaje: string;
+  entidadId: string | null;
+  leida: boolean;
+  createdAt: string;
+}
+
 export interface InscripcionAdmin {
   id: string;
   claseId: string;
@@ -352,6 +357,10 @@ interface TipoActividadInput {
   categoriaId: string;
 }
 
+interface CategoriaInput {
+  nombre: string;
+}
+
 interface DataContextValue {
   // catálogo real
   categorias: Categoria[];
@@ -375,10 +384,17 @@ interface DataContextValue {
   actualizarClase: (id: string, actividadId: string, input: ClaseInput) => Promise<Clase>;
   eliminarClase: (id: string, actividadId: string) => Promise<void>;
   cancelarClase: (id: string) => Promise<void>;
+  notificarAusenciaProfesor: (claseId: string, mensaje: string) => Promise<void>;
+  listarNotificaciones: () => Promise<Notificacion[]>;
+  marcarNotificacionesLeidas: () => Promise<void>;
 
   crearTipoActividad: (input: TipoActividadInput) => Promise<TipoActividad>;
   actualizarTipoActividad: (id: string, input: TipoActividadInput) => Promise<TipoActividad>;
   eliminarTipoActividad: (id: string) => Promise<void>;
+
+  crearCategoria: (input: CategoriaInput) => Promise<Categoria>;
+  actualizarCategoria: (id: string, input: CategoriaInput) => Promise<Categoria>;
+  eliminarCategoria: (id: string) => Promise<void>;
 
   // inscripción / pago real
   inscribirse: (clase: Clase, alumnoId: string, metodo?: "Mercado Pago" | "Efectivo") => Promise<void>;
@@ -422,12 +438,15 @@ interface DataContextValue {
   // inscripciones/pagos de la plataforma (admin) real
   listarInscripcionesAdmin: () => Promise<InscripcionAdmin[]>;
 
+  // favoritos reales
+  listarMisFavoritos: () => Promise<string[]>;
+  agregarFavorito: (actividadId: string) => Promise<void>;
+  quitarFavorito: (actividadId: string) => Promise<void>;
+
   // fuera de alcance: mock puro, sin tocar
   inscripciones: Inscripcion[];
   pagos: Pago[];
   penalizaciones: Penalizacion[];
-  favoritos: ActividadFavorita[];
-  toggleFavorito: (usuarioId: string, actividadId: string) => void;
   aplicarPenalizacion: (input: Omit<Penalizacion, "id" | "createdAt">) => Penalizacion;
 }
 
@@ -567,6 +586,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setClases((prev) => prev.map((c) => (c.id === id ? { ...c, estado: "Cancelada" } : c)));
   }, []);
 
+  const notificarAusenciaProfesor = useCallback(async (claseId: string, mensaje: string) => {
+    await api.post(`/api/instructor/clases/${claseId}/notificar-ausencia`, { mensaje });
+    setClases((prev) => prev.map((c) => (c.id === claseId ? { ...c, estado: "Cancelada" } : c)));
+  }, []);
+
+  const listarNotificaciones = useCallback(async () => {
+    return api.get<Notificacion[]>("/api/notificaciones");
+  }, []);
+
+  const marcarNotificacionesLeidas = useCallback(async () => {
+    await api.post("/api/notificaciones/marcar-leidas");
+  }, []);
+
   const crearTipoActividad = useCallback(async (input: TipoActividadInput) => {
     const nuevo = await api.post<TipoActividadResp>("/api/admin/tipos-actividad", input);
     setTiposActividad((prev) => [...prev, nuevo]);
@@ -582,6 +614,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const eliminarTipoActividad = useCallback(async (id: string) => {
     await api.delete(`/api/admin/tipos-actividad/${id}`);
     setTiposActividad((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  const crearCategoria = useCallback(async (input: CategoriaInput) => {
+    const nueva = await api.post<CategoriaResp>("/api/admin/categorias", input);
+    setCategorias((prev) => [...prev, nueva]);
+    return nueva;
+  }, []);
+
+  const actualizarCategoria = useCallback(async (id: string, input: CategoriaInput) => {
+    const actualizada = await api.put<CategoriaResp>(`/api/admin/categorias/${id}`, input);
+    setCategorias((prev) => prev.map((c) => (c.id === id ? actualizada : c)));
+    return actualizada;
+  }, []);
+
+  const eliminarCategoria = useCallback(async (id: string) => {
+    await api.delete(`/api/admin/categorias/${id}`);
+    setCategorias((prev) => prev.filter((c) => c.id !== id));
   }, []);
 
   const inscribirse = useCallback(
@@ -707,17 +756,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return api.get<InscripcionAdmin[]>("/api/admin/inscripciones");
   }, []);
 
-  // --- Fuera de alcance: mock puro (penalizaciones/favoritos) ---
+  const listarMisFavoritos = useCallback(async () => {
+    return api.get<string[]>("/api/alumno/favoritos");
+  }, []);
 
-  const toggleFavorito = useCallback(
-    (usuarioId: string, actividadId: string) => {
-      patchMock("favoritos", (l) => {
-        const exists = l.some((f) => f.usuarioId === usuarioId && f.actividadId === actividadId);
-        return exists ? l.filter((f) => !(f.usuarioId === usuarioId && f.actividadId === actividadId)) : [...l, { usuarioId, actividadId }];
-      });
-    },
-    [patchMock],
-  );
+  const agregarFavorito = useCallback(async (actividadId: string) => {
+    await api.post(`/api/alumno/actividades/${actividadId}/favorito`);
+  }, []);
+
+  const quitarFavorito = useCallback(async (actividadId: string) => {
+    await api.delete(`/api/alumno/actividades/${actividadId}/favorito`);
+  }, []);
+
+  // --- Fuera de alcance: mock puro (penalizaciones) ---
 
   const aplicarPenalizacion = useCallback(
     (input: Omit<Penalizacion, "id" | "createdAt">) => {
@@ -748,9 +799,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
       actualizarClase,
       eliminarClase,
       cancelarClase,
+      notificarAusenciaProfesor,
+      listarNotificaciones,
+      marcarNotificacionesLeidas,
       crearTipoActividad,
       actualizarTipoActividad,
       eliminarTipoActividad,
+      crearCategoria,
+      actualizarCategoria,
+      eliminarCategoria,
       inscribirse,
       cancelarInscripcion,
       confirmarCobroEfectivo,
@@ -779,11 +836,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       actualizarEstadoUsuario,
       listarAuditoria,
       listarInscripcionesAdmin,
+      listarMisFavoritos,
+      agregarFavorito,
+      quitarFavorito,
       inscripciones: mock.inscripciones,
       pagos: mock.pagos,
       penalizaciones: mock.penalizaciones,
-      favoritos: mock.favoritos,
-      toggleFavorito,
       aplicarPenalizacion,
     }),
     [
@@ -805,9 +863,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
       actualizarClase,
       eliminarClase,
       cancelarClase,
+      notificarAusenciaProfesor,
+      listarNotificaciones,
+      marcarNotificacionesLeidas,
       crearTipoActividad,
       actualizarTipoActividad,
       eliminarTipoActividad,
+      crearCategoria,
+      actualizarCategoria,
+      eliminarCategoria,
       inscribirse,
       cancelarInscripcion,
       confirmarCobroEfectivo,
@@ -836,8 +900,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       actualizarEstadoUsuario,
       listarAuditoria,
       listarInscripcionesAdmin,
+      listarMisFavoritos,
+      agregarFavorito,
+      quitarFavorito,
       mock,
-      toggleFavorito,
       aplicarPenalizacion,
     ],
   );

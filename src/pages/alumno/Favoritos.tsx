@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import AlumnoNav from "../../components/AlumnoNav";
 import ActivityCard from "../../components/ActivityCard";
@@ -45,13 +45,24 @@ function cardProps(
 
 export default function AlumnoFavoritos() {
   const { currentUser } = useAuth();
-  const { favoritos, actividades, toggleFavorito, getTipoActividad, getCategoria, instructorNombre } = useData();
+  const { actividades, listarMisFavoritos, quitarFavorito, getTipoActividad, getCategoria, instructorNombre } = useData();
 
-  const misFavoritas = useMemo(() => {
-    if (!currentUser) return [];
-    const ids = favoritos.filter((f) => f.usuarioId === currentUser.id).map((f) => f.actividadId);
-    return ids.map((id) => actividades.find((a) => a.id === id)).filter((a): a is Actividad => !!a);
-  }, [favoritos, actividades, currentUser]);
+  const [favoritoIds, setFavoritoIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (currentUser) listarMisFavoritos().then(setFavoritoIds).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser]);
+
+  const misFavoritas = useMemo(
+    () => favoritoIds.map((id) => actividades.find((a) => a.id === id)).filter((a): a is Actividad => !!a),
+    [favoritoIds, actividades],
+  );
+
+  const quitar = (actividadId: string) => {
+    setFavoritoIds((prev) => prev.filter((id) => id !== actividadId));
+    quitarFavorito(actividadId).catch(() => setFavoritoIds((prev) => [...prev, actividadId]));
+  };
 
   const habilitadasEstaSemana = useMemo(() => {
     return misFavoritas.filter((a) => {
@@ -103,7 +114,7 @@ export default function AlumnoFavoritos() {
                   <ActivityCard {...cardProps(a, getTipoActividad, getCategoria, instructorNombre)} />
                   <button
                     className="ah-btn"
-                    onClick={() => currentUser && toggleFavorito(currentUser.id, a.id)}
+                    onClick={() => quitar(a.id)}
                     style={s(
                       "background:#fff;border:1px solid #E2E9F0;border-radius:10px;padding:9px;font:700 12.5px Manrope,sans-serif;color:#BE3A3E;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;",
                     )}

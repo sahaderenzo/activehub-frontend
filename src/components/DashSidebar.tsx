@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { s } from "../lib/style";
 import { useAuth } from "../context/AuthContext";
+import NotificationBell from "./NotificationBell";
 
 type Role = "instructor" | "admin";
 
@@ -162,15 +163,23 @@ export default function DashSidebar({ role, active }: DashSidebarProps) {
         "width:248px;flex:none;background:#0E2A47;min-height:100vh;display:flex;flex-direction:column;font-family:Manrope,system-ui,sans-serif;position:sticky;top:0;height:100vh;",
       )}
     >
-      <div style={s("padding:22px 22px 18px;display:flex;align-items:center;gap:10px;cursor:pointer;")} onClick={() => navigate("/")}>
+      <div style={s("padding:22px 22px 18px;display:flex;align-items:center;gap:10px;")}>
         <div
-          style={s(
-            "width:36px;height:36px;border-radius:10px;background:linear-gradient(140deg,#12B5A5,#FF6A2B);display:flex;align-items:center;justify-content:center;font:700 19px Space Grotesk,sans-serif;color:#fff;",
-          )}
+          style={s("display:flex;align-items:center;gap:10px;cursor:pointer;")}
+          onClick={() => navigate("/")}
         >
-          A
+          <div
+            style={s(
+              "width:36px;height:36px;border-radius:10px;background:linear-gradient(140deg,#12B5A5,#FF6A2B);display:flex;align-items:center;justify-content:center;font:700 19px Space Grotesk,sans-serif;color:#fff;",
+            )}
+          >
+            A
+          </div>
+          <span style={s("font:700 20px Space Grotesk,sans-serif;color:#fff;")}>ActiveHub</span>
         </div>
-        <span style={s("font:700 20px Space Grotesk,sans-serif;color:#fff;")}>ActiveHub</span>
+        <div style={s("margin-left:auto;")}>
+          <NotificationBell variant="dark" align="left" />
+        </div>
       </div>
       <div
         style={s(

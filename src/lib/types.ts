@@ -142,8 +142,3 @@ export interface Penalizacion {
   motivo: string;
   createdAt: string;
 }
-
-export interface ActividadFavorita {
-  usuarioId: string;
-  actividadId: string;
-}
