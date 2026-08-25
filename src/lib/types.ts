@@ -37,6 +37,7 @@ export interface Usuario {
 export interface PerfilAlumno {
   usuarioId: string;
   intereses: string[];
+  condicionSalud?: string;
 }
 
 export interface PerfilInstructor {

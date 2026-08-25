@@ -4,7 +4,7 @@ import DashLayout from "../../components/DashLayout";
 import StatusBadge from "../../components/StatusBadge";
 import { s } from "../../lib/style";
 import { useData } from "../../context/DataContext";
-import type { ClaseInstructorAdmin, InstructorAdmin } from "../../context/DataContext";
+import type { ClaseInstructorAdmin, DocumentoInstructor, InstructorAdmin } from "../../context/DataContext";
 import { ApiError } from "../../lib/api";
 import { formatFecha, formatHora } from "../../lib/mockData";
 import { claseStatusType } from "../../lib/status";
@@ -12,10 +12,21 @@ import type { EstadoClase } from "../../lib/types";
 
 const ESTADOS_CLASE: EstadoClase[] = ["Programada", "Habilitada", "Cancelada", "Finalizada"];
 
+function formatTamanioDoc(bytes: number): string {
+  return bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`;
+}
+
 export default function AdminValidarInstructor() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
-  const { obtenerInstructor, aprobarInstructor, rechazarInstructor, listarClasesInstructor } = useData();
+  const {
+    obtenerInstructor,
+    aprobarInstructor,
+    rechazarInstructor,
+    listarClasesInstructor,
+    listarDocumentosInstructor,
+    verDocumentoInstructor,
+  } = useData();
   const [instructor, setInstructor] = useState<InstructorAdmin | null | undefined>(undefined);
   const [motivoRechazo, setMotivoRechazo] = useState("");
   const [showRechazo, setShowRechazo] = useState(false);
@@ -26,6 +37,9 @@ export default function AdminValidarInstructor() {
   const [queryClases, setQueryClases] = useState("");
   const [estadoFiltro, setEstadoFiltro] = useState<EstadoClase | "todos">("todos");
   const [ordenFecha, setOrdenFecha] = useState<"asc" | "desc">("asc");
+  const [documentos, setDocumentos] = useState<DocumentoInstructor[]>([]);
+  const [errorDocumentos, setErrorDocumentos] = useState<string | null>(null);
+  const [abriendoDocumentoId, setAbriendoDocumentoId] = useState<string | null>(null);
 
   const goGestion = () => navigate("/admin/gestion/instructores");
 
@@ -37,9 +51,24 @@ export default function AdminValidarInstructor() {
     listarClasesInstructor(id)
       .then(setClases)
       .catch((err) => setErrorClases(err instanceof ApiError ? err.message : "No pudimos cargar las clases."));
+    listarDocumentosInstructor(id)
+      .then(setDocumentos)
+      .catch((err) => setErrorDocumentos(err instanceof ApiError ? err.message : "No pudimos cargar los documentos."));
   };
 
   useEffect(cargar, [id]);
+
+  const verDocumento = async (documentoId: string) => {
+    if (!id) return;
+    setAbriendoDocumentoId(documentoId);
+    try {
+      await verDocumentoInstructor(id, documentoId);
+    } catch (err) {
+      setErrorDocumentos(err instanceof ApiError ? err.message : "No pudimos abrir el documento.");
+    } finally {
+      setAbriendoDocumentoId(null);
+    }
+  };
 
   const clasesFiltradas = useMemo(() => {
     const q = queryClases.trim().toLowerCase();
@@ -86,11 +115,6 @@ export default function AdminValidarInstructor() {
     { label: "Años de experiencia", value: instructor.aniosExperiencia != null ? `${instructor.aniosExperiencia} años` : "—" },
   ];
 
-  const docs = [
-    { name: "DNI (frente y dorso).pdf", meta: "Subido · 1.4 MB" },
-    { name: "Certificado de antecedentes.pdf", meta: "Subido · 820 KB" },
-    { name: `Título o certificación — ${instructor.especialidad}.pdf`, meta: "Subido · 2.1 MB" },
-  ];
 
   const aprobar = async () => {
     setError(null);
@@ -184,9 +208,17 @@ export default function AdminValidarInstructor() {
 
           <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:18px;overflow:hidden;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
             <div style={s("padding:16px 20px;border-bottom:1px solid #EEF2F6;font:700 15px Space Grotesk,sans-serif;")}>Documentación adjunta</div>
+            {errorDocumentos && (
+              <div style={s("padding:12px 20px;font-size:12.5px;color:#BE3A3E;font-weight:600;")}>{errorDocumentos}</div>
+            )}
             <div style={s("padding:14px 20px;display:flex;flex-direction:column;gap:10px;")}>
-              {docs.map((doc) => (
-                <div key={doc.name} style={s("display:flex;align-items:center;gap:11px;border:1px solid #E7EDF3;border-radius:11px;padding:11px 13px;")}>
+              {documentos.length === 0 && !errorDocumentos && (
+                <div style={s("font-size:12.5px;color:#90A1B2;font-weight:600;")}>
+                  El instructor todavía no subió documentación.
+                </div>
+              )}
+              {documentos.map((doc) => (
+                <div key={doc.id} style={s("display:flex;align-items:center;gap:11px;border:1px solid #E7EDF3;border-radius:11px;padding:11px 13px;")}>
                   <span style={s("width:34px;height:34px;border-radius:9px;background:#EEF4FB;display:flex;align-items:center;justify-content:center;flex:none;")}>
                     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#2D5BC8" strokeWidth={2}>
                       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -194,11 +226,19 @@ export default function AdminValidarInstructor() {
                     </svg>
                   </span>
                   <div style={s("flex:1;min-width:0;")}>
-                    <div style={s("font:700 13px Manrope,sans-serif;color:#0E2A47;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;")}>{doc.name}</div>
-                    <div style={s("font-size:11.5px;color:#90A1B2;font-weight:600;")}>{doc.meta}</div>
+                    <div style={s("font:700 13px Manrope,sans-serif;color:#0E2A47;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;")}>{doc.nombreArchivo}</div>
+                    <div style={s("font-size:11.5px;color:#90A1B2;font-weight:600;")}>
+                      Subido {formatFecha(doc.createdAt)} · {formatTamanioDoc(doc.tamanioBytes)}
+                    </div>
                   </div>
-                  <span className="ah-link" title="Vista previa no disponible en este demo" style={s("font:700 12px Manrope,sans-serif;color:#2D5BC8;cursor:pointer;flex:none;")}>
-                    Ver
+                  <span
+                    className="ah-link"
+                    onClick={() => verDocumento(doc.id)}
+                    style={s(
+                      `font:700 12px Manrope,sans-serif;color:${abriendoDocumentoId === doc.id ? "#90A1B2" : "#2D5BC8"};cursor:pointer;flex:none;`,
+                    )}
+                  >
+                    {abriendoDocumentoId === doc.id ? "Abriendo…" : "Ver"}
                   </span>
                 </div>
               ))}

@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
-import type { FormEvent } from "react";
+import { useMemo, useRef, useState } from "react";
+import type { ChangeEvent, DragEvent, FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { s } from "../../lib/style";
 import { ApiError, passwordStrength, useAuth } from "../../context/AuthContext";
+import { useData } from "../../context/DataContext";
 import { INTERESES } from "../../lib/mockData";
 import type { RolNombre } from "../../lib/types";
 
@@ -15,6 +16,7 @@ interface FormState {
   telefono: string;
   password: string;
   fechaNacimiento: string;
+  condicionSalud: string;
   especialidad: string;
   aniosExperiencia: string;
   descripcion: string;
@@ -28,6 +30,7 @@ const EMPTY: FormState = {
   telefono: "",
   password: "",
   fechaNacimiento: "",
+  condicionSalud: "",
   especialidad: "",
   aniosExperiencia: "",
   descripcion: "",
@@ -36,22 +39,66 @@ const EMPTY: FormState = {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const HOY_ISO = new Date().toISOString().slice(0, 10);
+const TIPOS_DOCUMENTO_PERMITIDOS = ["application/pdf", "image/jpeg", "image/png"];
+const TAMANIO_MAX_DOCUMENTO = 5 * 1024 * 1024;
 
 const HOME_BY_ROL: Record<RolNombre, string> = { ALUMNO: "/alumno", INSTRUCTOR: "/instructor", ADMIN: "/admin" };
+
+function formatTamanio(bytes: number): string {
+  return bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`;
+}
 
 export default function Registro() {
   const navigate = useNavigate();
   const { registerAlumno, registerInstructor } = useAuth();
+  const { subirDocumento } = useData();
 
   const [rol, setRol] = useState<Rol>("ALUMNO");
   const [form, setForm] = useState<FormState>(EMPTY);
   const [intereses, setIntereses] = useState<string[]>([]);
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [archivos, setArchivos] = useState<File[]>([]);
+  const [archivosError, setArchivosError] = useState<string | null>(null);
+  const [subiendo, setSubiendo] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((f) => ({ ...f, [key]: value }));
 
   const strength = useMemo(() => (form.password ? passwordStrength(form.password) : null), [form.password]);
+
+  const agregarArchivos = (lista: FileList | null) => {
+    if (!lista) return;
+    setArchivosError(null);
+    const validos: File[] = [];
+    for (const archivo of Array.from(lista)) {
+      if (!TIPOS_DOCUMENTO_PERMITIDOS.includes(archivo.type)) {
+        setArchivosError(`"${archivo.name}" no es un PDF, JPG o PNG.`);
+        continue;
+      }
+      if (archivo.size > TAMANIO_MAX_DOCUMENTO) {
+        setArchivosError(`"${archivo.name}" supera los 5 MB.`);
+        continue;
+      }
+      validos.push(archivo);
+    }
+    if (validos.length) setArchivos((prev) => [...prev, ...validos]);
+  };
+
+  const onSeleccionarArchivos = (e: ChangeEvent<HTMLInputElement>) => {
+    agregarArchivos(e.target.files);
+    e.target.value = "";
+  };
+
+  const onSoltarArchivos = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    agregarArchivos(e.dataTransfer.files);
+  };
+
+  const quitarArchivo = (nombre: string) => setArchivos((prev) => prev.filter((a) => a.name !== nombre));
 
   const toggleInteres = (name: string) =>
     setIntereses((prev) => (prev.includes(name) ? prev.filter((i) => i !== name) : [...prev, name]));
@@ -64,6 +111,8 @@ export default function Registro() {
     else if (!EMAIL_RE.test(form.email)) e.email = "Ingresá un correo electrónico válido.";
     if (!form.telefono.trim()) e.telefono = "Este campo es obligatorio.";
     if (!form.password || !passwordStrength(form.password).ok) e.password = "La contraseña necesita al menos 8 caracteres, una letra y un número.";
+    if (!confirmPassword) e.confirmPassword = "Confirmá tu contraseña.";
+    else if (form.password !== confirmPassword) e.confirmPassword = "Las contraseñas no coinciden.";
     if (rol === "ALUMNO" && !form.fechaNacimiento) {
       e.fechaNacimiento = "Este campo es obligatorio.";
     }
@@ -90,6 +139,7 @@ export default function Registro() {
           password: form.password,
           fechaNacimiento: form.fechaNacimiento,
           intereses,
+          condicionSalud: form.condicionSalud.trim() || undefined,
           aceptaTerminos: form.aceptaTerminos,
         });
         navigate(HOME_BY_ROL[user.rol]);
@@ -106,6 +156,24 @@ export default function Registro() {
           descripcion: form.descripcion || undefined,
           aceptaTerminos: form.aceptaTerminos,
         });
+        if (archivos.length > 0) {
+          setSubiendo(true);
+          const fallidos: string[] = [];
+          for (const archivo of archivos) {
+            try {
+              await subirDocumento(archivo);
+            } catch {
+              fallidos.push(archivo.name);
+            }
+          }
+          setSubiendo(false);
+          if (fallidos.length > 0) {
+            // La cuenta ya se creó bien: esto no bloquea la navegación, solo avisamos.
+            window.alert(
+              `Tu cuenta se creó correctamente, pero no pudimos subir: ${fallidos.join(", ")}. Podés volver a intentarlo más tarde.`,
+            );
+          }
+        }
         navigate(HOME_BY_ROL[user.rol]);
       }
     } catch (err) {
@@ -121,6 +189,11 @@ export default function Registro() {
   const inputStyle = (field: string) =>
     s(
       `width:100%;border:1px solid ${errors[field] ? "#E5484D" : "#D9E1EA"};background:${errors[field] ? "#FBEAEB" : "#fff"};border-radius:11px;padding:12px 14px;font:600 14.5px Manrope;color:#0E2A47;outline:none;`,
+    );
+
+  const passwordInputStyle = (field: string) =>
+    s(
+      `width:100%;border:1px solid ${errors[field] ? "#E5484D" : "#D9E1EA"};background:${errors[field] ? "#FBEAEB" : "#fff"};border-radius:11px;padding:12px 44px 12px 14px;font:600 14.5px Manrope;color:#0E2A47;outline:none;`,
     );
 
   const fieldError = (field: string) =>
@@ -281,16 +354,72 @@ export default function Registro() {
               <label style={s("display:block;font:700 13px Manrope;color:#41566B;margin-bottom:7px;")}>
                 Contraseña <span style={s("color:#E5484D;")}>*</span>
               </label>
-              <input
-                type="password"
-                value={form.password}
-                onChange={(e) => set("password", e.target.value)}
-                style={inputStyle("password")}
-              />
+              <div style={s("position:relative;")}>
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={form.password}
+                  onChange={(e) => set("password", e.target.value)}
+                  style={passwordInputStyle("password")}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                  style={s(
+                    "position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:6px;display:flex;",
+                  )}
+                >
+                  {showPassword ? (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8194A8" strokeWidth={2}>
+                      <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a18.5 18.5 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                      <path d="M1 1l22 22" />
+                    </svg>
+                  ) : (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8194A8" strokeWidth={2}>
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  )}
+                </button>
+              </div>
               {strength && !errors.password && (
                 <div style={s(`font-size:12px;margin-top:6px;font-weight:600;color:${strength.color};`)}>{strength.label}</div>
               )}
               {fieldError("password")}
+            </div>
+            <div>
+              <label style={s("display:block;font:700 13px Manrope;color:#41566B;margin-bottom:7px;")}>
+                Confirmar contraseña <span style={s("color:#E5484D;")}>*</span>
+              </label>
+              <div style={s("position:relative;")}>
+                <input
+                  type={showConfirmPassword ? "text" : "password"}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  style={passwordInputStyle("confirmPassword")}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword((v) => !v)}
+                  aria-label={showConfirmPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                  style={s(
+                    "position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:6px;display:flex;",
+                  )}
+                >
+                  {showConfirmPassword ? (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8194A8" strokeWidth={2}>
+                      <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a18.5 18.5 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                      <path d="M1 1l22 22" />
+                    </svg>
+                  ) : (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8194A8" strokeWidth={2}>
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+              {fieldError("confirmPassword")}
             </div>
             <div>
               <label style={s("display:block;font:700 13px Manrope;color:#41566B;margin-bottom:7px;")}>
@@ -336,6 +465,23 @@ export default function Registro() {
                   );
                 })}
               </div>
+              <div style={s("margin-top:18px;")}>
+                <label style={s("display:block;font:700 13px Manrope;color:#41566B;margin-bottom:4px;")}>
+                  ¿Padecés alguna enfermedad o lesión?
+                </label>
+                <div style={s("font-size:12.5px;color:#8194A8;margin-bottom:8px;")}>
+                  Opcional. Ayuda al instructor a dar la clase de forma segura para vos.
+                </div>
+                <textarea
+                  value={form.condicionSalud}
+                  onChange={(e) => set("condicionSalud", e.target.value)}
+                  placeholder="Ej: asma, lesión de rodilla, ninguna…"
+                  maxLength={500}
+                  style={s(
+                    "width:100%;min-height:74px;border:1px solid #D9E1EA;border-radius:11px;padding:12px 14px;font:600 14.5px Manrope;color:#0E2A47;outline:none;resize:vertical;font-family:Manrope;",
+                  )}
+                />
+              </div>
             </div>
           )}
 
@@ -377,7 +523,22 @@ export default function Registro() {
               </div>
               <div>
                 <label style={s("display:block;font:700 13px Manrope;color:#41566B;margin-bottom:7px;")}>Documentación / certificaciones</label>
-                <div style={s("border:2px dashed #C9D5E1;border-radius:13px;padding:24px;text-align:center;background:#FAFCFE;")}>
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={onSoltarArchivos}
+                  style={s(
+                    "cursor:pointer;border:2px dashed #C9D5E1;border-radius:13px;padding:24px;text-align:center;background:#FAFCFE;",
+                  )}
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    accept="application/pdf,image/jpeg,image/png"
+                    onChange={onSeleccionarArchivos}
+                    style={s("display:none;")}
+                  />
                   <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#9AAABA" strokeWidth={2} style={s("margin:0 auto 8px;")}>
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                     <path d="M17 8l-5-5-5 5" />
@@ -388,6 +549,37 @@ export default function Registro() {
                   </div>
                   <div style={s("font-size:12px;color:#8194A8;margin-top:4px;")}>PDF, JPG o PNG · hasta 5 MB</div>
                 </div>
+                {archivosError && (
+                  <div style={s("font-size:12px;color:#E5484D;font-weight:600;margin-top:8px;")}>{archivosError}</div>
+                )}
+                {archivos.length > 0 && (
+                  <div style={s("display:flex;flex-direction:column;gap:8px;margin-top:12px;")}>
+                    {archivos.map((archivo) => (
+                      <div
+                        key={archivo.name}
+                        style={s(
+                          "display:flex;align-items:center;gap:10px;border:1px solid #E7EDF3;border-radius:10px;padding:9px 12px;",
+                        )}
+                      >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2D5BC8" strokeWidth={2} style={s("flex:none;")}>
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                          <path d="M14 2v6h6" />
+                        </svg>
+                        <div style={s("flex:1;min-width:0;font:700 12.5px Manrope;color:#0E2A47;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;")}>
+                          {archivo.name}
+                        </div>
+                        <span style={s("font-size:11px;color:#90A1B2;font-weight:600;flex:none;")}>{formatTamanio(archivo.size)}</span>
+                        <span
+                          onClick={() => quitarArchivo(archivo.name)}
+                          className="ah-btn"
+                          style={s("cursor:pointer;color:#BE3A3E;font-weight:700;font-size:12px;flex:none;")}
+                        >
+                          Quitar
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -422,11 +614,12 @@ export default function Registro() {
           <button
             className="ah-btn"
             type="submit"
+            disabled={subiendo}
             style={s(
-              "margin-top:22px;width:100%;background:#FF6A2B;color:#fff;border:none;border-radius:12px;padding:15px;font:700 15.5px Manrope;cursor:pointer;box-shadow:0 8px 18px rgba(255,106,43,.3);",
+              `margin-top:22px;width:100%;background:#FF6A2B;color:#fff;border:none;border-radius:12px;padding:15px;font:700 15.5px Manrope;cursor:${subiendo ? "not-allowed" : "pointer"};box-shadow:0 8px 18px rgba(255,106,43,.3);opacity:${subiendo ? ".7" : "1"};`,
             )}
           >
-            Crear cuenta
+            {subiendo ? "Subiendo documentos…" : "Crear cuenta"}
           </button>
         </div>
       </form>

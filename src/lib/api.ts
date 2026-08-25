@@ -66,9 +66,53 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   return data as T;
 }
 
+async function requestForm<T>(path: string, formData: FormData): Promise<T> {
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  // Sin Content-Type: el browser arma el boundary del multipart solo.
+
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, { method: "POST", headers, body: formData });
+  } catch {
+    throw new ApiError("ERROR_RED", "No se pudo conectar con el servidor. Verificá tu conexión e intentá de nuevo.", 0);
+  }
+
+  const isJson = res.headers.get("content-type")?.includes("application/json") ?? false;
+  const data = isJson ? await res.json() : undefined;
+
+  if (!res.ok) {
+    const message = data?.message ?? "Ocurrió un error inesperado. Intentá de nuevo más tarde.";
+    const code = data?.code ?? "ERROR_INTERNO";
+    throw new ApiError(code, message, res.status, data?.fieldErrors ?? undefined);
+  }
+
+  return data as T;
+}
+
+async function requestBlob(path: string): Promise<Blob> {
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, { headers });
+  } catch {
+    throw new ApiError("ERROR_RED", "No se pudo conectar con el servidor. Verificá tu conexión e intentá de nuevo.", 0);
+  }
+  if (!res.ok) {
+    throw new ApiError("ERROR_INTERNO", "No pudimos descargar el archivo.", res.status);
+  }
+  return res.blob();
+}
+
 export const api = {
   get: <T>(path: string): Promise<T> => request<T>(path),
   post: <T>(path: string, body?: unknown): Promise<T> => request<T>(path, { method: "POST", body }),
   put: <T>(path: string, body?: unknown): Promise<T> => request<T>(path, { method: "PUT", body }),
   delete: <T>(path: string): Promise<T> => request<T>(path, { method: "DELETE" }),
+  postForm: <T>(path: string, formData: FormData): Promise<T> => requestForm<T>(path, formData),
+  getBlob: (path: string): Promise<Blob> => requestBlob(path),
 };

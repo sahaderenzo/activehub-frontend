@@ -9,7 +9,7 @@ const HOME_BY_ROL: Record<RolNombre, string> = { ALUMNO: "/alumno", INSTRUCTOR: 
 
 export default function Login() {
   const navigate = useNavigate();
-  const { login, loginAsDemo } = useAuth();
+  const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -27,17 +27,6 @@ export default function Login() {
       else setError("Ocurrió un error inesperado. Intentá de nuevo.");
     } finally {
       setLoading(false);
-    }
-  };
-
-  const demo = async (rol: RolNombre) => {
-    setError(null);
-    try {
-      const user = await loginAsDemo(rol);
-      navigate(HOME_BY_ROL[user.rol]);
-    } catch (err) {
-      if (err instanceof ApiError) setError(err.message);
-      else setError("Ocurrió un error inesperado. Intentá de nuevo.");
     }
   };
 
@@ -214,44 +203,6 @@ export default function Login() {
             <span className="ah-link" onClick={() => navigate("/registro")} style={s("color:#FF6A2B;font-weight:700;cursor:pointer;")}>
               Crear cuenta
             </span>
-          </div>
-
-          <div style={s("margin-top:26px;border-top:1px dashed #D5DEE7;padding-top:16px;text-align:center;")}>
-            <div style={s("font:700 11px Manrope;color:#90A1B2;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;")}>
-              Demo — entrar como
-            </div>
-            <div style={s("display:flex;gap:8px;")}>
-              <button
-                type="button"
-                className="ah-btn"
-                onClick={() => demo("ALUMNO")}
-                style={s(
-                  "flex:1;background:#EEF4FB;color:#2D5BC8;border:1px solid #D5E2FB;border-radius:10px;padding:9px;font:700 13px Manrope;cursor:pointer;",
-                )}
-              >
-                Alumno
-              </button>
-              <button
-                type="button"
-                className="ah-btn"
-                onClick={() => demo("INSTRUCTOR")}
-                style={s(
-                  "flex:1;background:#E7F8F5;color:#0C8576;border:1px solid #CBEDE7;border-radius:10px;padding:9px;font:700 13px Manrope;cursor:pointer;",
-                )}
-              >
-                Instructor
-              </button>
-              <button
-                type="button"
-                className="ah-btn"
-                onClick={() => demo("ADMIN")}
-                style={s(
-                  "flex:1;background:#FFF3E0;color:#B9741A;border:1px solid #F6E2C0;border-radius:10px;padding:9px;font:700 13px Manrope;cursor:pointer;",
-                )}
-              >
-                Admin
-              </button>
-            </div>
           </div>
         </form>
       </div>

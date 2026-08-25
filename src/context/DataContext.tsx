@@ -138,6 +138,14 @@ export interface ClaseInstructorAdmin {
   cuposOcupados: number;
 }
 
+export interface DocumentoInstructor {
+  id: string;
+  nombreArchivo: string;
+  tipoDocumento: string;
+  tamanioBytes: number;
+  createdAt: string;
+}
+
 export interface ClaseAdmin {
   claseId: string;
   actividadId: string;
@@ -409,6 +417,9 @@ interface DataContextValue {
   obtenerInstructor: (id: string) => Promise<InstructorAdmin>;
   listarClasesInstructor: (id: string) => Promise<ClaseInstructorAdmin[]>;
   listarClasesAdmin: () => Promise<ClaseAdmin[]>;
+  subirDocumento: (archivo: File) => Promise<DocumentoInstructor>;
+  listarDocumentosInstructor: (instructorId: string) => Promise<DocumentoInstructor[]>;
+  verDocumentoInstructor: (instructorId: string, documentoId: string) => Promise<void>;
   aprobarInstructor: (id: string) => Promise<void>;
   rechazarInstructor: (id: string, motivo?: string) => Promise<void>;
 
@@ -684,6 +695,33 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return api.get<ClaseAdmin[]>("/api/admin/clases");
   }, []);
 
+  const subirDocumento = useCallback(async (archivo: File) => {
+    const formData = new FormData();
+    formData.append("archivo", archivo);
+    return api.postForm<DocumentoInstructor>("/api/instructor/documentos", formData);
+  }, []);
+
+  const listarDocumentosInstructor = useCallback(async (instructorId: string) => {
+    return api.get<DocumentoInstructor[]>(`/api/admin/instructores/${instructorId}/documentos`);
+  }, []);
+
+  const verDocumentoInstructor = useCallback(async (instructorId: string, documentoId: string) => {
+    // Abrimos la pestaña ya (sincrónico, dentro del gesto del click) y recién
+    // después buscamos el archivo — si esperáramos el fetch primero, la
+    // mayoría de los navegadores bloquean el popup por no venir de un click.
+    const ventana = window.open("", "_blank");
+    try {
+      const blob = await api.getBlob(`/api/admin/instructores/${instructorId}/documentos/${documentoId}/archivo`);
+      const url = URL.createObjectURL(blob);
+      if (ventana) ventana.location.href = url;
+      else window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      ventana?.close();
+      throw err;
+    }
+  }, []);
+
   const aprobarInstructor = useCallback(async (id: string) => {
     await api.post(`/api/admin/instructores/${id}/aprobar`);
   }, []);
@@ -818,6 +856,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       obtenerInstructor,
       listarClasesInstructor,
       listarClasesAdmin,
+      subirDocumento,
+      listarDocumentosInstructor,
+      verDocumentoInstructor,
       aprobarInstructor,
       rechazarInstructor,
       crearResenia,
@@ -882,6 +923,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       obtenerInstructor,
       listarClasesInstructor,
       listarClasesAdmin,
+      subirDocumento,
+      listarDocumentosInstructor,
+      verDocumentoInstructor,
       aprobarInstructor,
       rechazarInstructor,
       crearResenia,

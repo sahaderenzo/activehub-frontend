@@ -32,6 +32,7 @@ export interface RegistrarAlumnoInput {
   password: string;
   fechaNacimiento: string;
   intereses: string[];
+  condicionSalud?: string;
   aceptaTerminos: boolean;
 }
 
@@ -147,7 +148,6 @@ interface AuthContextValue {
   registerAlumno: (input: RegistrarAlumnoInput) => Promise<SesionUsuario>;
   registerInstructor: (input: RegistrarInstructorInput) => Promise<SesionUsuario>;
   login: (email: string, password: string) => Promise<SesionUsuario>;
-  loginAsDemo: (rol: RolNombre) => Promise<SesionUsuario>;
   logout: () => void;
   createAdmin: (input: RegistrarAdminInput) => Promise<Usuario>;
   updateUsuario: (id: string, patch: Partial<StoredUsuario>) => void;
@@ -194,7 +194,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(token);
     const sesion: SesionUsuario = {
       ...usuario,
-      perfilAlumno: { usuarioId: usuario.id, intereses: input.intereses },
+      perfilAlumno: { usuarioId: usuario.id, intereses: input.intereses, condicionSalud: input.condicionSalud },
     };
     setCurrentUser(sesion);
     return sesion;
@@ -226,19 +226,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return sesion;
   }, []);
 
-  const loginAsDemo = useCallback(
-    (rol: RolNombre) => {
-      const credencialesPorRol: Record<RolNombre, { email: string; password: string }> = {
-        ALUMNO: { email: "martina@email.com", password: "Activehub2026" },
-        INSTRUCTOR: { email: "mateo@email.com", password: "Activehub2026" },
-        ADMIN: { email: "roberto.admin@activehub.com", password: "Activehub2026" },
-      };
-      const { email, password } = credencialesPorRol[rol];
-      return login(email, password);
-    },
-    [login],
-  );
-
   const logout = useCallback(() => {
     clearToken();
     setCurrentUser(null);
@@ -260,12 +247,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       registerAlumno,
       registerInstructor,
       login,
-      loginAsDemo,
       logout,
       createAdmin,
       updateUsuario,
     }),
-    [currentUser, initializing, users, registerAlumno, registerInstructor, login, loginAsDemo, logout, createAdmin, updateUsuario],
+    [currentUser, initializing, users, registerAlumno, registerInstructor, login, logout, createAdmin, updateUsuario],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
