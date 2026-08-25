@@ -1,0 +1,56 @@
+# Workflow de Análisis Estático de Código (ESLint)
+# ---------------------------------------------------
+# Corre ESLint automáticamente en cada push y pull request
+# sobre la rama principal, como parte de la Etapa de
+# Gestión de la Configuración y Versionado del proyecto.
+
+name: Análisis Estático - ESLint
+
+# Se ejecuta cuando hay push o PR contra las ramas main/develop
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  # Permite también dispararlo manualmente desde la pestaña "Actions" de GitHub
+  workflow_dispatch:
+
+jobs:
+  eslint:
+    name: Ejecutar ESLint
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Descarga el código del repositorio
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      # 2. Configura Node.js (ajustar la versión según package.json/engines)
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      # 3. Instala las dependencias del proyecto de forma reproducible
+      - name: Instalar dependencias
+        run: npm ci
+
+      # 4. Ejecuta ESLint y guarda la salida en un archivo de texto,
+      #    incluso si falla (para poder subirla igual como evidencia)
+      - name: Ejecutar ESLint
+        run: npm run lint -- --format=stylish 2>&1 | tee lint-report.txt
+        continue-on-error: true
+
+      # 5. Sube el reporte como artefacto descargable desde la corrida
+      #    de GitHub Actions (Actions > esta corrida > Artifacts)
+      - name: Subir reporte como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-report
+          path: lint-report.txt
+
+      # 6. Si ESLint encontró errores, hace fallar el job explícitamente
+      #    (para que el check aparezca en rojo en el PR)
+      - name: Verificar resultado de ESLint
+        run: npm run lint

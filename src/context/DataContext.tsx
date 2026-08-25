@@ -1,23 +1,30 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import {
+    createContext,
+    useCallback,
+    useContext,
+    useEffect,
+    useMemo,
+    useState,
+} from "react";
 import type { ReactNode } from "react";
 import type {
-  Actividad,
-  Categoria,
-  Clase,
-  EstadoClase,
-  EstadoDenuncia,
-  EstadoInscripcion,
-  EstadoUsuario,
-  Inscripcion,
-  Pago,
-  Penalizacion,
-  RolNombre,
-  TipoActividad,
+    Actividad,
+    Categoria,
+    Clase,
+    EstadoClase,
+    EstadoDenuncia,
+    EstadoInscripcion,
+    EstadoUsuario,
+    Inscripcion,
+    Pago,
+    Penalizacion,
+    RolNombre,
+    TipoActividad,
 } from "../lib/types";
 import {
-  inscripciones as seedInscripciones,
-  pagos as seedPagos,
-  penalizaciones as seedPenalizaciones,
+    inscripciones as seedInscripciones,
+    pagos as seedPagos,
+    penalizaciones as seedPenalizaciones,
 } from "../lib/mockData";
 import { api } from "../lib/api";
 
@@ -37,882 +44,1106 @@ import { api } from "../lib/api";
 const MOCK_KEY = "ah_data_mock";
 
 interface MockShape {
-  inscripciones: Inscripcion[];
-  pagos: Pago[];
-  penalizaciones: Penalizacion[];
+    inscripciones: Inscripcion[];
+    pagos: Pago[];
+    penalizaciones: Penalizacion[];
 }
 
 function seedMock(): MockShape {
-  return {
-    inscripciones: seedInscripciones,
-    pagos: seedPagos,
-    penalizaciones: seedPenalizaciones,
-  };
+    return {
+        inscripciones: seedInscripciones,
+        pagos: seedPagos,
+        penalizaciones: seedPenalizaciones,
+    };
 }
 
 function loadMock(): MockShape {
-  try {
-    const raw = localStorage.getItem(MOCK_KEY);
-    if (raw) return JSON.parse(raw) as MockShape;
-  } catch {
-    /* ignore corrupt storage */
-  }
-  return seedMock();
+    try {
+        const raw = localStorage.getItem(MOCK_KEY);
+        if (raw) return JSON.parse(raw) as MockShape;
+    } catch {
+        /* ignore corrupt storage */
+    }
+    return seedMock();
 }
 
 let uid = 0;
 function nextId(prefix: string): string {
-  uid += 1;
-  return `${prefix}-${Date.now()}-${uid}`;
+    uid += 1;
+    return `${prefix}-${Date.now()}-${uid}`;
 }
 
 // --- Shapes de respuesta reales de activehub-api ---------------------------
 
 interface CategoriaResp {
-  id: string;
-  nombre: string;
+    id: string;
+    nombre: string;
 }
 
 interface TipoActividadResp {
-  id: string;
-  nombre: string;
-  categoriaId: string;
+    id: string;
+    nombre: string;
+    categoriaId: string;
 }
 
 interface ActividadCamposComunes {
-  id: string;
-  nombre: string;
-  tipoActividad: { id: string; nombre: string };
-  categoria: { id: string; nombre: string };
-  nivelIntensidad: string;
-  instructor: { id: string; nombre: string; apellido: string };
-  precio: number;
-  ubicacion: string;
-  photoTint: string;
-  rating: number | null;
-  cuposMax: number;
+    id: string;
+    nombre: string;
+    tipoActividad: { id: string; nombre: string };
+    categoria: { id: string; nombre: string };
+    nivelIntensidad: string;
+    instructor: { id: string; nombre: string; apellido: string };
+    precio: number;
+    ubicacion: string;
+    photoTint: string;
+    rating: number | null;
+    cuposMax: number;
 }
 
 interface ActividadListResp extends ActividadCamposComunes {
-  proximaClase: { fechaHora: string; estado: string; cuposMax: number; cuposOcupados: number } | null;
+    proximaClase: {
+        fechaHora: string;
+        estado: string;
+        cuposMax: number;
+        cuposOcupados: number;
+    } | null;
 }
 
 interface ClaseResp {
-  id: string;
-  fechaHora: string;
-  estado: string;
-  cuposMax: number;
-  cuposOcupados: number;
+    id: string;
+    fechaHora: string;
+    estado: string;
+    cuposMax: number;
+    cuposOcupados: number;
 }
 
 interface ClaseDetalleResp extends ClaseResp {
-  cantidadPreInscripcion: number;
+    cantidadPreInscripcion: number;
 }
 
 interface ActividadDetalleResp extends ActividadCamposComunes {
-  descripcion: string;
-  clases: ClaseDetalleResp[];
+    descripcion: string;
+    clases: ClaseDetalleResp[];
 }
 
 export interface InstructorAdmin {
-  id: string;
-  nombre: string;
-  apellido: string;
-  email: string;
-  telefono?: string;
-  fechaNacimiento?: string;
-  createdAt: string;
-  especialidad: string;
-  aniosExperiencia?: number;
-  estadoVerificacion: "PENDIENTE" | "APROBADO" | "RECHAZADO";
-  motivoRechazo?: string;
+    id: string;
+    nombre: string;
+    apellido: string;
+    email: string;
+    telefono?: string;
+    fechaNacimiento?: string;
+    createdAt: string;
+    especialidad: string;
+    aniosExperiencia?: number;
+    estadoVerificacion: "PENDIENTE" | "APROBADO" | "RECHAZADO";
+    motivoRechazo?: string;
 }
 
 export interface ClaseInstructorAdmin {
-  claseId: string;
-  actividadId: string;
-  actividadNombre: string;
-  fechaHora: string;
-  estado: EstadoClase;
-  cuposMax: number;
-  cuposOcupados: number;
+    claseId: string;
+    actividadId: string;
+    actividadNombre: string;
+    fechaHora: string;
+    estado: EstadoClase;
+    cuposMax: number;
+    cuposOcupados: number;
 }
 
 export interface ClaseAdmin {
-  claseId: string;
-  actividadId: string;
-  actividadNombre: string;
-  fechaHora: string;
-  estado: EstadoClase;
-  cuposMax: number;
-  cuposOcupados: number;
+    claseId: string;
+    actividadId: string;
+    actividadNombre: string;
+    fechaHora: string;
+    estado: EstadoClase;
+    cuposMax: number;
+    cuposOcupados: number;
 }
 
 export interface MiInscripcion {
-  id: string;
-  claseId: string;
-  claseFechaHora: string;
-  claseEstado: string;
-  actividadId: string;
-  actividadNombre: string;
-  alumnoId: string;
-  estado: EstadoInscripcion;
-  createdAt: string;
-  pagoId?: string;
-  pago?: { id: string; estado: string; monto: number; metodo: string };
+    id: string;
+    claseId: string;
+    claseFechaHora: string;
+    claseEstado: string;
+    actividadId: string;
+    actividadNombre: string;
+    alumnoId: string;
+    estado: EstadoInscripcion;
+    createdAt: string;
+    pagoId?: string;
+    pago?: { id: string; estado: string; monto: number; metodo: string };
 }
 
 export interface RosterAlumno {
-  inscripcionId: string;
-  alumnoId: string;
-  nombre: string;
-  apellido: string;
-  telefono?: string;
-  estado: string;
-  presente?: boolean | null;
+    inscripcionId: string;
+    alumnoId: string;
+    nombre: string;
+    apellido: string;
+    telefono?: string;
+    estado: string;
+    presente?: boolean | null;
 }
 
 export interface RosterClase {
-  claseId: string;
-  cuposMax: number;
-  cuposOcupados: number;
-  cuposLibres: number;
-  cantidadInscripto: number;
-  cantidadPagoPendiente: number;
-  cantidadPreInscripcion: number;
-  alumnos: RosterAlumno[];
+    claseId: string;
+    cuposMax: number;
+    cuposOcupados: number;
+    cuposLibres: number;
+    cantidadInscripto: number;
+    cantidadPagoPendiente: number;
+    cantidadPreInscripcion: number;
+    alumnos: RosterAlumno[];
 }
 
 export interface ReseniaActividad {
-  id: string;
-  claseId: string;
-  alumno: { id: string; nombre: string; apellido: string };
-  puntaje: number;
-  comentario: string;
-  createdAt: string;
+    id: string;
+    claseId: string;
+    alumno: { id: string; nombre: string; apellido: string };
+    puntaje: number;
+    comentario: string;
+    createdAt: string;
 }
 
 export interface MiResenia {
-  id: string;
-  claseId: string;
-  claseFechaHora: string;
-  actividadId: string;
-  actividadNombre: string;
-  instructorNombre: string;
-  puntaje: number;
-  comentario: string;
-  enModeracion: boolean;
-  createdAt: string;
+    id: string;
+    claseId: string;
+    claseFechaHora: string;
+    actividadId: string;
+    actividadNombre: string;
+    instructorNombre: string;
+    puntaje: number;
+    comentario: string;
+    enModeracion: boolean;
+    createdAt: string;
 }
 
 export interface ReseniaInstructor {
-  id: string;
-  claseId: string;
-  claseFechaHora: string;
-  actividadId: string;
-  actividadNombre: string;
-  alumno: { id: string; nombre: string; apellido: string };
-  puntaje: number;
-  comentario: string;
-  enModeracion: boolean;
-  createdAt: string;
+    id: string;
+    claseId: string;
+    claseFechaHora: string;
+    actividadId: string;
+    actividadNombre: string;
+    alumno: { id: string; nombre: string; apellido: string };
+    puntaje: number;
+    comentario: string;
+    enModeracion: boolean;
+    createdAt: string;
 }
 
 export interface ReseniaPendiente {
-  id: string;
-  claseId: string;
-  claseFechaHora: string;
-  actividadId: string;
-  actividadNombre: string;
-  alumno: { id: string; nombre: string; apellido: string };
-  puntaje: number;
-  comentario: string;
-  createdAt: string;
+    id: string;
+    claseId: string;
+    claseFechaHora: string;
+    actividadId: string;
+    actividadNombre: string;
+    alumno: { id: string; nombre: string; apellido: string };
+    puntaje: number;
+    comentario: string;
+    createdAt: string;
 }
 
-export type AccionResolucion = "REINTEGRAR" | "SUSPENDER" | "PENALIZAR" | "DESESTIMAR";
+export type AccionResolucion =
+    | "REINTEGRAR"
+    | "SUSPENDER"
+    | "PENALIZAR"
+    | "DESESTIMAR";
 
 export interface Notificacion {
-  id: string;
-  tipo: string;
-  mensaje: string;
-  entidadId: string | null;
-  leida: boolean;
-  createdAt: string;
+    id: string;
+    tipo: string;
+    mensaje: string;
+    entidadId: string | null;
+    leida: boolean;
+    createdAt: string;
 }
 
 export interface InscripcionAdmin {
-  id: string;
-  claseId: string;
-  actividadId: string;
-  alumnoId: string;
-  estado: EstadoInscripcion;
-  createdAt: string;
-  pago: { id: string; estado: string; monto: number; metodo: string } | null;
+    id: string;
+    claseId: string;
+    actividadId: string;
+    alumnoId: string;
+    estado: EstadoInscripcion;
+    createdAt: string;
+    pago: { id: string; estado: string; monto: number; metodo: string } | null;
 }
 
 export interface AuditoriaEntry {
-  id: string;
-  actorId: string | null;
-  actorNombre: string;
-  actorRol: RolNombre | null;
-  accion: string;
-  entidad: string;
-  entidadId: string;
-  metadata: string | null;
-  createdAt: string;
+    id: string;
+    actorId: string | null;
+    actorNombre: string;
+    actorRol: RolNombre | null;
+    accion: string;
+    entidad: string;
+    entidadId: string;
+    metadata: string | null;
+    createdAt: string;
 }
 
 export interface MiDenuncia {
-  id: string;
-  claseId: string;
-  claseFechaHora: string;
-  actividadId: string;
-  actividadNombre: string;
-  motivo: string;
-  estado: EstadoDenuncia;
-  createdAt: string;
+    id: string;
+    claseId: string;
+    claseFechaHora: string;
+    actividadId: string;
+    actividadNombre: string;
+    motivo: string;
+    estado: EstadoDenuncia;
+    createdAt: string;
 }
 
 export interface UsuarioAdmin {
-  id: string;
-  nombre: string;
-  apellido: string;
-  email: string;
-  telefono?: string;
-  rol: RolNombre;
-  estado: EstadoUsuario;
-  cantidadPenalizaciones: number;
-  createdAt: string;
+    id: string;
+    nombre: string;
+    apellido: string;
+    email: string;
+    telefono?: string;
+    rol: RolNombre;
+    estado: EstadoUsuario;
+    cantidadPenalizaciones: number;
+    createdAt: string;
 }
 
 export interface DenunciaAdmin {
-  id: string;
-  claseId: string;
-  claseFechaHora: string;
-  actividadId: string;
-  actividadNombre: string;
-  alumno: { id: string; nombre: string; apellido: string };
-  instructor: { id: string; nombre: string; apellido: string };
-  motivo: string;
-  estado: EstadoDenuncia;
-  pago: { id: string; estado: string; monto: number; metodo: string } | null;
-  createdAt: string;
+    id: string;
+    claseId: string;
+    claseFechaHora: string;
+    actividadId: string;
+    actividadNombre: string;
+    alumno: { id: string; nombre: string; apellido: string };
+    instructor: { id: string; nombre: string; apellido: string };
+    motivo: string;
+    estado: EstadoDenuncia;
+    pago: { id: string; estado: string; monto: number; metodo: string } | null;
+    createdAt: string;
 }
 
-function aplanarActividad(r: ActividadCamposComunes, proximaClase?: ActividadListResp["proximaClase"]): Actividad {
-  return {
-    id: r.id,
-    nombre: r.nombre,
-    descripcion: "",
-    tipoActividadId: r.tipoActividad.id,
-    nivelIntensidad: r.nivelIntensidad as Actividad["nivelIntensidad"],
-    instructorId: r.instructor.id,
-    precio: Number(r.precio),
-    ubicacion: r.ubicacion,
-    photoTint: r.photoTint,
-    rating: Number(r.rating ?? 0),
-    cuposMax: r.cuposMax,
-    proximaClase: proximaClase
-      ? {
-          fechaHora: proximaClase.fechaHora,
-          estado: proximaClase.estado as EstadoClase,
-          cuposMax: proximaClase.cuposMax,
-          cuposOcupados: proximaClase.cuposOcupados,
-        }
-      : undefined,
-  };
+function aplanarActividad(
+    r: ActividadCamposComunes,
+    proximaClase?: ActividadListResp["proximaClase"],
+): Actividad {
+    return {
+        id: r.id,
+        nombre: r.nombre,
+        descripcion: "",
+        tipoActividadId: r.tipoActividad.id,
+        nivelIntensidad: r.nivelIntensidad as Actividad["nivelIntensidad"],
+        instructorId: r.instructor.id,
+        precio: Number(r.precio),
+        ubicacion: r.ubicacion,
+        photoTint: r.photoTint,
+        rating: Number(r.rating ?? 0),
+        cuposMax: r.cuposMax,
+        proximaClase: proximaClase
+            ? {
+                  fechaHora: proximaClase.fechaHora,
+                  estado: proximaClase.estado as EstadoClase,
+                  cuposMax: proximaClase.cuposMax,
+                  cuposOcupados: proximaClase.cuposOcupados,
+              }
+            : undefined,
+    };
 }
 
 function aplanarClase(r: ClaseResp | ClaseDetalleResp): Clase {
-  return {
-    id: r.id,
-    actividadId: "",
-    fechaHora: r.fechaHora,
-    estado: r.estado as Clase["estado"],
-    cuposMax: r.cuposMax,
-    cuposOcupados: r.cuposOcupados,
-    cantidadPreInscripcion: "cantidadPreInscripcion" in r ? r.cantidadPreInscripcion : undefined,
-  };
+    return {
+        id: r.id,
+        actividadId: "",
+        fechaHora: r.fechaHora,
+        estado: r.estado as Clase["estado"],
+        cuposMax: r.cuposMax,
+        cuposOcupados: r.cuposOcupados,
+        cantidadPreInscripcion:
+            "cantidadPreInscripcion" in r
+                ? r.cantidadPreInscripcion
+                : undefined,
+    };
 }
 
 interface ActividadInput {
-  nombre: string;
-  descripcion: string;
-  tipoActividadId: string;
-  nivelIntensidad: string;
-  precio: number;
-  ubicacion: string;
-  photoTint: string;
-  cuposMax: number;
+    nombre: string;
+    descripcion: string;
+    tipoActividadId: string;
+    nivelIntensidad: string;
+    precio: number;
+    ubicacion: string;
+    photoTint: string;
+    cuposMax: number;
 }
 
 interface ClaseInput {
-  fechaHora: string;
-  cuposMax: number;
+    fechaHora: string;
+    cuposMax: number;
 }
 
 interface TipoActividadInput {
-  nombre: string;
-  categoriaId: string;
+    nombre: string;
+    categoriaId: string;
 }
 
 interface CategoriaInput {
-  nombre: string;
+    nombre: string;
 }
 
 interface DataContextValue {
-  // catálogo real
-  categorias: Categoria[];
-  tiposActividad: TipoActividad[];
-  actividades: Actividad[];
-  clases: Clase[];
-  instructorNombre: Record<string, string>;
-  cargandoCatalogo: boolean;
+    // catálogo real
+    categorias: Categoria[];
+    tiposActividad: TipoActividad[];
+    actividades: Actividad[];
+    clases: Clase[];
+    instructorNombre: Record<string, string>;
+    cargandoCatalogo: boolean;
 
-  getActividad: (id: string) => Actividad | undefined;
-  getTipoActividad: (id: string) => TipoActividad | undefined;
-  getCategoria: (id: string) => Categoria | undefined;
-  getClasesDeActividad: (actividadId: string) => Clase[];
-  cargarDetalleActividad: (id: string) => Promise<ActividadDetalleResp>;
+    getActividad: (id: string) => Actividad | undefined;
+    getTipoActividad: (id: string) => TipoActividad | undefined;
+    getCategoria: (id: string) => Categoria | undefined;
+    getClasesDeActividad: (actividadId: string) => Clase[];
+    cargarDetalleActividad: (id: string) => Promise<ActividadDetalleResp>;
 
-  crearActividad: (input: ActividadInput) => Promise<Actividad>;
-  actualizarActividad: (id: string, input: ActividadInput) => Promise<Actividad>;
-  eliminarActividad: (id: string) => Promise<void>;
+    crearActividad: (input: ActividadInput) => Promise<Actividad>;
+    actualizarActividad: (
+        id: string,
+        input: ActividadInput,
+    ) => Promise<Actividad>;
+    eliminarActividad: (id: string) => Promise<void>;
 
-  crearClase: (actividadId: string, input: ClaseInput) => Promise<Clase>;
-  actualizarClase: (id: string, actividadId: string, input: ClaseInput) => Promise<Clase>;
-  eliminarClase: (id: string, actividadId: string) => Promise<void>;
-  cancelarClase: (id: string) => Promise<void>;
-  notificarAusenciaProfesor: (claseId: string, mensaje: string) => Promise<void>;
-  listarNotificaciones: () => Promise<Notificacion[]>;
-  marcarNotificacionesLeidas: () => Promise<void>;
+    crearClase: (actividadId: string, input: ClaseInput) => Promise<Clase>;
+    actualizarClase: (
+        id: string,
+        actividadId: string,
+        input: ClaseInput,
+    ) => Promise<Clase>;
+    eliminarClase: (id: string, actividadId: string) => Promise<void>;
+    cancelarClase: (id: string) => Promise<void>;
+    notificarAusenciaProfesor: (
+        claseId: string,
+        mensaje: string,
+    ) => Promise<void>;
+    listarNotificaciones: () => Promise<Notificacion[]>;
+    marcarNotificacionesLeidas: () => Promise<void>;
 
-  crearTipoActividad: (input: TipoActividadInput) => Promise<TipoActividad>;
-  actualizarTipoActividad: (id: string, input: TipoActividadInput) => Promise<TipoActividad>;
-  eliminarTipoActividad: (id: string) => Promise<void>;
+    crearTipoActividad: (input: TipoActividadInput) => Promise<TipoActividad>;
+    actualizarTipoActividad: (
+        id: string,
+        input: TipoActividadInput,
+    ) => Promise<TipoActividad>;
+    eliminarTipoActividad: (id: string) => Promise<void>;
 
-  crearCategoria: (input: CategoriaInput) => Promise<Categoria>;
-  actualizarCategoria: (id: string, input: CategoriaInput) => Promise<Categoria>;
-  eliminarCategoria: (id: string) => Promise<void>;
+    crearCategoria: (input: CategoriaInput) => Promise<Categoria>;
+    actualizarCategoria: (
+        id: string,
+        input: CategoriaInput,
+    ) => Promise<Categoria>;
+    eliminarCategoria: (id: string) => Promise<void>;
 
-  // inscripción / pago real
-  inscribirse: (clase: Clase, alumnoId: string, metodo?: "Mercado Pago" | "Efectivo") => Promise<void>;
-  cancelarInscripcion: (id: string) => Promise<void>;
-  confirmarCobroEfectivo: (inscripcionId: string) => Promise<void>;
-  marcarAsistencia: (inscripcionId: string, presente: boolean) => Promise<void>;
-  listarMisInscripciones: (estado?: EstadoInscripcion) => Promise<MiInscripcion[]>;
-  listarRosterClase: (claseId: string) => Promise<RosterClase>;
+    // inscripción / pago real
+    inscribirse: (
+        clase: Clase,
+        alumnoId: string,
+        metodo?: "Mercado Pago" | "Efectivo",
+    ) => Promise<void>;
+    cancelarInscripcion: (id: string) => Promise<void>;
+    confirmarCobroEfectivo: (inscripcionId: string) => Promise<void>;
+    marcarAsistencia: (
+        inscripcionId: string,
+        presente: boolean,
+    ) => Promise<void>;
+    listarMisInscripciones: (
+        estado?: EstadoInscripcion,
+    ) => Promise<MiInscripcion[]>;
+    listarRosterClase: (claseId: string) => Promise<RosterClase>;
 
-  // validación de instructores (admin, real)
-  listarInstructores: (estado?: "PENDIENTE" | "APROBADO" | "RECHAZADO") => Promise<InstructorAdmin[]>;
-  obtenerInstructor: (id: string) => Promise<InstructorAdmin>;
-  listarClasesInstructor: (id: string) => Promise<ClaseInstructorAdmin[]>;
-  listarClasesAdmin: () => Promise<ClaseAdmin[]>;
-  aprobarInstructor: (id: string) => Promise<void>;
-  rechazarInstructor: (id: string, motivo?: string) => Promise<void>;
+    // validación de instructores (admin, real)
+    listarInstructores: (
+        estado?: "PENDIENTE" | "APROBADO" | "RECHAZADO",
+    ) => Promise<InstructorAdmin[]>;
+    obtenerInstructor: (id: string) => Promise<InstructorAdmin>;
+    listarClasesInstructor: (id: string) => Promise<ClaseInstructorAdmin[]>;
+    listarClasesAdmin: () => Promise<ClaseAdmin[]>;
+    aprobarInstructor: (id: string) => Promise<void>;
+    rechazarInstructor: (id: string, motivo?: string) => Promise<void>;
 
-  // reseñas real
-  crearResenia: (claseId: string, puntaje: number, comentario: string) => Promise<void>;
-  eliminarResenia: (id: string) => Promise<void>;
-  listarResenasActividad: (actividadId: string) => Promise<ReseniaActividad[]>;
-  listarMisResenas: () => Promise<MiResenia[]>;
-  listarResenasInstructor: () => Promise<ReseniaInstructor[]>;
-  listarResenasPendientes: () => Promise<ReseniaPendiente[]>;
-  aprobarResenia: (id: string) => Promise<void>;
-  rechazarResenia: (id: string) => Promise<void>;
+    // reseñas real
+    crearResenia: (
+        claseId: string,
+        puntaje: number,
+        comentario: string,
+    ) => Promise<void>;
+    eliminarResenia: (id: string) => Promise<void>;
+    listarResenasActividad: (
+        actividadId: string,
+    ) => Promise<ReseniaActividad[]>;
+    listarMisResenas: () => Promise<MiResenia[]>;
+    listarResenasInstructor: () => Promise<ReseniaInstructor[]>;
+    listarResenasPendientes: () => Promise<ReseniaPendiente[]>;
+    aprobarResenia: (id: string) => Promise<void>;
+    rechazarResenia: (id: string) => Promise<void>;
 
-  // denuncias real
-  crearDenuncia: (claseId: string, motivo: string) => Promise<void>;
-  listarMisDenuncias: () => Promise<MiDenuncia[]>;
-  listarDenunciasAdmin: () => Promise<DenunciaAdmin[]>;
-  resolverDenuncia: (id: string, accion: AccionResolucion) => Promise<void>;
+    // denuncias real
+    crearDenuncia: (claseId: string, motivo: string) => Promise<void>;
+    listarMisDenuncias: () => Promise<MiDenuncia[]>;
+    listarDenunciasAdmin: () => Promise<DenunciaAdmin[]>;
+    resolverDenuncia: (id: string, accion: AccionResolucion) => Promise<void>;
 
-  // gestión de usuarios real
-  listarUsuariosAdmin: () => Promise<UsuarioAdmin[]>;
-  actualizarEstadoUsuario: (id: string, estado: EstadoUsuario) => Promise<void>;
+    // gestión de usuarios real
+    listarUsuariosAdmin: () => Promise<UsuarioAdmin[]>;
+    actualizarEstadoUsuario: (
+        id: string,
+        estado: EstadoUsuario,
+    ) => Promise<void>;
 
-  // auditoría real
-  listarAuditoria: () => Promise<AuditoriaEntry[]>;
+    // auditoría real
+    listarAuditoria: () => Promise<AuditoriaEntry[]>;
 
-  // inscripciones/pagos de la plataforma (admin) real
-  listarInscripcionesAdmin: () => Promise<InscripcionAdmin[]>;
+    // inscripciones/pagos de la plataforma (admin) real
+    listarInscripcionesAdmin: () => Promise<InscripcionAdmin[]>;
 
-  // favoritos reales
-  listarMisFavoritos: () => Promise<string[]>;
-  agregarFavorito: (actividadId: string) => Promise<void>;
-  quitarFavorito: (actividadId: string) => Promise<void>;
+    // favoritos reales
+    listarMisFavoritos: () => Promise<string[]>;
+    agregarFavorito: (actividadId: string) => Promise<void>;
+    quitarFavorito: (actividadId: string) => Promise<void>;
 
-  // fuera de alcance: mock puro, sin tocar
-  inscripciones: Inscripcion[];
-  pagos: Pago[];
-  penalizaciones: Penalizacion[];
-  aplicarPenalizacion: (input: Omit<Penalizacion, "id" | "createdAt">) => Penalizacion;
+    // fuera de alcance: mock puro, sin tocar
+    inscripciones: Inscripcion[];
+    pagos: Pago[];
+    penalizaciones: Penalizacion[];
+    aplicarPenalizacion: (
+        input: Omit<Penalizacion, "id" | "createdAt">,
+    ) => Penalizacion;
 }
 
 const DataContext = createContext<DataContextValue | null>(null);
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const [mock, setMock] = useState<MockShape>(() => loadMock());
-  const [categorias, setCategorias] = useState<Categoria[]>([]);
-  const [tiposActividad, setTiposActividad] = useState<TipoActividad[]>([]);
-  const [actividades, setActividades] = useState<Actividad[]>([]);
-  const [clases, setClases] = useState<Clase[]>([]);
-  const [instructorNombre, setInstructorNombre] = useState<Record<string, string>>({});
-  const [cargandoCatalogo, setCargandoCatalogo] = useState(true);
+    const [mock, setMock] = useState<MockShape>(() => loadMock());
+    const [categorias, setCategorias] = useState<Categoria[]>([]);
+    const [tiposActividad, setTiposActividad] = useState<TipoActividad[]>([]);
+    const [actividades, setActividades] = useState<Actividad[]>([]);
+    const [clases, setClases] = useState<Clase[]>([]);
+    const [instructorNombre, setInstructorNombre] = useState<
+        Record<string, string>
+    >({});
+    const [cargandoCatalogo, setCargandoCatalogo] = useState(true);
 
-  useEffect(() => {
-    localStorage.setItem(MOCK_KEY, JSON.stringify(mock));
-  }, [mock]);
+    useEffect(() => {
+        localStorage.setItem(MOCK_KEY, JSON.stringify(mock));
+    }, [mock]);
 
-  const patchMock = useCallback(<K extends keyof MockShape>(key: K, updater: (list: MockShape[K]) => MockShape[K]) => {
-    setMock((prev) => ({ ...prev, [key]: updater(prev[key]) }));
-  }, []);
+    const patchMock = useCallback(
+        <K extends keyof MockShape>(
+            key: K,
+            updater: (list: MockShape[K]) => MockShape[K],
+        ) => {
+            setMock((prev) => ({ ...prev, [key]: updater(prev[key]) }));
+        },
+        [],
+    );
 
-  const refrescarCatalogo = useCallback(async () => {
-    setCargandoCatalogo(true);
-    try {
-      const [cats, tipos, acts] = await Promise.all([
-        api.get<CategoriaResp[]>("/api/categorias"),
-        api.get<TipoActividadResp[]>("/api/tipos-actividad"),
-        api.get<ActividadListResp[]>("/api/actividades"),
-      ]);
-      setCategorias(cats);
-      setTiposActividad(tipos);
-      setActividades((prev) => {
-        const previas = new Map(prev.map((a) => [a.id, a]));
-        return acts.map((r) => {
-          const anterior = previas.get(r.id);
-          const plano = aplanarActividad(r, r.proximaClase ?? undefined);
-          return anterior ? { ...plano, descripcion: anterior.descripcion } : plano;
+    const refrescarCatalogo = useCallback(async () => {
+        setCargandoCatalogo(true);
+        try {
+            const [cats, tipos, acts] = await Promise.all([
+                api.get<CategoriaResp[]>("/api/categorias"),
+                api.get<TipoActividadResp[]>("/api/tipos-actividad"),
+                api.get<ActividadListResp[]>("/api/actividades"),
+            ]);
+            setCategorias(cats);
+            setTiposActividad(tipos);
+            setActividades((prev) => {
+                const previas = new Map(prev.map((a) => [a.id, a]));
+                return acts.map((r) => {
+                    const anterior = previas.get(r.id);
+                    const plano = aplanarActividad(
+                        r,
+                        r.proximaClase ?? undefined,
+                    );
+                    return anterior
+                        ? { ...plano, descripcion: anterior.descripcion }
+                        : plano;
+                });
+            });
+            const nombres: Record<string, string> = {};
+            for (const a of acts)
+                nombres[a.instructor.id] =
+                    `${a.instructor.nombre} ${a.instructor.apellido}`;
+            setInstructorNombre(nombres);
+        } finally {
+            setCargandoCatalogo(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        refrescarCatalogo();
+    }, [refrescarCatalogo]);
+
+    const getActividad = useCallback(
+        (id: string) => actividades.find((a) => a.id === id),
+        [actividades],
+    );
+    const getTipoActividad = useCallback(
+        (id: string) => tiposActividad.find((t) => t.id === id),
+        [tiposActividad],
+    );
+    const getCategoria = useCallback(
+        (id: string) => categorias.find((c) => c.id === id),
+        [categorias],
+    );
+    const getClasesDeActividad = useCallback(
+        (actividadId: string) =>
+            clases.filter((c) => c.actividadId === actividadId),
+        [clases],
+    );
+
+    const cargarDetalleActividad = useCallback(async (id: string) => {
+        const r = await api.get<ActividadDetalleResp>(`/api/actividades/${id}`);
+        setActividades((prev) => {
+            const anterior = prev.find((a) => a.id === id);
+            const plano: Actividad = {
+                ...aplanarActividad(r, anterior?.proximaClase),
+                descripcion: r.descripcion,
+            };
+            const existe = prev.some((a) => a.id === id);
+            return existe
+                ? prev.map((a) => (a.id === id ? plano : a))
+                : [...prev, plano];
         });
-      });
-      const nombres: Record<string, string> = {};
-      for (const a of acts) nombres[a.instructor.id] = `${a.instructor.nombre} ${a.instructor.apellido}`;
-      setInstructorNombre(nombres);
-    } finally {
-      setCargandoCatalogo(false);
-    }
-  }, []);
+        setClases((prev) => {
+            const propias = r.clases.map((c) => ({
+                ...aplanarClase(c),
+                actividadId: id,
+            }));
+            const otras = prev.filter((c) => c.actividadId !== id);
+            return [...otras, ...propias];
+        });
+        setInstructorNombre((prev) => ({
+            ...prev,
+            [r.instructor.id]:
+                `${r.instructor.nombre} ${r.instructor.apellido}`,
+        }));
+        return r;
+    }, []);
 
-  useEffect(() => {
-    refrescarCatalogo();
-  }, [refrescarCatalogo]);
-
-  const getActividad = useCallback((id: string) => actividades.find((a) => a.id === id), [actividades]);
-  const getTipoActividad = useCallback((id: string) => tiposActividad.find((t) => t.id === id), [tiposActividad]);
-  const getCategoria = useCallback((id: string) => categorias.find((c) => c.id === id), [categorias]);
-  const getClasesDeActividad = useCallback(
-    (actividadId: string) => clases.filter((c) => c.actividadId === actividadId),
-    [clases],
-  );
-
-  const cargarDetalleActividad = useCallback(async (id: string) => {
-    const r = await api.get<ActividadDetalleResp>(`/api/actividades/${id}`);
-    setActividades((prev) => {
-      const anterior = prev.find((a) => a.id === id);
-      const plano: Actividad = { ...aplanarActividad(r, anterior?.proximaClase), descripcion: r.descripcion };
-      const existe = prev.some((a) => a.id === id);
-      return existe ? prev.map((a) => (a.id === id ? plano : a)) : [...prev, plano];
+    const soloCamposActividad = (input: ActividadInput): ActividadInput => ({
+        nombre: input.nombre,
+        descripcion: input.descripcion,
+        tipoActividadId: input.tipoActividadId,
+        nivelIntensidad: input.nivelIntensidad,
+        precio: input.precio,
+        ubicacion: input.ubicacion,
+        photoTint: input.photoTint,
+        cuposMax: input.cuposMax,
     });
-    setClases((prev) => {
-      const propias = r.clases.map((c) => ({ ...aplanarClase(c), actividadId: id }));
-      const otras = prev.filter((c) => c.actividadId !== id);
-      return [...otras, ...propias];
-    });
-    setInstructorNombre((prev) => ({ ...prev, [r.instructor.id]: `${r.instructor.nombre} ${r.instructor.apellido}` }));
-    return r;
-  }, []);
 
-  const soloCamposActividad = (input: ActividadInput): ActividadInput => ({
-    nombre: input.nombre,
-    descripcion: input.descripcion,
-    tipoActividadId: input.tipoActividadId,
-    nivelIntensidad: input.nivelIntensidad,
-    precio: input.precio,
-    ubicacion: input.ubicacion,
-    photoTint: input.photoTint,
-    cuposMax: input.cuposMax,
-  });
+    const crearActividad = useCallback(async (input: ActividadInput) => {
+        const r = await api.post<
+            ActividadCamposComunes & { descripcion: string }
+        >("/api/instructor/actividades", soloCamposActividad(input));
+        const nueva: Actividad = {
+            ...aplanarActividad(r),
+            descripcion: input.descripcion,
+        };
+        setActividades((prev) => [...prev, nueva]);
+        return nueva;
+    }, []);
 
-  const crearActividad = useCallback(async (input: ActividadInput) => {
-    const r = await api.post<ActividadCamposComunes & { descripcion: string }>(
-      "/api/instructor/actividades",
-      soloCamposActividad(input),
+    const actualizarActividad = useCallback(
+        async (id: string, input: ActividadInput) => {
+            const r = await api.put<
+                ActividadCamposComunes & { descripcion: string }
+            >(`/api/instructor/actividades/${id}`, soloCamposActividad(input));
+            const actualizada: Actividad = {
+                ...aplanarActividad(r),
+                descripcion: input.descripcion,
+            };
+            setActividades((prev) =>
+                prev.map((a) => (a.id === id ? actualizada : a)),
+            );
+            return actualizada;
+        },
+        [],
     );
-    const nueva: Actividad = { ...aplanarActividad(r), descripcion: input.descripcion };
-    setActividades((prev) => [...prev, nueva]);
-    return nueva;
-  }, []);
 
-  const actualizarActividad = useCallback(async (id: string, input: ActividadInput) => {
-    const r = await api.put<ActividadCamposComunes & { descripcion: string }>(
-      `/api/instructor/actividades/${id}`,
-      soloCamposActividad(input),
+    const eliminarActividad = useCallback(async (id: string) => {
+        await api.delete(`/api/instructor/actividades/${id}`);
+        setActividades((prev) => prev.filter((a) => a.id !== id));
+        setClases((prev) => prev.filter((c) => c.actividadId !== id));
+    }, []);
+
+    const crearClase = useCallback(
+        async (actividadId: string, input: ClaseInput) => {
+            const r = await api.post<ClaseResp>(
+                `/api/instructor/actividades/${actividadId}/clases`,
+                input,
+            );
+            const nueva: Clase = { ...aplanarClase(r), actividadId };
+            setClases((prev) => [...prev, nueva]);
+            return nueva;
+        },
+        [],
     );
-    const actualizada: Actividad = { ...aplanarActividad(r), descripcion: input.descripcion };
-    setActividades((prev) => prev.map((a) => (a.id === id ? actualizada : a)));
-    return actualizada;
-  }, []);
 
-  const eliminarActividad = useCallback(async (id: string) => {
-    await api.delete(`/api/instructor/actividades/${id}`);
-    setActividades((prev) => prev.filter((a) => a.id !== id));
-    setClases((prev) => prev.filter((c) => c.actividadId !== id));
-  }, []);
+    const actualizarClase = useCallback(
+        async (id: string, actividadId: string, input: ClaseInput) => {
+            const r = await api.put<ClaseResp>(
+                `/api/instructor/clases/${id}`,
+                input,
+            );
+            const actualizada: Clase = { ...aplanarClase(r), actividadId };
+            setClases((prev) =>
+                prev.map((c) => (c.id === id ? actualizada : c)),
+            );
+            return actualizada;
+        },
+        [],
+    );
 
-  const crearClase = useCallback(async (actividadId: string, input: ClaseInput) => {
-    const r = await api.post<ClaseResp>(`/api/instructor/actividades/${actividadId}/clases`, input);
-    const nueva: Clase = { ...aplanarClase(r), actividadId };
-    setClases((prev) => [...prev, nueva]);
-    return nueva;
-  }, []);
+    const eliminarClase = useCallback(
+        async (id: string, actividadId: string) => {
+            await api.delete(`/api/instructor/clases/${id}`);
+            setClases((prev) => prev.filter((c) => c.id !== id));
+            void actividadId;
+        },
+        [],
+    );
 
-  const actualizarClase = useCallback(async (id: string, actividadId: string, input: ClaseInput) => {
-    const r = await api.put<ClaseResp>(`/api/instructor/clases/${id}`, input);
-    const actualizada: Clase = { ...aplanarClase(r), actividadId };
-    setClases((prev) => prev.map((c) => (c.id === id ? actualizada : c)));
-    return actualizada;
-  }, []);
+    const cancelarClase = useCallback(async (id: string) => {
+        await api.post(`/api/instructor/clases/${id}/cancelar`);
+        setClases((prev) =>
+            prev.map((c) => (c.id === id ? { ...c, estado: "Cancelada" } : c)),
+        );
+    }, []);
 
-  const eliminarClase = useCallback(async (id: string, actividadId: string) => {
-    await api.delete(`/api/instructor/clases/${id}`);
-    setClases((prev) => prev.filter((c) => c.id !== id));
-    void actividadId;
-  }, []);
+    const notificarAusenciaProfesor = useCallback(
+        async (claseId: string, mensaje: string) => {
+            await api.post(
+                `/api/instructor/clases/${claseId}/notificar-ausencia`,
+                { mensaje },
+            );
+            setClases((prev) =>
+                prev.map((c) =>
+                    c.id === claseId ? { ...c, estado: "Cancelada" } : c,
+                ),
+            );
+        },
+        [],
+    );
 
-  const cancelarClase = useCallback(async (id: string) => {
-    await api.post(`/api/instructor/clases/${id}/cancelar`);
-    setClases((prev) => prev.map((c) => (c.id === id ? { ...c, estado: "Cancelada" } : c)));
-  }, []);
+    const listarNotificaciones = useCallback(async () => {
+        return api.get<Notificacion[]>("/api/notificaciones");
+    }, []);
 
-  const notificarAusenciaProfesor = useCallback(async (claseId: string, mensaje: string) => {
-    await api.post(`/api/instructor/clases/${claseId}/notificar-ausencia`, { mensaje });
-    setClases((prev) => prev.map((c) => (c.id === claseId ? { ...c, estado: "Cancelada" } : c)));
-  }, []);
+    const marcarNotificacionesLeidas = useCallback(async () => {
+        await api.post("/api/notificaciones/marcar-leidas");
+    }, []);
 
-  const listarNotificaciones = useCallback(async () => {
-    return api.get<Notificacion[]>("/api/notificaciones");
-  }, []);
+    const crearTipoActividad = useCallback(
+        async (input: TipoActividadInput) => {
+            const nuevo = await api.post<TipoActividadResp>(
+                "/api/admin/tipos-actividad",
+                input,
+            );
+            setTiposActividad((prev) => [...prev, nuevo]);
+            return nuevo;
+        },
+        [],
+    );
 
-  const marcarNotificacionesLeidas = useCallback(async () => {
-    await api.post("/api/notificaciones/marcar-leidas");
-  }, []);
+    const actualizarTipoActividad = useCallback(
+        async (id: string, input: TipoActividadInput) => {
+            const actualizado = await api.put<TipoActividadResp>(
+                `/api/admin/tipos-actividad/${id}`,
+                input,
+            );
+            setTiposActividad((prev) =>
+                prev.map((t) => (t.id === id ? actualizado : t)),
+            );
+            return actualizado;
+        },
+        [],
+    );
 
-  const crearTipoActividad = useCallback(async (input: TipoActividadInput) => {
-    const nuevo = await api.post<TipoActividadResp>("/api/admin/tipos-actividad", input);
-    setTiposActividad((prev) => [...prev, nuevo]);
-    return nuevo;
-  }, []);
+    const eliminarTipoActividad = useCallback(async (id: string) => {
+        await api.delete(`/api/admin/tipos-actividad/${id}`);
+        setTiposActividad((prev) => prev.filter((t) => t.id !== id));
+    }, []);
 
-  const actualizarTipoActividad = useCallback(async (id: string, input: TipoActividadInput) => {
-    const actualizado = await api.put<TipoActividadResp>(`/api/admin/tipos-actividad/${id}`, input);
-    setTiposActividad((prev) => prev.map((t) => (t.id === id ? actualizado : t)));
-    return actualizado;
-  }, []);
+    const crearCategoria = useCallback(async (input: CategoriaInput) => {
+        const nueva = await api.post<CategoriaResp>(
+            "/api/admin/categorias",
+            input,
+        );
+        setCategorias((prev) => [...prev, nueva]);
+        return nueva;
+    }, []);
 
-  const eliminarTipoActividad = useCallback(async (id: string) => {
-    await api.delete(`/api/admin/tipos-actividad/${id}`);
-    setTiposActividad((prev) => prev.filter((t) => t.id !== id));
-  }, []);
+    const actualizarCategoria = useCallback(
+        async (id: string, input: CategoriaInput) => {
+            const actualizada = await api.put<CategoriaResp>(
+                `/api/admin/categorias/${id}`,
+                input,
+            );
+            setCategorias((prev) =>
+                prev.map((c) => (c.id === id ? actualizada : c)),
+            );
+            return actualizada;
+        },
+        [],
+    );
 
-  const crearCategoria = useCallback(async (input: CategoriaInput) => {
-    const nueva = await api.post<CategoriaResp>("/api/admin/categorias", input);
-    setCategorias((prev) => [...prev, nueva]);
-    return nueva;
-  }, []);
+    const eliminarCategoria = useCallback(async (id: string) => {
+        await api.delete(`/api/admin/categorias/${id}`);
+        setCategorias((prev) => prev.filter((c) => c.id !== id));
+    }, []);
 
-  const actualizarCategoria = useCallback(async (id: string, input: CategoriaInput) => {
-    const actualizada = await api.put<CategoriaResp>(`/api/admin/categorias/${id}`, input);
-    setCategorias((prev) => prev.map((c) => (c.id === id ? actualizada : c)));
-    return actualizada;
-  }, []);
+    const inscribirse = useCallback(
+        async (
+            clase: Clase,
+            _alumnoId: string,
+            metodo?: "Mercado Pago" | "Efectivo",
+        ) => {
+            void _alumnoId;
+            if (!metodo) {
+                await api.post(
+                    `/api/alumno/clases/${clase.id}/preinscripciones`,
+                );
+            } else {
+                await api.post(`/api/alumno/clases/${clase.id}/inscripciones`, {
+                    metodoPago: metodo,
+                });
+            }
+            setClases((prev) =>
+                prev.map((c) =>
+                    c.id === clase.id
+                        ? {
+                              ...c,
+                              cuposOcupados: c.cuposOcupados + (metodo ? 1 : 0),
+                          }
+                        : c,
+                ),
+            );
+        },
+        [],
+    );
 
-  const eliminarCategoria = useCallback(async (id: string) => {
-    await api.delete(`/api/admin/categorias/${id}`);
-    setCategorias((prev) => prev.filter((c) => c.id !== id));
-  }, []);
+    const cancelarInscripcion = useCallback(async (id: string) => {
+        await api.delete(`/api/alumno/inscripciones/${id}`);
+    }, []);
 
-  const inscribirse = useCallback(
-    async (clase: Clase, _alumnoId: string, metodo?: "Mercado Pago" | "Efectivo") => {
-      void _alumnoId;
-      if (!metodo) {
-        await api.post(`/api/alumno/clases/${clase.id}/preinscripciones`);
-      } else {
-        await api.post(`/api/alumno/clases/${clase.id}/inscripciones`, { metodoPago: metodo });
-      }
-      setClases((prev) => prev.map((c) => (c.id === clase.id ? { ...c, cuposOcupados: c.cuposOcupados + (metodo ? 1 : 0) } : c)));
-    },
-    [],
-  );
+    const confirmarCobroEfectivo = useCallback(
+        async (inscripcionId: string) => {
+            await api.post(
+                `/api/instructor/inscripciones/${inscripcionId}/confirmar-cobro`,
+            );
+        },
+        [],
+    );
 
-  const cancelarInscripcion = useCallback(async (id: string) => {
-    await api.delete(`/api/alumno/inscripciones/${id}`);
-  }, []);
+    const marcarAsistencia = useCallback(
+        async (inscripcionId: string, presente: boolean) => {
+            await api.post(
+                `/api/instructor/inscripciones/${inscripcionId}/asistencia`,
+                { presente },
+            );
+        },
+        [],
+    );
 
-  const confirmarCobroEfectivo = useCallback(async (inscripcionId: string) => {
-    await api.post(`/api/instructor/inscripciones/${inscripcionId}/confirmar-cobro`);
-  }, []);
+    const listarMisInscripciones = useCallback(
+        async (estado?: EstadoInscripcion) => {
+            const query = estado ? `?estado=${encodeURIComponent(estado)}` : "";
+            return api.get<MiInscripcion[]>(
+                `/api/alumno/inscripciones${query}`,
+            );
+        },
+        [],
+    );
 
-  const marcarAsistencia = useCallback(async (inscripcionId: string, presente: boolean) => {
-    await api.post(`/api/instructor/inscripciones/${inscripcionId}/asistencia`, { presente });
-  }, []);
+    const listarRosterClase = useCallback(async (claseId: string) => {
+        return api.get<RosterClase>(`/api/instructor/clases/${claseId}/roster`);
+    }, []);
 
-  const listarMisInscripciones = useCallback(async (estado?: EstadoInscripcion) => {
-    const query = estado ? `?estado=${encodeURIComponent(estado)}` : "";
-    return api.get<MiInscripcion[]>(`/api/alumno/inscripciones${query}`);
-  }, []);
+    const listarInstructores = useCallback(
+        async (estado?: "PENDIENTE" | "APROBADO" | "RECHAZADO") => {
+            const query = estado ? `?estado=${estado}` : "";
+            return api.get<InstructorAdmin[]>(
+                `/api/admin/instructores${query}`,
+            );
+        },
+        [],
+    );
 
-  const listarRosterClase = useCallback(async (claseId: string) => {
-    return api.get<RosterClase>(`/api/instructor/clases/${claseId}/roster`);
-  }, []);
+    const obtenerInstructor = useCallback(async (id: string) => {
+        return api.get<InstructorAdmin>(`/api/admin/instructores/${id}`);
+    }, []);
 
-  const listarInstructores = useCallback(async (estado?: "PENDIENTE" | "APROBADO" | "RECHAZADO") => {
-    const query = estado ? `?estado=${estado}` : "";
-    return api.get<InstructorAdmin[]>(`/api/admin/instructores${query}`);
-  }, []);
+    const listarClasesInstructor = useCallback(async (id: string) => {
+        return api.get<ClaseInstructorAdmin[]>(
+            `/api/admin/instructores/${id}/clases`,
+        );
+    }, []);
 
-  const obtenerInstructor = useCallback(async (id: string) => {
-    return api.get<InstructorAdmin>(`/api/admin/instructores/${id}`);
-  }, []);
+    const listarClasesAdmin = useCallback(async () => {
+        return api.get<ClaseAdmin[]>("/api/admin/clases");
+    }, []);
 
-  const listarClasesInstructor = useCallback(async (id: string) => {
-    return api.get<ClaseInstructorAdmin[]>(`/api/admin/instructores/${id}/clases`);
-  }, []);
+    const aprobarInstructor = useCallback(async (id: string) => {
+        await api.post(`/api/admin/instructores/${id}/aprobar`);
+    }, []);
 
-  const listarClasesAdmin = useCallback(async () => {
-    return api.get<ClaseAdmin[]>("/api/admin/clases");
-  }, []);
+    const rechazarInstructor = useCallback(
+        async (id: string, motivo?: string) => {
+            await api.post(`/api/admin/instructores/${id}/rechazar`, {
+                motivo,
+            });
+        },
+        [],
+    );
 
-  const aprobarInstructor = useCallback(async (id: string) => {
-    await api.post(`/api/admin/instructores/${id}/aprobar`);
-  }, []);
+    const crearResenia = useCallback(
+        async (claseId: string, puntaje: number, comentario: string) => {
+            await api.post(`/api/alumno/clases/${claseId}/resenas`, {
+                puntaje,
+                comentario,
+            });
+        },
+        [],
+    );
 
-  const rechazarInstructor = useCallback(async (id: string, motivo?: string) => {
-    await api.post(`/api/admin/instructores/${id}/rechazar`, { motivo });
-  }, []);
+    const eliminarResenia = useCallback(async (id: string) => {
+        await api.delete(`/api/alumno/resenas/${id}`);
+    }, []);
 
-  const crearResenia = useCallback(async (claseId: string, puntaje: number, comentario: string) => {
-    await api.post(`/api/alumno/clases/${claseId}/resenas`, { puntaje, comentario });
-  }, []);
+    const listarResenasActividad = useCallback(async (actividadId: string) => {
+        return api.get<ReseniaActividad[]>(
+            `/api/actividades/${actividadId}/resenas`,
+        );
+    }, []);
 
-  const eliminarResenia = useCallback(async (id: string) => {
-    await api.delete(`/api/alumno/resenas/${id}`);
-  }, []);
+    const listarMisResenas = useCallback(async () => {
+        return api.get<MiResenia[]>("/api/alumno/resenas");
+    }, []);
 
-  const listarResenasActividad = useCallback(async (actividadId: string) => {
-    return api.get<ReseniaActividad[]>(`/api/actividades/${actividadId}/resenas`);
-  }, []);
+    const listarResenasInstructor = useCallback(async () => {
+        return api.get<ReseniaInstructor[]>("/api/instructor/resenas");
+    }, []);
 
-  const listarMisResenas = useCallback(async () => {
-    return api.get<MiResenia[]>("/api/alumno/resenas");
-  }, []);
+    const listarResenasPendientes = useCallback(async () => {
+        return api.get<ReseniaPendiente[]>("/api/admin/resenas");
+    }, []);
 
-  const listarResenasInstructor = useCallback(async () => {
-    return api.get<ReseniaInstructor[]>("/api/instructor/resenas");
-  }, []);
+    const aprobarResenia = useCallback(async (id: string) => {
+        await api.post(`/api/admin/resenas/${id}/aprobar`);
+    }, []);
 
-  const listarResenasPendientes = useCallback(async () => {
-    return api.get<ReseniaPendiente[]>("/api/admin/resenas");
-  }, []);
+    const rechazarResenia = useCallback(async (id: string) => {
+        await api.post(`/api/admin/resenas/${id}/rechazar`);
+    }, []);
 
-  const aprobarResenia = useCallback(async (id: string) => {
-    await api.post(`/api/admin/resenas/${id}/aprobar`);
-  }, []);
+    const crearDenuncia = useCallback(
+        async (claseId: string, motivo: string) => {
+            await api.post(`/api/alumno/clases/${claseId}/denuncias`, {
+                motivo,
+            });
+        },
+        [],
+    );
 
-  const rechazarResenia = useCallback(async (id: string) => {
-    await api.post(`/api/admin/resenas/${id}/rechazar`);
-  }, []);
+    const listarMisDenuncias = useCallback(async () => {
+        return api.get<MiDenuncia[]>("/api/alumno/denuncias");
+    }, []);
 
-  const crearDenuncia = useCallback(async (claseId: string, motivo: string) => {
-    await api.post(`/api/alumno/clases/${claseId}/denuncias`, { motivo });
-  }, []);
+    const listarDenunciasAdmin = useCallback(async () => {
+        return api.get<DenunciaAdmin[]>("/api/admin/denuncias");
+    }, []);
 
-  const listarMisDenuncias = useCallback(async () => {
-    return api.get<MiDenuncia[]>("/api/alumno/denuncias");
-  }, []);
+    const resolverDenuncia = useCallback(
+        async (id: string, accion: AccionResolucion) => {
+            await api.post(`/api/admin/denuncias/${id}/resolver`, { accion });
+        },
+        [],
+    );
 
-  const listarDenunciasAdmin = useCallback(async () => {
-    return api.get<DenunciaAdmin[]>("/api/admin/denuncias");
-  }, []);
+    const listarUsuariosAdmin = useCallback(async () => {
+        return api.get<UsuarioAdmin[]>("/api/admin/usuarios");
+    }, []);
 
-  const resolverDenuncia = useCallback(async (id: string, accion: AccionResolucion) => {
-    await api.post(`/api/admin/denuncias/${id}/resolver`, { accion });
-  }, []);
+    const actualizarEstadoUsuario = useCallback(
+        async (id: string, estado: EstadoUsuario) => {
+            await api.post(`/api/admin/usuarios/${id}/estado`, { estado });
+        },
+        [],
+    );
 
-  const listarUsuariosAdmin = useCallback(async () => {
-    return api.get<UsuarioAdmin[]>("/api/admin/usuarios");
-  }, []);
+    const listarAuditoria = useCallback(async () => {
+        return api.get<AuditoriaEntry[]>("/api/admin/auditoria");
+    }, []);
 
-  const actualizarEstadoUsuario = useCallback(async (id: string, estado: EstadoUsuario) => {
-    await api.post(`/api/admin/usuarios/${id}/estado`, { estado });
-  }, []);
+    const listarInscripcionesAdmin = useCallback(async () => {
+        return api.get<InscripcionAdmin[]>("/api/admin/inscripciones");
+    }, []);
 
-  const listarAuditoria = useCallback(async () => {
-    return api.get<AuditoriaEntry[]>("/api/admin/auditoria");
-  }, []);
+    const listarMisFavoritos = useCallback(async () => {
+        return api.get<string[]>("/api/alumno/favoritos");
+    }, []);
 
-  const listarInscripcionesAdmin = useCallback(async () => {
-    return api.get<InscripcionAdmin[]>("/api/admin/inscripciones");
-  }, []);
+    const agregarFavorito = useCallback(async (actividadId: string) => {
+        await api.post(`/api/alumno/actividades/${actividadId}/favorito`);
+    }, []);
 
-  const listarMisFavoritos = useCallback(async () => {
-    return api.get<string[]>("/api/alumno/favoritos");
-  }, []);
+    const quitarFavorito = useCallback(async (actividadId: string) => {
+        await api.delete(`/api/alumno/actividades/${actividadId}/favorito`);
+    }, []);
 
-  const agregarFavorito = useCallback(async (actividadId: string) => {
-    await api.post(`/api/alumno/actividades/${actividadId}/favorito`);
-  }, []);
+    // --- Fuera de alcance: mock puro (penalizaciones) ---
 
-  const quitarFavorito = useCallback(async (actividadId: string) => {
-    await api.delete(`/api/alumno/actividades/${actividadId}/favorito`);
-  }, []);
+    const aplicarPenalizacion = useCallback(
+        (input: Omit<Penalizacion, "id" | "createdAt">) => {
+            const nueva: Penalizacion = {
+                ...input,
+                id: nextId("pen"),
+                createdAt: new Date().toISOString(),
+            };
+            patchMock("penalizaciones", (l) => [...l, nueva]);
+            return nueva;
+        },
+        [patchMock],
+    );
 
-  // --- Fuera de alcance: mock puro (penalizaciones) ---
+    const value: DataContextValue = useMemo(
+        () => ({
+            categorias,
+            tiposActividad,
+            actividades,
+            clases,
+            instructorNombre,
+            cargandoCatalogo,
+            getActividad,
+            getTipoActividad,
+            getCategoria,
+            getClasesDeActividad,
+            cargarDetalleActividad,
+            crearActividad,
+            actualizarActividad,
+            eliminarActividad,
+            crearClase,
+            actualizarClase,
+            eliminarClase,
+            cancelarClase,
+            notificarAusenciaProfesor,
+            listarNotificaciones,
+            marcarNotificacionesLeidas,
+            crearTipoActividad,
+            actualizarTipoActividad,
+            eliminarTipoActividad,
+            crearCategoria,
+            actualizarCategoria,
+            eliminarCategoria,
+            inscribirse,
+            cancelarInscripcion,
+            confirmarCobroEfectivo,
+            marcarAsistencia,
+            listarMisInscripciones,
+            listarRosterClase,
+            listarInstructores,
+            obtenerInstructor,
+            listarClasesInstructor,
+            listarClasesAdmin,
+            aprobarInstructor,
+            rechazarInstructor,
+            crearResenia,
+            eliminarResenia,
+            listarResenasActividad,
+            listarMisResenas,
+            listarResenasInstructor,
+            listarResenasPendientes,
+            aprobarResenia,
+            rechazarResenia,
+            crearDenuncia,
+            listarMisDenuncias,
+            listarDenunciasAdmin,
+            resolverDenuncia,
+            listarUsuariosAdmin,
+            actualizarEstadoUsuario,
+            listarAuditoria,
+            listarInscripcionesAdmin,
+            listarMisFavoritos,
+            agregarFavorito,
+            quitarFavorito,
+            inscripciones: mock.inscripciones,
+            pagos: mock.pagos,
+            penalizaciones: mock.penalizaciones,
+            aplicarPenalizacion,
+        }),
+        [
+            categorias,
+            tiposActividad,
+            actividades,
+            clases,
+            instructorNombre,
+            cargandoCatalogo,
+            getActividad,
+            getTipoActividad,
+            getCategoria,
+            getClasesDeActividad,
+            cargarDetalleActividad,
+            crearActividad,
+            actualizarActividad,
+            eliminarActividad,
+            crearClase,
+            actualizarClase,
+            eliminarClase,
+            cancelarClase,
+            notificarAusenciaProfesor,
+            listarNotificaciones,
+            marcarNotificacionesLeidas,
+            crearTipoActividad,
+            actualizarTipoActividad,
+            eliminarTipoActividad,
+            crearCategoria,
+            actualizarCategoria,
+            eliminarCategoria,
+            inscribirse,
+            cancelarInscripcion,
+            confirmarCobroEfectivo,
+            marcarAsistencia,
+            listarMisInscripciones,
+            listarRosterClase,
+            listarInstructores,
+            obtenerInstructor,
+            listarClasesInstructor,
+            listarClasesAdmin,
+            aprobarInstructor,
+            rechazarInstructor,
+            crearResenia,
+            eliminarResenia,
+            listarResenasActividad,
+            listarMisResenas,
+            listarResenasInstructor,
+            listarResenasPendientes,
+            aprobarResenia,
+            rechazarResenia,
+            crearDenuncia,
+            listarMisDenuncias,
+            listarDenunciasAdmin,
+            resolverDenuncia,
+            listarUsuariosAdmin,
+            actualizarEstadoUsuario,
+            listarAuditoria,
+            listarInscripcionesAdmin,
+            listarMisFavoritos,
+            agregarFavorito,
+            quitarFavorito,
+            mock,
+            aplicarPenalizacion,
+        ],
+    );
 
-  const aplicarPenalizacion = useCallback(
-    (input: Omit<Penalizacion, "id" | "createdAt">) => {
-      const nueva: Penalizacion = { ...input, id: nextId("pen"), createdAt: new Date().toISOString() };
-      patchMock("penalizaciones", (l) => [...l, nueva]);
-      return nueva;
-    },
-    [patchMock],
-  );
-
-  const value: DataContextValue = useMemo(
-    () => ({
-      categorias,
-      tiposActividad,
-      actividades,
-      clases,
-      instructorNombre,
-      cargandoCatalogo,
-      getActividad,
-      getTipoActividad,
-      getCategoria,
-      getClasesDeActividad,
-      cargarDetalleActividad,
-      crearActividad,
-      actualizarActividad,
-      eliminarActividad,
-      crearClase,
-      actualizarClase,
-      eliminarClase,
-      cancelarClase,
-      notificarAusenciaProfesor,
-      listarNotificaciones,
-      marcarNotificacionesLeidas,
-      crearTipoActividad,
-      actualizarTipoActividad,
-      eliminarTipoActividad,
-      crearCategoria,
-      actualizarCategoria,
-      eliminarCategoria,
-      inscribirse,
-      cancelarInscripcion,
-      confirmarCobroEfectivo,
-      marcarAsistencia,
-      listarMisInscripciones,
-      listarRosterClase,
-      listarInstructores,
-      obtenerInstructor,
-      listarClasesInstructor,
-      listarClasesAdmin,
-      aprobarInstructor,
-      rechazarInstructor,
-      crearResenia,
-      eliminarResenia,
-      listarResenasActividad,
-      listarMisResenas,
-      listarResenasInstructor,
-      listarResenasPendientes,
-      aprobarResenia,
-      rechazarResenia,
-      crearDenuncia,
-      listarMisDenuncias,
-      listarDenunciasAdmin,
-      resolverDenuncia,
-      listarUsuariosAdmin,
-      actualizarEstadoUsuario,
-      listarAuditoria,
-      listarInscripcionesAdmin,
-      listarMisFavoritos,
-      agregarFavorito,
-      quitarFavorito,
-      inscripciones: mock.inscripciones,
-      pagos: mock.pagos,
-      penalizaciones: mock.penalizaciones,
-      aplicarPenalizacion,
-    }),
-    [
-      categorias,
-      tiposActividad,
-      actividades,
-      clases,
-      instructorNombre,
-      cargandoCatalogo,
-      getActividad,
-      getTipoActividad,
-      getCategoria,
-      getClasesDeActividad,
-      cargarDetalleActividad,
-      crearActividad,
-      actualizarActividad,
-      eliminarActividad,
-      crearClase,
-      actualizarClase,
-      eliminarClase,
-      cancelarClase,
-      notificarAusenciaProfesor,
-      listarNotificaciones,
-      marcarNotificacionesLeidas,
-      crearTipoActividad,
-      actualizarTipoActividad,
-      eliminarTipoActividad,
-      crearCategoria,
-      actualizarCategoria,
-      eliminarCategoria,
-      inscribirse,
-      cancelarInscripcion,
-      confirmarCobroEfectivo,
-      marcarAsistencia,
-      listarMisInscripciones,
-      listarRosterClase,
-      listarInstructores,
-      obtenerInstructor,
-      listarClasesInstructor,
-      listarClasesAdmin,
-      aprobarInstructor,
-      rechazarInstructor,
-      crearResenia,
-      eliminarResenia,
-      listarResenasActividad,
-      listarMisResenas,
-      listarResenasInstructor,
-      listarResenasPendientes,
-      aprobarResenia,
-      rechazarResenia,
-      crearDenuncia,
-      listarMisDenuncias,
-      listarDenunciasAdmin,
-      resolverDenuncia,
-      listarUsuariosAdmin,
-      actualizarEstadoUsuario,
-      listarAuditoria,
-      listarInscripcionesAdmin,
-      listarMisFavoritos,
-      agregarFavorito,
-      quitarFavorito,
-      mock,
-      aplicarPenalizacion,
-    ],
-  );
-
-  return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
+    return (
+        <DataContext.Provider value={value}>{children}</DataContext.Provider>
+    );
 }
 
 export function useData(): DataContextValue {
-  const ctx = useContext(DataContext);
-  if (!ctx) throw new Error("useData must be used within DataProvider");
-  return ctx;
+    const ctx = useContext(DataContext);
+    if (!ctx) throw new Error("useData must be used within DataProvider");
+    return ctx;
 }
