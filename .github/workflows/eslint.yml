@@ -9,9 +9,9 @@ name: Análisis Estático - ESLint
 # Se ejecuta cuando hay push o PR contra las ramas main/develop
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, FabriVersion2]
   pull_request:
-    branches: [main, develop]
+    branches: [main, develop, FabriVersion2]
   # Permite también dispararlo manualmente desde la pestaña "Actions" de GitHub
   workflow_dispatch:
 
