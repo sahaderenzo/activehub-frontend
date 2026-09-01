@@ -72,6 +72,8 @@ export interface Actividad {
   photoTint: string;
   rating: number;
   cuposMax: number;
+  lat?: number;
+  lng?: number;
   /** Solo presente cuando la actividad viene del catálogo real (listaractividades). */
   proximaClase?: { fechaHora: string; estado: EstadoClase; cuposMax: number; cuposOcupados: number };
 }

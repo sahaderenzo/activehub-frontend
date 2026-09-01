@@ -1,11 +1,23 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { ChangeEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
+import LeafletMap from "../../components/LeafletMap";
+import ActivityPhoto from "../../components/ActivityPhoto";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import { ApiError } from "../../lib/api";
+import { useGeolocation } from "../../lib/geo";
+import { searchAddress, type AddressResult } from "../../lib/nominatim";
 import type { NivelIntensidad } from "../../lib/types";
+
+function parseCoord(text: string): number | undefined {
+  const t = text.trim();
+  if (!t) return undefined;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : undefined;
+}
 
 const NIVELES: NivelIntensidad[] = ["Física baja", "Física media", "Física alta"];
 
@@ -48,6 +60,9 @@ export default function InstructorCrearActividad() {
   const [duracionMin, setDuracionMin] = useState("50");
   const [precioRaw, setPrecioRaw] = useState(existing ? String(existing.precio) : "");
   const [ubicacion, setUbicacion] = useState(existing?.ubicacion ?? "");
+  const [latText, setLatText] = useState(existing?.lat !== undefined ? String(existing.lat) : "");
+  const [lngText, setLngText] = useState(existing?.lng !== undefined ? String(existing.lng) : "");
+  const geolocation = useGeolocation();
   const [categoriaId, setCategoriaId] = useState(() => {
     const tipo = existing ? data.getTipoActividad(existing.tipoActividadId) : undefined;
     return tipo?.categoriaId ?? data.categorias[0]?.id ?? "";
@@ -59,6 +74,39 @@ export default function InstructorCrearActividad() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEdit, id]);
+
+  useEffect(() => {
+    if (geolocation.coords) {
+      setLatText(String(geolocation.coords.lat));
+      setLngText(String(geolocation.coords.lng));
+    }
+  }, [geolocation.coords]);
+
+  const [resultadosDireccion, setResultadosDireccion] = useState<AddressResult[]>([]);
+  const [buscandoDireccion, setBuscandoDireccion] = useState(false);
+  const [errorDireccion, setErrorDireccion] = useState<string | null>(null);
+
+  const buscarDireccion = async () => {
+    setErrorDireccion(null);
+    setBuscandoDireccion(true);
+    try {
+      const resultados = await searchAddress(ubicacion);
+      setResultadosDireccion(resultados);
+      if (resultados.length === 0) setErrorDireccion("No encontramos resultados para esa dirección.");
+    } catch {
+      setErrorDireccion("No pudimos buscar la dirección. Intentá de nuevo.");
+    } finally {
+      setBuscandoDireccion(false);
+    }
+  };
+
+  const elegirResultadoDireccion = (r: AddressResult) => {
+    setUbicacion(r.displayName);
+    setLatText(String(r.lat));
+    setLngText(String(r.lng));
+    setResultadosDireccion([]);
+  };
+
   const [tipoActividadId, setTipoActividadId] = useState(existing?.tipoActividadId ?? "");
   const [nivel, setNivel] = useState<NivelIntensidad>(existing?.nivelIntensidad ?? "Física media");
   const [photoTint] = useState(
@@ -85,8 +133,14 @@ export default function InstructorCrearActividad() {
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSave = async (navigateAfter: boolean) => {
-    if (!currentUser || !nombre.trim() || !tipoActividadId) return;
+  const handleSave = async (navigateAfter: boolean): Promise<string | undefined> => {
+    if (!currentUser || !nombre.trim() || !tipoActividadId) return undefined;
+    const latTrim = latText.trim();
+    const lngTrim = lngText.trim();
+    if (!!latTrim !== !!lngTrim) {
+      setError("Completá latitud y longitud juntas, o dejá las dos vacías.");
+      return undefined;
+    }
     const payload = {
       nombre: nombre.trim(),
       descripcion: descripcion.trim(),
@@ -96,30 +150,61 @@ export default function InstructorCrearActividad() {
       ubicacion: ubicacion.trim() || "Ubicación a confirmar",
       photoTint,
       cuposMax: existing?.cuposMax ?? 20,
+      lat: latTrim ? Number(latTrim) : undefined,
+      lng: lngTrim ? Number(lngTrim) : undefined,
     };
     setError(null);
     setGuardando(true);
     try {
+      let id: string;
       if (targetId) {
         await data.actualizarActividad(targetId, payload);
+        id = targetId;
         if (navigateAfter) {
           navigate(`/instructor/actividades/${targetId}`);
-          return;
+          return id;
         }
       } else {
         const nueva = await data.crearActividad(payload);
         setDraftId(nueva.id);
+        id = nueva.id;
         if (navigateAfter) {
           navigate(`/instructor/actividades/${nueva.id}`);
-          return;
+          return id;
         }
       }
       setSavedMsg("Borrador guardado.");
       window.setTimeout(() => setSavedMsg(""), 2500);
+      return id;
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No pudimos guardar la actividad. Intentá de nuevo.");
+      return undefined;
     } finally {
       setGuardando(false);
+    }
+  };
+
+  const [fotoVersion, setFotoVersion] = useState(0);
+  const [subiendoFoto, setSubiendoFoto] = useState(false);
+  const [fotoError, setFotoError] = useState(false);
+  const fotoInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFotoActividadChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    const archivo = e.target.files?.[0];
+    e.target.value = "";
+    if (!archivo) return;
+    setSubiendoFoto(true);
+    setFotoError(false);
+    try {
+      const id = targetId ?? (await handleSave(false));
+      if (!id) return;
+      await data.subirFotoActividad(id, archivo);
+      setFotoVersion((v) => v + 1);
+    } catch (err) {
+      setFotoError(true);
+      setError(err instanceof ApiError ? err.message : "No pudimos subir la foto. Intentá de nuevo.");
+    } finally {
+      setSubiendoFoto(false);
     }
   };
 
@@ -307,55 +392,143 @@ export default function InstructorCrearActividad() {
 
           <div style={s("margin-bottom:18px;")}>
             <label style={s("display:block;font:700 13px Manrope;color:#41566B;margin-bottom:9px;")}>Imágenes de la actividad</label>
-            <div style={s("display:flex;gap:12px;")}>
-              <div style={s(`width:120px;height:90px;border-radius:12px;background:${photoTint};position:relative;`)}>
-                <div
+            <input
+              ref={fotoInputRef}
+              type="file"
+              accept="image/jpeg,image/png"
+              onChange={handleFotoActividadChange}
+              style={s("display:none;")}
+            />
+            <div
+              onClick={() => !subiendoFoto && fotoInputRef.current?.click()}
+              className="ah-photo-edit"
+              title={fotoError ? "No pudimos subir la foto. Probá de nuevo." : "Subir una foto"}
+              tabIndex={0}
+              style={s(
+                `width:150px;height:110px;border-radius:12px;background:${photoTint};position:relative;overflow:hidden;cursor:${subiendoFoto ? "default" : "pointer"};`,
+              )}
+            >
+              {targetId && <ActivityPhoto actividadId={targetId} version={fotoVersion} />}
+              {!subiendoFoto && (
+                <span
+                  className="ah-avatar-overlay"
                   style={s(
-                    "position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:99px;background:rgba(229,72,77,.9);display:flex;align-items:center;justify-content:center;cursor:pointer;",
+                    "position:absolute;inset:0;background:rgba(14,42,71,.6);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;pointer-events:none;",
                   )}
                 >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.5}>
-                    <path d="M18 6 6 18M6 6l12 12" />
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2}>
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                    <circle cx="12" cy="13" r="4" />
                   </svg>
-                </div>
-              </div>
-              <div
-                style={s(
-                  "width:120px;height:90px;border-radius:12px;border:2px dashed #C9D5E1;background:#FAFCFE;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;gap:5px;",
-                )}
-              >
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9AAABA" strokeWidth={2}>
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-                <span style={s("font-size:11px;color:#90A1B2;font-weight:700;")}>Agregar</span>
-              </div>
+                  <span style={s("font-size:11.5px;color:#fff;font-weight:700;")}>{targetId ? "Cambiar foto" : "Agregar foto"}</span>
+                </span>
+              )}
+              {subiendoFoto && (
+                <span
+                  style={s(
+                    "position:absolute;inset:0;background:rgba(14,42,71,.6);display:flex;align-items:center;justify-content:center;",
+                  )}
+                >
+                  <span
+                    style={s(
+                      "display:block;width:26px;height:26px;border:3px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:99px;animation:ahspin .7s linear infinite;",
+                    )}
+                  />
+                </span>
+              )}
+              {fotoError && (
+                <span
+                  style={s(
+                    "position:absolute;bottom:-1px;right:-1px;width:16px;height:16px;border-radius:99px;background:#E5484D;border:2px solid #fff;",
+                  )}
+                />
+              )}
             </div>
+            <p style={s("font-size:12px;color:#90A1B2;font-weight:600;margin:8px 0 0;")}>JPG o PNG. Podés cambiarla cuando quieras.</p>
           </div>
 
           <div style={s("margin-bottom:6px;")}>
             <label style={s("display:block;font:700 13px Manrope;color:#41566B;margin-bottom:9px;")}>Ubicación con mapa</label>
             <div style={s("border:1px solid #E2E9F0;border-radius:12px;overflow:hidden;")}>
-              <div
+              <LeafletMap
+                lat={parseCoord(latText)}
+                lng={parseCoord(lngText)}
+                height={130}
+                title={ubicacion || undefined}
+                placeholderText="Buscá una dirección o cargá coordenadas manualmente"
+              />
+              <div style={s("display:flex;")}>
+                <input
+                  value={ubicacion}
+                  onChange={(e) => setUbicacion(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      buscarDireccion();
+                    }
+                  }}
+                  placeholder="Dirección de encuentro"
+                  style={s("flex:1;border:none;padding:11px 14px;font:600 13.5px Manrope;color:#0E2A47;outline:none;")}
+                />
+                <span
+                  className="ah-btn"
+                  onClick={buscarDireccion}
+                  style={s(
+                    "cursor:pointer;white-space:nowrap;padding:11px 16px;font:700 12.5px Manrope;color:#12B5A5;border-left:1px solid #E2E9F0;",
+                  )}
+                >
+                  {buscandoDireccion ? "Buscando…" : "Buscar"}
+                </span>
+              </div>
+              {errorDireccion && (
+                <div style={s("padding:9px 14px;font-size:12px;color:#BE3A3E;font-weight:600;border-top:1px solid #F3D2D3;background:#FBEAEB;")}>
+                  {errorDireccion}
+                </div>
+              )}
+              {resultadosDireccion.length > 0 && (
+                <div style={s("border-top:1px solid #E2E9F0;")}>
+                  {resultadosDireccion.map((r, i) => (
+                    <div
+                      key={i}
+                      onClick={() => elegirResultadoDireccion(r)}
+                      className="ah-btn"
+                      style={s(
+                        "cursor:pointer;padding:9px 14px;font-size:12.5px;color:#41566B;border-bottom:1px solid #F1F4F8;",
+                      )}
+                    >
+                      {r.displayName}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div style={s("display:flex;gap:10px;margin-top:10px;align-items:center;")}>
+              <input
+                value={latText}
+                onChange={(e) => setLatText(e.target.value)}
+                placeholder="Latitud (opcional)"
                 style={s(
-                  "height:130px;background:repeating-linear-gradient(135deg,#E7EEF5 0 16px,#DFE8F1 16px 32px);position:relative;",
+                  "flex:1;border:1px solid #D9E1EA;border-radius:11px;padding:11px 14px;font:600 13.5px Manrope;color:#0E2A47;outline:none;",
+                )}
+              />
+              <input
+                value={lngText}
+                onChange={(e) => setLngText(e.target.value)}
+                placeholder="Longitud (opcional)"
+                style={s(
+                  "flex:1;border:1px solid #D9E1EA;border-radius:11px;padding:11px 14px;font:600 13.5px Manrope;color:#0E2A47;outline:none;",
+                )}
+              />
+              <span
+                className="ah-btn"
+                title={geolocation.status === "denied" ? "Activá la ubicación en tu navegador" : undefined}
+                onClick={() => geolocation.request()}
+                style={s(
+                  "cursor:pointer;white-space:nowrap;padding:11px 14px;border-radius:11px;font:700 12.5px Manrope;background:#F2F5F9;color:#41566B;border:1px solid #D9E1EA;",
                 )}
               >
-                <div style={s("position:absolute;inset:0;display:flex;align-items:center;justify-content:center;")}>
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="#FF6A2B" stroke="#fff" strokeWidth={1.5}>
-                    <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
-                    <circle cx="12" cy="10" r="3" fill="#fff" />
-                  </svg>
-                </div>
-                <div style={s("position:absolute;bottom:8px;left:10px;font:600 10px ui-monospace,Menlo,monospace;color:#7A8C9E;")}>
-                  MAPA · seleccionar punto
-                </div>
-              </div>
-              <input
-                value={ubicacion}
-                onChange={(e) => setUbicacion(e.target.value)}
-                placeholder="Dirección de encuentro"
-                style={s("width:100%;border:none;padding:11px 14px;font:600 13.5px Manrope;color:#0E2A47;outline:none;")}
-              />
+                {geolocation.status === "loading" ? "Ubicando…" : "Usar mi ubicación actual"}
+              </span>
             </div>
           </div>
         </div>

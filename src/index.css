@@ -83,6 +83,21 @@ body {
 .ah-row:hover {
   background: #f7fafc;
 }
+.ah-avatar-edit,
+.ah-photo-edit {
+  outline: none;
+}
+.ah-avatar-edit .ah-avatar-overlay,
+.ah-photo-edit .ah-avatar-overlay {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.ah-avatar-edit:hover .ah-avatar-overlay,
+.ah-avatar-edit:focus-visible .ah-avatar-overlay,
+.ah-photo-edit:hover .ah-avatar-overlay,
+.ah-photo-edit:focus-visible .ah-avatar-overlay {
+  opacity: 1;
+}
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;

@@ -1,13 +1,55 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 import AlumnoNav from "../../components/AlumnoNav";
 import ActivityCard from "../../components/ActivityCard";
 import { s } from "../../lib/style";
 import { useData } from "../../context/DataContext";
+import { haversineKm, useGeolocation } from "../../lib/geo";
 import type { Actividad, Categoria, NivelIntensidad, TipoActividad } from "../../lib/types";
 
 const NIVELES: NivelIntensidad[] = ["Física baja", "Física media", "Física alta"];
-const SORTS = ["Relevancia", "Precio: menor", "Precio: mayor", "Mejor valoradas"] as const;
+const SORTS = ["Relevancia", "Precio: menor", "Precio: mayor", "Mejor valoradas", "Cercanía"] as const;
 type Sort = (typeof SORTS)[number];
+
+const RADIOS = ["Cualquier distancia", "Menos de 2 km", "2 km", "5 km", "8 km", "10 km", "Más de 10 km"] as const;
+type Radio = (typeof RADIOS)[number];
+
+function distanciaKm(a: Actividad, userCoords: { lat: number; lng: number } | null): number | undefined {
+  if (!userCoords || a.lat === undefined || a.lng === undefined) return undefined;
+  return haversineKm(userCoords.lat, userCoords.lng, a.lat, a.lng);
+}
+
+function dentroDelRadio(distKm: number | undefined, radio: Radio): boolean {
+  if (radio === "Cualquier distancia") return true;
+  // Sin distancia calculable (sin permiso de ubicación, o la actividad no tiene
+  // coordenadas cargadas) no se puede afirmar que esté dentro de ningún radio.
+  if (distKm === undefined) return false;
+  switch (radio) {
+    case "Menos de 2 km":
+      return distKm < 2;
+    case "2 km":
+      return distKm <= 2;
+    case "5 km":
+      return distKm <= 5;
+    case "8 km":
+      return distKm <= 8;
+    case "10 km":
+      return distKm <= 10;
+    case "Más de 10 km":
+      return distKm > 10;
+  }
+}
+
+const GEO_TITLE = (status: string): string | undefined =>
+  status === "denied"
+    ? "Activá la ubicación en tu navegador para filtrar/ordenar por cercanía"
+    : status === "unsupported"
+      ? "Tu navegador no soporta geolocalización"
+      : undefined;
+
+const SORT_TITLES: Partial<Record<Sort, (status: string) => string | undefined>> = {
+  Cercanía: GEO_TITLE,
+};
 
 function disponibilidadDe(a: Actividad): { label: string; type: "disponible" | "ultimos" | "sincupos" } {
   const p = a.proximaClase;
@@ -23,6 +65,7 @@ function cardProps(
   getTipoActividad: (id: string) => TipoActividad | undefined,
   getCategoria: (id: string) => Categoria | undefined,
   instructorNombre: Record<string, string>,
+  userCoords: { lat: number; lng: number } | null,
 ) {
   const tipo = getTipoActividad(a.tipoActividadId);
   const cat = tipo ? getCategoria(tipo.categoriaId) : undefined;
@@ -41,12 +84,20 @@ function cardProps(
     price: a.precio,
     cupText: disp.label,
     cupColor,
+    distanceKm: distanciaKm(a, userCoords),
     disp,
   };
 }
 
+interface ExplorarNavState {
+  search?: string;
+  categoriaId?: string;
+  radio?: string;
+}
+
 export default function AlumnoExplorar() {
   const { actividades, tiposActividad, categorias, getTipoActividad, getCategoria, instructorNombre } = useData();
+  const location = useLocation();
   const [search, setSearch] = useState("");
   const [catSel, setCatSel] = useState<Set<string>>(new Set());
   const [tipoSel, setTipoSel] = useState<Set<string>>(new Set());
@@ -57,6 +108,25 @@ export default function AlumnoExplorar() {
   const [maxPrecio, setMaxPrecio] = useState<number | null>(null);
   const [soloDisponibles, setSoloDisponibles] = useState(false);
   const [sort, setSort] = useState<Sort>("Relevancia");
+  const [radio, setRadio] = useState<Radio>("Cualquier distancia");
+  const geolocation = useGeolocation();
+
+  // Entrar desde otra pantalla (buscador del header, buscador/chips de
+  // categoría/"cerca tuyo" de Home) manda la intención ya elegida por
+  // location.state. Se sincroniza con cada navegación nueva (location.key
+  // cambia incluso si la ruta es la misma, ej. buscar de nuevo desde el header
+  // estando ya parado en Explorar) — no solo al montar el componente.
+  useEffect(() => {
+    const navState = (location.state ?? {}) as ExplorarNavState;
+    if (navState.search !== undefined) setSearch(navState.search);
+    if (navState.categoriaId) setCatSel(new Set([navState.categoriaId]));
+    if (navState.radio && (RADIOS as readonly string[]).includes(navState.radio)) {
+      const r = navState.radio as Radio;
+      setRadio(r);
+      if (r !== "Cualquier distancia") geolocation.request();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key]);
 
   const precioMin = actividades.length ? Math.min(...actividades.map((a) => a.precio)) : 0;
   const precioMax = actividades.length ? Math.max(...actividades.map((a) => a.precio)) : 10000;
@@ -100,6 +170,7 @@ export default function AlumnoExplorar() {
     setNivelSel(new Set());
     setMaxPrecio(null);
     setSoloDisponibles(false);
+    setRadio("Cualquier distancia");
     setSearch("");
   };
 
@@ -117,13 +188,18 @@ export default function AlumnoExplorar() {
     const term = search.trim().toLowerCase();
     let list = actividades.filter((a) => {
       const tipo = getTipoActividad(a.tipoActividadId);
-      if (term && !a.nombre.toLowerCase().includes(term)) return false;
+      if (term) {
+        const instructor = instructorNombre[a.instructorId] ?? "";
+        const coincide = a.nombre.toLowerCase().includes(term) || instructor.toLowerCase().includes(term);
+        if (!coincide) return false;
+      }
       if (catSel.size > 0 && (!tipo || !catSel.has(tipo.categoriaId))) return false;
       if (tipoSel.size > 0 && !tipoSel.has(a.tipoActividadId)) return false;
       if (nivelSel.size > 0 && !nivelSel.has(a.nivelIntensidad)) return false;
       if (maxPrecio !== null && a.precio > maxPrecio) return false;
+      if (!dentroDelRadio(distanciaKm(a, geolocation.coords), radio)) return false;
       if (soloDisponibles) {
-        const props = cardProps(a, getTipoActividad, getCategoria, instructorNombre);
+        const props = cardProps(a, getTipoActividad, getCategoria, instructorNombre, geolocation.coords);
         if (props.disp.type === "sincupos") return false;
       }
       return true;
@@ -132,8 +208,29 @@ export default function AlumnoExplorar() {
     if (sort === "Precio: menor") list.sort((x, y) => x.precio - y.precio);
     else if (sort === "Precio: mayor") list.sort((x, y) => y.precio - x.precio);
     else if (sort === "Mejor valoradas") list.sort((x, y) => y.rating - x.rating);
+    else if (sort === "Cercanía") {
+      list.sort((x, y) => {
+        const dx = distanciaKm(x, geolocation.coords) ?? Infinity;
+        const dy = distanciaKm(y, geolocation.coords) ?? Infinity;
+        return dx - dy;
+      });
+    }
     return list;
-  }, [actividades, search, catSel, tipoSel, nivelSel, maxPrecio, soloDisponibles, sort, getTipoActividad, getCategoria, instructorNombre]);
+  }, [
+    actividades,
+    search,
+    catSel,
+    tipoSel,
+    nivelSel,
+    maxPrecio,
+    radio,
+    soloDisponibles,
+    sort,
+    getTipoActividad,
+    getCategoria,
+    instructorNombre,
+    geolocation.coords,
+  ]);
 
   return (
     <div className="ah-screen" style={s("min-height:100vh;background:#F4F7FA;")}>
@@ -159,7 +256,7 @@ export default function AlumnoExplorar() {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar por nombre de actividad…"
+                placeholder="Buscar por actividad o instructor…"
                 style={s("border:none;outline:none;font:600 14px Manrope,sans-serif;color:#0E2A47;width:100%;")}
               />
             </div>
@@ -282,6 +379,28 @@ export default function AlumnoExplorar() {
             </span>
             Solo con cupos
           </label>
+          <div style={s("font:700 13px Manrope,sans-serif;color:#41566B;margin:22px 0 11px;")}>Distancia</div>
+          <div style={s("display:flex;flex-wrap:wrap;gap:7px;")}>
+            {RADIOS.map((opt) => {
+              const on = radio === opt;
+              return (
+                <span
+                  key={opt}
+                  className="ah-btn"
+                  title={opt !== "Cualquier distancia" ? GEO_TITLE(geolocation.status) : undefined}
+                  onClick={() => {
+                    setRadio(opt);
+                    if (opt !== "Cualquier distancia") geolocation.request();
+                  }}
+                  style={s(
+                    `cursor:pointer;padding:6px 12px;border-radius:99px;font:700 12.5px Manrope,sans-serif;background:${on ? "#0E2A47" : "#F2F5F9"};color:${on ? "#fff" : "#41566B"};border:1px solid ${on ? "#0E2A47" : "#E2E9F0"};`,
+                  )}
+                >
+                  {opt}
+                </span>
+              );
+            })}
+          </div>
         </aside>
 
         <div>
@@ -297,7 +416,11 @@ export default function AlumnoExplorar() {
                   return (
                     <span
                       key={opt}
-                      onClick={() => setSort(opt)}
+                      title={SORT_TITLES[opt]?.(geolocation.status)}
+                      onClick={() => {
+                        setSort(opt);
+                        if (opt === "Cercanía") geolocation.request();
+                      }}
                       style={s(
                         `padding:7px 13px;border-radius:8px;font:700 13px Manrope,sans-serif;cursor:pointer;color:${on ? "#fff" : "#65788C"};background:${on ? "#0E2A47" : "transparent"};`,
                       )}
@@ -320,7 +443,7 @@ export default function AlumnoExplorar() {
           ) : (
             <div className="ah-grid-3" style={s("display:grid;grid-template-columns:repeat(3,1fr);gap:20px;")}>
               {filtered.map((a) => (
-                <ActivityCard key={a.id} {...cardProps(a, getTipoActividad, getCategoria, instructorNombre)} />
+                <ActivityCard key={a.id} {...cardProps(a, getTipoActividad, getCategoria, instructorNombre, geolocation.coords)} />
               ))}
             </div>
           )}

@@ -1,8 +1,11 @@
+import { useState } from "react";
 import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { s } from "../lib/style";
 import { useAuth } from "../context/AuthContext";
+import { useData } from "../context/DataContext";
 import NotificationBell from "./NotificationBell";
+import Avatar from "./Avatar";
 
 type Role = "instructor" | "admin";
 
@@ -142,6 +145,7 @@ interface DashSidebarProps {
 export default function DashSidebar({ role, active }: DashSidebarProps) {
   const navigate = useNavigate();
   const { currentUser, logout } = useAuth();
+  const data = useData();
   const color = (on: boolean) => (on ? "#12B5A5" : "#9DB3C9");
   const items = role === "admin" ? adminItems(color, active) : instructorItems(color, active);
 
@@ -149,7 +153,7 @@ export default function DashSidebar({ role, active }: DashSidebarProps) {
     role === "admin" ? "linear-gradient(140deg,#F5A623,#FF6A2B)" : "linear-gradient(140deg,#12B5A5,#0E2A47)";
   const userName = currentUser ? `${currentUser.nombre} ${currentUser.apellido}` : "Invitado";
   const userRole = role === "admin" ? "Administrador" : "Instructor";
-  const avatarLetter = currentUser?.nombre?.charAt(0).toUpperCase() ?? "?";
+  const [fotoVersion, setFotoVersion] = useState(0);
 
   const handleLogout = () => {
     logout();
@@ -186,13 +190,18 @@ export default function DashSidebar({ role, active }: DashSidebarProps) {
           "padding:6px 14px;margin:0 12px 16px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:12px;display:flex;align-items:center;gap:10px;",
         )}
       >
-        <span
-          style={s(
-            `width:34px;height:34px;border-radius:99px;background:${avatarBg};display:flex;align-items:center;justify-content:center;color:#fff;font:700 14px Space Grotesk,sans-serif;flex:none;`,
-          )}
-        >
-          {avatarLetter}
-        </span>
+        <Avatar
+          usuarioId={currentUser?.id}
+          nombre={currentUser?.nombre ?? "?"}
+          size={34}
+          fontSize={14}
+          gradient={avatarBg}
+          version={fotoVersion}
+          onUpload={async (archivo) => {
+            await data.subirFotoPerfil(archivo);
+            setFotoVersion((v) => v + 1);
+          }}
+        />
         <div style={s("min-width:0;")}>
           <div style={s("font:700 13.5px Manrope,sans-serif;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;")}>
             {userName}

@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import AlumnoNav from "../../components/AlumnoNav";
 import StatusBadge from "../../components/StatusBadge";
+import Avatar from "../../components/Avatar";
+import ActivityPhoto from "../../components/ActivityPhoto";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
@@ -48,6 +50,9 @@ export default function AlumnoPerfil() {
       .catch(() => {});
     data.listarMisDenuncias().then(setMisDenuncias).catch(() => {});
   }, [currentUser, data.listarMisResenas, data.listarMisInscripciones, data.listarMisDenuncias]);
+
+  const [fotoVersion, setFotoVersion] = useState(0);
+  const [fotoAmpliada, setFotoAmpliada] = useState(false);
 
   const [editando, setEditando] = useState(false);
   const [nombre, setNombre] = useState(currentUser?.nombre ?? "");
@@ -129,13 +134,23 @@ export default function AlumnoPerfil() {
           )}
         >
           <div style={s("position:absolute;top:-60px;right:-20px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(18,181,165,.26),transparent 70%);")} />
-          <span
-            style={s(
-              "width:84px;height:84px;border-radius:99px;background:linear-gradient(140deg,#12B5A5,#FF6A2B);display:flex;align-items:center;justify-content:center;color:#fff;font:700 34px Space Grotesk,sans-serif;flex:none;position:relative;",
-            )}
-          >
-            {currentUser.nombre.charAt(0)}
-          </span>
+          <Avatar
+            usuarioId={currentUser.id}
+            nombre={currentUser.nombre}
+            size={84}
+            fontSize={34}
+            gradient="linear-gradient(140deg,#12B5A5,#FF6A2B)"
+            version={fotoVersion}
+            onUpload={
+              editando
+                ? async (archivo) => {
+                    await data.subirFotoPerfil(archivo);
+                    setFotoVersion((v) => v + 1);
+                  }
+                : undefined
+            }
+            onClick={editando ? undefined : () => setFotoAmpliada(true)}
+          />
           <div style={s("position:relative;flex:1;min-width:200px;")}>
             <h1 style={s("font:700 26px Space Grotesk,sans-serif;color:#fff;margin:0 0 5px;")}>
               {currentUser.nombre} {currentUser.apellido}
@@ -304,7 +319,9 @@ export default function AlumnoPerfil() {
                 <div style={s("display:flex;flex-direction:column;gap:13px;")}>
                   {historial.map(({ inscripcion, clase, actividad }) => (
                     <div key={inscripcion.id} style={s("display:flex;align-items:center;gap:12px;")}>
-                      <span style={s(`width:36px;height:36px;border-radius:10px;background:${actividad.photoTint};flex:none;`)} />
+                      <span style={s(`width:36px;height:36px;border-radius:10px;background:${actividad.photoTint};flex:none;position:relative;overflow:hidden;display:block;`)}>
+                        <ActivityPhoto actividadId={actividad.id} />
+                      </span>
                       <div style={s("flex:1;")}>
                         <div style={s("font:700 14px Manrope,sans-serif;color:#0E2A47;")}>{actividad.nombre}</div>
                         <div style={s("font-size:12.5px;color:#90A1B2;font-weight:600;")}>{formatFecha(clase.fechaHora)}</div>
@@ -342,6 +359,37 @@ export default function AlumnoPerfil() {
           </div>
         </div>
       </div>
+
+      {fotoAmpliada && (
+        <div
+          onClick={() => setFotoAmpliada(false)}
+          style={s(
+            "position:fixed;inset:0;z-index:80;background:rgba(8,22,38,.72);display:flex;align-items:center;justify-content:center;",
+          )}
+        >
+          <div style={s("position:relative;")} onClick={(e) => e.stopPropagation()}>
+            <Avatar
+              usuarioId={currentUser.id}
+              nombre={currentUser.nombre}
+              size={280}
+              fontSize={100}
+              gradient="linear-gradient(140deg,#12B5A5,#FF6A2B)"
+              version={fotoVersion}
+            />
+            <span
+              onClick={() => setFotoAmpliada(false)}
+              className="ah-btn"
+              style={s(
+                "position:absolute;top:-6px;right:-6px;width:34px;height:34px;border-radius:99px;background:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25);",
+              )}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0E2A47" strokeWidth={2.5}>
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

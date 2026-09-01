@@ -2,11 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import AlumnoNav from "../../components/AlumnoNav";
 import StatusBadge from "../../components/StatusBadge";
+import LeafletMap from "../../components/LeafletMap";
+import Avatar from "../../components/Avatar";
+import ActivityPhoto from "../../components/ActivityPhoto";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import type { MiInscripcion, ReseniaActividad } from "../../context/DataContext";
 import { diasHastaClase, disponibilidad, formatFecha, formatHora, tipoIngreso } from "../../lib/mockData";
+import { formatDistanciaKm, haversineKm, useGeolocation } from "../../lib/geo";
 import type { Actividad, Clase, NivelIntensidad } from "../../lib/types";
 
 const BENEFICIOS_POR_NIVEL: Record<NivelIntensidad, string[]> = {
@@ -209,6 +213,7 @@ export default function AlumnoDetalle() {
                 >
                   FOTO · {actividad.nombre}
                 </div>
+                <ActivityPhoto actividadId={actividad.id} />
                 <div style={s("position:absolute;top:16px;left:16px;")}>
                   <StatusBadge type={selectedClase ? disponibilidad(selectedClase).type : "disponible"} />
                 </div>
@@ -254,13 +259,7 @@ export default function AlumnoDetalle() {
                 "display:flex;align-items:center;gap:14px;background:#fff;border:1px solid #E7EDF3;border-radius:16px;padding:16px 18px;margin-bottom:30px;",
               )}
             >
-              <span
-                style={s(
-                  "width:50px;height:50px;border-radius:99px;background:linear-gradient(140deg,#12B5A5,#0E2A47);display:flex;align-items:center;justify-content:center;color:#fff;font:700 19px Space Grotesk,sans-serif;flex:none;",
-                )}
-              >
-                {instructorNombreCompleto?.charAt(0) ?? "?"}
-              </span>
+              <Avatar usuarioId={actividad.instructorId} nombre={instructorNombreCompleto ?? "?"} size={50} fontSize={19} />
               <div>
                 <div style={s("font:700 16px Manrope,sans-serif;color:#0E2A47;")}>
                   {instructorNombreCompleto ?? "Instructor"}
@@ -532,13 +531,14 @@ export default function AlumnoDetalle() {
                 return (
                   <div key={rv.id} style={s("background:#fff;border:1px solid #E7EDF3;border-radius:16px;padding:18px 20px;")}>
                     <div style={s("display:flex;align-items:center;gap:11px;margin-bottom:10px;")}>
-                      <span
-                        style={s(
-                          "width:38px;height:38px;border-radius:99px;background:#EEF4FB;color:#2D5BC8;display:flex;align-items:center;justify-content:center;font:700 15px Space Grotesk,sans-serif;",
-                        )}
-                      >
-                        {rv.alumno.nombre.charAt(0)}
-                      </span>
+                      <Avatar
+                        usuarioId={rv.alumno.id}
+                        nombre={rv.alumno.nombre}
+                        size={38}
+                        fontSize={15}
+                        gradient="#EEF4FB"
+                        textColor="#2D5BC8"
+                      />
                       <div>
                         <div style={s("font:700 14.5px Manrope,sans-serif;color:#0E2A47;")}>
                           {rv.alumno.nombre} {rv.alumno.apellido}
@@ -599,6 +599,22 @@ function BookingPanel({
 }) {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
+  const geolocation = useGeolocation();
+
+  // A diferencia de Explorar (donde pedir ubicación queda atrás de un click
+  // explícito para no ser invasivo en una lista larga), acá el usuario ya
+  // tomó la decisión de entrar a esta actividad puntual, así que mostrar
+  // "a cuántos km estoy" apenas carga la pantalla es el comportamiento
+  // esperado, no una sorpresa.
+  useEffect(() => {
+    geolocation.request();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const distanciaKm =
+    geolocation.coords && actividad.lat !== undefined && actividad.lng !== undefined
+      ? haversineKm(geolocation.coords.lat, geolocation.coords.lng, actividad.lat, actividad.lng)
+      : undefined;
 
   const ingreso = selectedClase ? tipoIngreso(selectedClase) : null;
   const existente = selectedClase && currentUser
@@ -828,20 +844,38 @@ function BookingPanel({
         </div>
       </div>
       <div style={s("margin-top:16px;background:#fff;border:1px solid #E7EDF3;border-radius:18px;overflow:hidden;")}>
-        <div style={s("height:150px;background:repeating-linear-gradient(135deg,#E7EEF5 0 16px,#DFE8F1 16px 32px);position:relative;")}>
-          <div style={s("position:absolute;inset:0;display:flex;align-items:center;justify-content:center;")}>
-            <svg width="30" height="30" viewBox="0 0 24 24" fill="#FF6A2B" stroke="#fff" strokeWidth={1.5}>
-              <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
-              <circle cx="12" cy="10" r="3" fill="#fff" />
-            </svg>
-          </div>
-          <div style={s("position:absolute;bottom:8px;left:10px;font:600 10px ui-monospace,Menlo,monospace;color:#7A8C9E;")}>
-            MAPA · Google Maps
-          </div>
-        </div>
+        <LeafletMap
+          lat={actividad.lat}
+          lng={actividad.lng}
+          height={150}
+          title={actividad.ubicacion}
+          placeholderText="Ubicación disponible al confirmar tu inscripción"
+        />
         <div style={s("padding:14px 16px;")}>
           <div style={s("font:700 14px Manrope,sans-serif;color:#0E2A47;margin-bottom:3px;")}>{actividad.ubicacion}</div>
           <div style={s("font-size:12.5px;color:#7A8C9E;font-weight:600;")}>Ver ubicación exacta al confirmar tu inscripción</div>
+          {distanciaKm !== undefined && (
+            <div style={s("font-size:12.5px;color:#12B5A5;font-weight:700;margin-top:4px;")}>
+              A {formatDistanciaKm(distanciaKm)} de tu ubicación
+            </div>
+          )}
+          {actividad.lat !== undefined && actividad.lng !== undefined && (
+            <a
+              href={`https://www.google.com/maps/search/?api=1&query=${actividad.lat},${actividad.lng}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={s(
+                "display:flex;align-items:center;gap:6px;margin-top:10px;font:700 12.5px Manrope,sans-serif;color:#12B5A5;text-decoration:none;",
+              )}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#12B5A5" strokeWidth={2}>
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                <path d="M15 3h6v6" />
+                <path d="M10 14 21 3" />
+              </svg>
+              Abrir en Google Maps
+            </a>
+          )}
         </div>
       </div>
     </div>

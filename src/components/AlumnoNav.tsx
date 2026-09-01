@@ -1,8 +1,11 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { s } from "../lib/style";
 import Logo from "./Logo";
 import NotificationBell from "./NotificationBell";
+import Avatar from "./Avatar";
 import { useAuth } from "../context/AuthContext";
+import { useData } from "../context/DataContext";
 
 type AlumnoNavKey = "home" | "explorar" | "calendario" | "favoritos" | "misreservas";
 
@@ -17,8 +20,15 @@ const ITEMS: { key: AlumnoNavKey; label: string; path: string }[] = [
 export default function AlumnoNav({ active }: { active: AlumnoNavKey }) {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
+  const data = useData();
   const nombre = currentUser?.nombre ?? "Invitado";
-  const inicial = nombre.charAt(0).toUpperCase();
+  const [search, setSearch] = useState("");
+  const [fotoVersion, setFotoVersion] = useState(0);
+
+  const buscar = () => {
+    if (!search.trim()) return;
+    navigate("/alumno/explorar", { state: { search } });
+  };
 
   return (
     <header
@@ -55,7 +65,15 @@ export default function AlumnoNav({ active }: { active: AlumnoNavKey }) {
               <circle cx="11" cy="11" r="7" />
               <path d="m21 21-4.3-4.3" />
             </svg>
-            <span style={s("font-size:13.5px;color:#9AAABA;font-weight:600;")}>Buscar actividad…</span>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") buscar();
+              }}
+              placeholder="Buscar actividad…"
+              style={s("border:none;outline:none;background:transparent;font-size:13.5px;color:#0E2A47;font-weight:600;width:100%;")}
+            />
           </div>
           <NotificationBell />
           <div
@@ -65,12 +83,18 @@ export default function AlumnoNav({ active }: { active: AlumnoNavKey }) {
               "cursor:pointer;display:flex;align-items:center;gap:9px;padding:5px 11px 5px 5px;border-radius:99px;border:1px solid #E7EDF3;background:#fff;",
             )}
           >
-            <span
-              style={s(
-                "width:30px;height:30px;border-radius:99px;background:linear-gradient(140deg,#12B5A5,#0E2A47);display:flex;align-items:center;justify-content:center;color:#fff;font:700 13px Space Grotesk,sans-serif;",
-              )}
-            >
-              {inicial}
+            <span onClick={(e) => e.stopPropagation()}>
+              <Avatar
+                usuarioId={currentUser?.id}
+                nombre={nombre}
+                size={30}
+                fontSize={13}
+                version={fotoVersion}
+                onUpload={async (archivo) => {
+                  await data.subirFotoPerfil(archivo);
+                  setFotoVersion((v) => v + 1);
+                }}
+              />
             </span>
             <span style={s("font:700 13.5px Manrope,sans-serif;color:#0E2A47;")}>{nombre}</span>
           </div>

@@ -1,6 +1,8 @@
 import { useNavigate } from "react-router-dom";
 import { s } from "../lib/style";
 import StatusBadge, { type StatusType } from "./StatusBadge";
+import ActivityPhoto from "./ActivityPhoto";
+import { formatDistanciaKm } from "../lib/geo";
 import type { NivelIntensidad } from "../lib/types";
 
 const NIVEL_COLORS: Record<NivelIntensidad, [bg: string, fg: string, bd: string]> = {
@@ -22,6 +24,7 @@ interface ActivityCardProps {
   price: number;
   cupText: string;
   cupColor: string;
+  distanceKm?: number;
   href?: string;
 }
 
@@ -38,6 +41,7 @@ export default function ActivityCard({
   price,
   cupText,
   cupColor,
+  distanceKm,
   href,
 }: ActivityCardProps) {
   const navigate = useNavigate();
@@ -59,6 +63,7 @@ export default function ActivityCard({
         >
           FOTO · {name}
         </div>
+        <ActivityPhoto actividadId={id} />
         <div style={s("position:absolute;top:12px;left:12px;")}>
           <StatusBadge type={statusType} />
         </div>
@@ -93,6 +98,7 @@ export default function ActivityCard({
             <circle cx="12" cy="10" r="3" />
           </svg>
           {location}
+          {distanceKm !== undefined && <> · a {formatDistanciaKm(distanceKm)}</>}
         </div>
         <div style={s("display:flex;align-items:center;gap:7px;color:#65788C;font-size:13px;font-weight:600;")}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9AAABA" strokeWidth={2}>

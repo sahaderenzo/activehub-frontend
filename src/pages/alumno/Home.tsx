@@ -1,18 +1,12 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AlumnoNav from "../../components/AlumnoNav";
 import ActivityCard from "../../components/ActivityCard";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
+import { haversineKm, useGeolocation } from "../../lib/geo";
 import type { Actividad, Categoria, TipoActividad } from "../../lib/types";
-
-const CAT_ICON: Record<string, string> = {
-  Bienestar: "🧘",
-  Aventura: "🏔️",
-  "Formación Técnica": "🎓",
-  "Defensa Personal": "🥋",
-};
 
 function disponibilidadDe(a: Actividad): { label: string; type: "disponible" | "ultimos" | "sincupos" } {
   const p = a.proximaClase;
@@ -23,11 +17,17 @@ function disponibilidadDe(a: Actividad): { label: string; type: "disponible" | "
   return { label: "Disponible", type: "disponible" };
 }
 
+function distanciaKm(a: Actividad, userCoords: { lat: number; lng: number } | null): number | undefined {
+  if (!userCoords || a.lat === undefined || a.lng === undefined) return undefined;
+  return haversineKm(userCoords.lat, userCoords.lng, a.lat, a.lng);
+}
+
 function cardProps(
   a: Actividad,
   getTipoActividad: (id: string) => TipoActividad | undefined,
   getCategoria: (id: string) => Categoria | undefined,
   instructorNombre: Record<string, string>,
+  userCoords: { lat: number; lng: number } | null,
 ) {
   const tipo = getTipoActividad(a.tipoActividadId);
   const cat = tipo ? getCategoria(tipo.categoriaId) : undefined;
@@ -46,15 +46,29 @@ function cardProps(
     price: a.precio,
     cupText: disp.label,
     cupColor,
+    distanceKm: distanciaKm(a, userCoords),
   };
 }
 
 export default function AlumnoHome() {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const { actividades, categorias, getTipoActividad, getCategoria, instructorNombre } = useData();
+  const { actividades, getTipoActividad, getCategoria, instructorNombre } = useData();
+  const [search, setSearch] = useState("");
+  const geolocation = useGeolocation();
 
-  const goExplorar = () => navigate("/alumno/explorar");
+  // Igual que en el detalle de actividad: entrar a Home ya es una decisión
+  // deliberada del alumno, así que pedir la ubicación de una vez (para "Cerca
+  // de tu ubicación" más abajo) no es una sorpresa como sí lo sería en medio
+  // de una lista larga de resultados.
+  useEffect(() => {
+    geolocation.request();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const irAExplorar = (extra?: { categoriaId?: string; radio?: string }) => {
+    navigate("/alumno/explorar", { state: { search, ...extra } });
+  };
   const goCalendario = () => navigate("/alumno/calendario");
 
   const intereses = currentUser?.perfilAlumno?.intereses ?? [];
@@ -69,10 +83,19 @@ export default function AlumnoHome() {
     return [...matched, ...rest].slice(0, 3);
   }, [actividades, intereses, getTipoActividad]);
 
+  // Real: ordenada por distancia calculada con la ubicación del alumno, no
+  // "lo que haya sobrado" de recomendado como antes. Sin permiso de ubicación,
+  // o si nada cae dentro de los 5km, se muestra un estado vacío en vez de
+  // actividades cualquiera con el rótulo engañoso de "cerca tuyo".
   const cerca = useMemo(() => {
-    const excluidas = new Set(recomendado.map((a) => a.id));
-    return actividades.filter((a) => !excluidas.has(a.id)).slice(0, 3);
-  }, [actividades, recomendado]);
+    if (!geolocation.coords) return [];
+    return actividades
+      .map((a) => ({ a, dist: distanciaKm(a, geolocation.coords) }))
+      .filter((x): x is { a: Actividad; dist: number } => x.dist !== undefined && x.dist <= 5)
+      .sort((x, y) => x.dist - y.dist)
+      .slice(0, 3)
+      .map((x) => x.a);
+  }, [actividades, geolocation.coords]);
 
   const proximasClases = useMemo(() => {
     return [...actividades]
@@ -125,15 +148,22 @@ export default function AlumnoHome() {
                   <path d="m21 21-4.3-4.3" />
                 </svg>
                 <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
                   placeholder="Meditación, running, trekking…"
                   style={s("border:none;outline:none;font:600 14.5px Manrope,sans-serif;color:#0E2A47;width:100%;")}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") goExplorar();
+                    if (e.key === "Enter") irAExplorar({ radio: "5 km" });
                   }}
                 />
               </div>
               <div style={s("width:1px;height:30px;background:#E7EDF3;")} />
-              <div style={s("flex:1;display:flex;align-items:center;gap:10px;padding:9px 14px;")}>
+              <div
+                className="ah-btn"
+                title="Buscar solo actividades a menos de 5 km"
+                onClick={() => irAExplorar({ radio: "5 km" })}
+                style={s("flex:1;display:flex;align-items:center;gap:10px;padding:9px 14px;cursor:pointer;")}
+              >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FF6A2B" strokeWidth={2}>
                   <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
                   <circle cx="12" cy="10" r="3" />
@@ -142,7 +172,7 @@ export default function AlumnoHome() {
               </div>
               <button
                 className="ah-btn"
-                onClick={goExplorar}
+                onClick={() => irAExplorar()}
                 style={s(
                   "background:#FF6A2B;color:#fff;border:none;border-radius:12px;padding:13px 24px;font:700 15px Manrope,sans-serif;cursor:pointer;",
                 )}
@@ -153,25 +183,6 @@ export default function AlumnoHome() {
           </div>
         </div>
 
-        <div style={s("display:flex;gap:10px;flex-wrap:wrap;margin-bottom:36px;")}>
-          {categorias.map((c) => (
-            <button
-              key={c.id}
-              className="ah-btn"
-              onClick={goExplorar}
-              style={s(
-                "display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #E2E9F0;border-radius:11px;padding:10px 16px;font:700 14px Manrope,sans-serif;color:#41566B;cursor:pointer;",
-              )}
-            >
-              <span>{CAT_ICON[c.nombre] ?? "•"}</span>
-              {c.nombre}
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9AAABA" strokeWidth={2}>
-                <path d="m6 9 6 6 6-6" />
-              </svg>
-            </button>
-          ))}
-        </div>
-
         <div style={s("display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;")}>
           <div>
             <h2 style={s("font:700 23px Space Grotesk,sans-serif;letter-spacing:-.4px;margin:0;")}>Recomendado para vos</h2>
@@ -179,30 +190,50 @@ export default function AlumnoHome() {
               {intereses.length > 0 ? `En base a tus intereses: ${intereses.join(", ")}` : "Descubrí actividades pensadas para vos"}
             </p>
           </div>
-          <span className="ah-link" onClick={goExplorar} style={s("font-weight:700;color:#FF6A2B;cursor:pointer;font-size:14.5px;")}>
+          <span className="ah-link" onClick={() => irAExplorar()} style={s("font-weight:700;color:#FF6A2B;cursor:pointer;font-size:14.5px;")}>
             Ver más →
           </span>
         </div>
         <div className="ah-grid-3" style={s("display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-bottom:42px;")}>
           {recomendado.map((a) => (
-            <ActivityCard key={a.id} {...cardProps(a, getTipoActividad, getCategoria, instructorNombre)} />
+            <ActivityCard key={a.id} {...cardProps(a, getTipoActividad, getCategoria, instructorNombre, geolocation.coords)} />
           ))}
         </div>
 
         <div style={s("display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;")}>
           <div>
             <h2 style={s("font:700 23px Space Grotesk,sans-serif;letter-spacing:-.4px;margin:0;")}>Cerca de tu ubicación</h2>
-            <p style={s("font-size:14px;color:#7A8C9E;margin:4px 0 0;")}>Actividades a menos de 5 km de Ciudad de Mendoza</p>
+            <p style={s("font-size:14px;color:#7A8C9E;margin:4px 0 0;")}>Actividades a menos de 5 km de tu ubicación actual</p>
           </div>
-          <span className="ah-link" onClick={goExplorar} style={s("font-weight:700;color:#FF6A2B;cursor:pointer;font-size:14.5px;")}>
-            Ver mapa →
+          <span
+            className="ah-link"
+            onClick={() => irAExplorar({ radio: "5 km" })}
+            style={s("font-weight:700;color:#FF6A2B;cursor:pointer;font-size:14.5px;")}
+          >
+            Ver más →
           </span>
         </div>
-        <div className="ah-grid-3" style={s("display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-bottom:42px;")}>
-          {cerca.map((a) => (
-            <ActivityCard key={a.id} {...cardProps(a, getTipoActividad, getCategoria, instructorNombre)} />
-          ))}
-        </div>
+        {cerca.length === 0 ? (
+          <div
+            style={s(
+              "background:#fff;border:1px dashed #D6DEE7;border-radius:16px;padding:28px 20px;text-align:center;color:#7A8C9E;font-weight:600;font-size:13.5px;margin-bottom:42px;",
+            )}
+          >
+            {geolocation.status === "denied"
+              ? "Activá la ubicación en tu navegador para ver actividades cerca tuyo."
+              : geolocation.status === "unsupported"
+                ? "Tu navegador no soporta geolocalización."
+                : geolocation.coords
+                  ? "No encontramos actividades a menos de 5 km de tu ubicación."
+                  : "Buscando actividades cerca tuyo…"}
+          </div>
+        ) : (
+          <div className="ah-grid-3" style={s("display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-bottom:42px;")}>
+            {cerca.map((a) => (
+              <ActivityCard key={a.id} {...cardProps(a, getTipoActividad, getCategoria, instructorNombre, geolocation.coords)} />
+            ))}
+          </div>
+        )}
 
         <div style={s("display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;")}>
           <div>
@@ -215,7 +246,7 @@ export default function AlumnoHome() {
         </div>
         <div className="ah-grid-3" style={s("display:grid;grid-template-columns:repeat(3,1fr);gap:20px;")}>
           {proximasClases.map((a) => (
-            <ActivityCard key={a.id} {...cardProps(a, getTipoActividad, getCategoria, instructorNombre)} />
+            <ActivityCard key={a.id} {...cardProps(a, getTipoActividad, getCategoria, instructorNombre, geolocation.coords)} />
           ))}
         </div>
       </div>

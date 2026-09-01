@@ -1,7 +1,7 @@
 // Cliente HTTP para la API real de ActiveHub (activehub-api). Centraliza base URL,
 // token JWT y el parseo del shape de error del backend (ApiError de GlobalExceptionHandler).
 
-const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8080";
+export const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8080";
 const TOKEN_KEY = "ah_token";
 
 export class ApiError extends Error {

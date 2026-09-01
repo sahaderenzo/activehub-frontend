@@ -91,6 +91,8 @@ interface ActividadCamposComunes {
   photoTint: string;
   rating: number | null;
   cuposMax: number;
+  latitud: number | null;
+  longitud: number | null;
 }
 
 interface ActividadListResp extends ActividadCamposComunes {
@@ -321,6 +323,8 @@ function aplanarActividad(r: ActividadCamposComunes, proximaClase?: ActividadLis
     photoTint: r.photoTint,
     rating: Number(r.rating ?? 0),
     cuposMax: r.cuposMax,
+    lat: r.latitud ?? undefined,
+    lng: r.longitud ?? undefined,
     proximaClase: proximaClase
       ? {
           fechaHora: proximaClase.fechaHora,
@@ -353,6 +357,8 @@ interface ActividadInput {
   ubicacion: string;
   photoTint: string;
   cuposMax: number;
+  lat?: number;
+  lng?: number;
 }
 
 interface ClaseInput {
@@ -422,6 +428,8 @@ interface DataContextValue {
   verDocumentoInstructor: (instructorId: string, documentoId: string) => Promise<void>;
   aprobarInstructor: (id: string) => Promise<void>;
   rechazarInstructor: (id: string, motivo?: string) => Promise<void>;
+  subirFotoPerfil: (archivo: File) => Promise<{ usuarioId: string }>;
+  subirFotoActividad: (actividadId: string, archivo: File) => Promise<{ actividadId: string }>;
 
   // reseñas real
   crearResenia: (claseId: string, puntaje: number, comentario: string) => Promise<void>;
@@ -535,7 +543,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return r;
   }, []);
 
-  const soloCamposActividad = (input: ActividadInput): ActividadInput => ({
+  const soloCamposActividad = (input: ActividadInput) => ({
     nombre: input.nombre,
     descripcion: input.descripcion,
     tipoActividadId: input.tipoActividadId,
@@ -544,6 +552,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     ubicacion: input.ubicacion,
     photoTint: input.photoTint,
     cuposMax: input.cuposMax,
+    latitud: input.lat ?? null,
+    longitud: input.lng ?? null,
   });
 
   const crearActividad = useCallback(async (input: ActividadInput) => {
@@ -699,6 +709,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const formData = new FormData();
     formData.append("archivo", archivo);
     return api.postForm<DocumentoInstructor>("/api/instructor/documentos", formData);
+  }, []);
+
+  const subirFotoPerfil = useCallback(async (archivo: File) => {
+    const formData = new FormData();
+    formData.append("archivo", archivo);
+    return api.postForm<{ usuarioId: string }>("/api/usuarios/foto", formData);
+  }, []);
+
+  const subirFotoActividad = useCallback(async (actividadId: string, archivo: File) => {
+    const formData = new FormData();
+    formData.append("archivo", archivo);
+    return api.postForm<{ actividadId: string }>(`/api/instructor/actividades/${actividadId}/foto`, formData);
   }, []);
 
   const listarDocumentosInstructor = useCallback(async (instructorId: string) => {
@@ -861,6 +883,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       verDocumentoInstructor,
       aprobarInstructor,
       rechazarInstructor,
+      subirFotoPerfil,
+      subirFotoActividad,
       crearResenia,
       eliminarResenia,
       listarResenasActividad,
@@ -928,6 +952,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       verDocumentoInstructor,
       aprobarInstructor,
       rechazarInstructor,
+      subirFotoPerfil,
+      subirFotoActividad,
       crearResenia,
       eliminarResenia,
       listarResenasActividad,

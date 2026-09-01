@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
+import ActivityPhoto from "../../components/ActivityPhoto";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
@@ -115,6 +116,7 @@ export default function InstructorMisActividades() {
                     >
                       FOTO
                     </div>
+                    <ActivityPhoto actividadId={a.id} />
                   </div>
                   <div style={s("flex:1;padding:18px 20px;min-width:0;")}>
                     <div style={s("display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;")}>

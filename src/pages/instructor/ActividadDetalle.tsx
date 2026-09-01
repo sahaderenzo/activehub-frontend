@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
 import StatusBadge from "../../components/StatusBadge";
+import ActivityPhoto from "../../components/ActivityPhoto";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
@@ -152,7 +153,9 @@ export default function InstructorActividadDetalle() {
             "display:flex;align-items:flex-start;gap:18px;background:#fff;border:1px solid #E7EDF3;border-radius:18px;padding:22px;margin-bottom:24px;box-shadow:0 1px 2px rgba(14,42,71,.04);flex-wrap:wrap;",
           )}
         >
-          <div style={s(`width:96px;height:96px;border-radius:14px;flex:none;background:${actividad.photoTint};`)} />
+          <div style={s(`width:96px;height:96px;border-radius:14px;flex:none;position:relative;overflow:hidden;background:${actividad.photoTint};`)}>
+            <ActivityPhoto actividadId={actividad.id} />
+          </div>
           <div style={s("flex:1;min-width:0;")}>
             <div style={s("display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;")}>
               <span style={s("font:700 11px Manrope;color:#12B5A5;text-transform:uppercase;letter-spacing:.4px;")}>
