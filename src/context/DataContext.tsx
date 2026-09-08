@@ -8,12 +8,14 @@ import type {
   EstadoClase,
   EstadoDenuncia,
   EstadoInscripcion,
+  EstadoPago,
   EstadoUsuario,
   Inscripcion,
   Pago,
   Penalizacion,
   RolNombre,
   TipoActividad,
+  TipoPenalizacion,
 } from "../lib/types";
 import {
   favoritos as seedFavoritos,
@@ -174,6 +176,60 @@ export interface RosterAlumno {
   telefono?: string;
   estado: string;
   presente?: boolean | null;
+}
+
+/** Clase propia del instructor (GET /api/instructor/clases). Incluye Finalizadas y Canceladas. */
+export interface MiClaseInstructor {
+  claseId: string;
+  actividadId: string;
+  actividadNombre: string;
+  actividadUbicacion: string;
+  fechaHora: string;
+  estado: EstadoClase;
+  cuposMax: number;
+  cuposOcupados: number;
+}
+
+/** Inscripción a una clase propia del instructor (GET /api/instructor/inscripciones). */
+export interface InscripcionMiClase {
+  inscripcionId: string;
+  claseId: string;
+  actividadId: string;
+  actividadNombre: string;
+  claseFechaHora: string;
+  claseEstado: EstadoClase;
+  alumnoId: string;
+  alumnoNombre: string;
+  estado: EstadoInscripcion;
+  createdAt: string;
+  pagoEstado: EstadoPago | null;
+  pagoMonto: number | null;
+}
+
+export interface PenalizacionAdmin {
+  id: string;
+  usuarioId: string;
+  usuarioNombre: string;
+  usuarioEmail: string;
+  tipo: TipoPenalizacion;
+  motivo: string;
+  monto: number | null;
+  fechaInicio: string | null;
+  fechaFin: string | null;
+  /** Solo las suspensiones tienen vigencia; el backend ya la calcula contra la fecha de hoy. */
+  vigente: boolean;
+  denunciaId: string | null;
+  cantidadPenalizacionesUsuario: number;
+  createdAt: string;
+}
+
+export interface CrearPenalizacionInput {
+  usuarioId: string;
+  tipo: TipoPenalizacion;
+  motivo: string;
+  monto?: number;
+  fechaInicio?: string;
+  fechaFin?: string;
 }
 
 export interface RosterClase {
@@ -387,6 +443,8 @@ interface DataContextValue {
   marcarAsistencia: (inscripcionId: string, presente: boolean) => Promise<void>;
   listarMisInscripciones: (estado?: EstadoInscripcion) => Promise<MiInscripcion[]>;
   listarRosterClase: (claseId: string) => Promise<RosterClase>;
+  listarMisClases: () => Promise<MiClaseInstructor[]>;
+  listarInscripcionesMisClases: () => Promise<InscripcionMiClase[]>;
 
   // validación de instructores (admin, real)
   listarInstructores: (estado?: "PENDIENTE" | "APROBADO" | "RECHAZADO") => Promise<InstructorAdmin[]>;
@@ -411,6 +469,9 @@ interface DataContextValue {
   listarMisDenuncias: () => Promise<MiDenuncia[]>;
   listarDenunciasAdmin: () => Promise<DenunciaAdmin[]>;
   resolverDenuncia: (id: string, accion: AccionResolucion) => Promise<void>;
+  tomarDenuncia: (id: string) => Promise<void>;
+  listarPenalizaciones: () => Promise<PenalizacionAdmin[]>;
+  crearPenalizacion: (input: CrearPenalizacionInput) => Promise<void>;
 
   // gestión de usuarios real
   listarUsuariosAdmin: () => Promise<UsuarioAdmin[]>;
@@ -618,6 +679,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return api.get<RosterClase>(`/api/instructor/clases/${claseId}/roster`);
   }, []);
 
+  // Clases e inscripciones propias del instructor. Son la fuente REAL de Panel, Próximas
+  // clases, Métricas e Historial: esas pantallas ya no dependen de la caché parcial
+  // `clases` ni del dataset mock `inscripciones`.
+  const listarMisClases = useCallback(async () => {
+    return api.get<MiClaseInstructor[]>("/api/instructor/clases");
+  }, []);
+
+  const listarInscripcionesMisClases = useCallback(async () => {
+    return api.get<InscripcionMiClase[]>("/api/instructor/inscripciones");
+  }, []);
+
   const listarInstructores = useCallback(async (estado?: "PENDIENTE" | "APROBADO" | "RECHAZADO") => {
     const query = estado ? `?estado=${estado}` : "";
     return api.get<InstructorAdmin[]>(`/api/admin/instructores${query}`);
@@ -691,6 +763,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await api.post(`/api/admin/denuncias/${id}/resolver`, { accion });
   }, []);
 
+  // Pendiente -> En Auditoría al abrir la denuncia (E4Ad-HU07 criterio 3).
+  const tomarDenuncia = useCallback(async (id: string) => {
+    await api.post(`/api/admin/denuncias/${id}/auditar`);
+  }, []);
+
+  const listarPenalizaciones = useCallback(async () => {
+    return api.get<PenalizacionAdmin[]>("/api/admin/penalizaciones");
+  }, []);
+
+  const crearPenalizacion = useCallback(async (input: CrearPenalizacionInput) => {
+    await api.post("/api/admin/penalizaciones", input);
+  }, []);
+
   const listarUsuariosAdmin = useCallback(async () => {
     return api.get<UsuarioAdmin[]>("/api/admin/usuarios");
   }, []);
@@ -757,6 +842,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       marcarAsistencia,
       listarMisInscripciones,
       listarRosterClase,
+      listarMisClases,
+      listarInscripcionesMisClases,
       listarInstructores,
       obtenerInstructor,
       listarClasesInstructor,
@@ -775,6 +862,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       listarMisDenuncias,
       listarDenunciasAdmin,
       resolverDenuncia,
+      tomarDenuncia,
+      listarPenalizaciones,
+      crearPenalizacion,
       listarUsuariosAdmin,
       actualizarEstadoUsuario,
       listarAuditoria,
@@ -814,6 +904,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       marcarAsistencia,
       listarMisInscripciones,
       listarRosterClase,
+      listarMisClases,
+      listarInscripcionesMisClases,
       listarInstructores,
       obtenerInstructor,
       listarClasesInstructor,
@@ -832,6 +924,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       listarMisDenuncias,
       listarDenunciasAdmin,
       resolverDenuncia,
+      tomarDenuncia,
+      listarPenalizaciones,
+      crearPenalizacion,
       listarUsuariosAdmin,
       actualizarEstadoUsuario,
       listarAuditoria,
@@ -850,3 +945,4 @@ export function useData(): DataContextValue {
   if (!ctx) throw new Error("useData must be used within DataProvider");
   return ctx;
 }
+

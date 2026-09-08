@@ -1,12 +1,12 @@
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
 import StatusBadge from "../../components/StatusBadge";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
-import { formatFecha, formatHora } from "../../lib/mockData";
-import { claseStatusType } from "../../lib/status";
+import type { MiClaseInstructor } from "../../context/DataContext";
+import { formatFecha, formatHora, disponibilidad } from "../../lib/mockData";
 import type { EstadoClase } from "../../lib/types";
 
 const ESTADO_DOT: Record<EstadoClase, string> = {
@@ -26,19 +26,32 @@ export default function InstructorProximasClases() {
     if (currentUser && !aprobado) navigate("/instructor/solicitud", { replace: true });
   }, [currentUser, aprobado, navigate]);
 
+  const [misClases, setMisClases] = useState<MiClaseInstructor[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState(false);
+
+  const cargar = useCallback(() => {
+    if (!aprobado) return;
+    setCargando(true);
+    setErrorCarga(false);
+    data
+      .listarMisClases()
+      .then(setMisClases)
+      .catch(() => setErrorCarga(true))
+      .finally(() => setCargando(false));
+  }, [aprobado, data.listarMisClases]);
+
+  useEffect(() => {
+    cargar();
+  }, [cargar]);
+
   const grupos = useMemo(() => {
     if (!currentUser) return [];
-    const misActividadIds = new Set(
-      data.actividades.filter((a) => a.instructorId === currentUser.id).map((a) => a.id),
-    );
     const now = new Date();
-    const upcoming = data.clases
-      .filter(
-        (c) =>
-          misActividadIds.has(c.actividadId) &&
-          (c.estado === "Programada" || c.estado === "Habilitada") &&
-          new Date(c.fechaHora) >= now,
-      )
+    // `misClases` viene del endpoint del instructor, así que la pantalla ya no depende
+    // de haber visitado antes el detalle de una actividad.
+    const upcoming = misClases
+      .filter((c) => (c.estado === "Programada" || c.estado === "Habilitada") && new Date(c.fechaHora) >= now)
       .sort((a, b) => new Date(a.fechaHora).getTime() - new Date(b.fechaHora).getTime());
 
     const today = new Date();
@@ -60,20 +73,19 @@ export default function InstructorProximasClases() {
 
     return Array.from(groupsMap.values()).map((g) => ({
       dia: g.dia,
-      clases: g.clases.map((c) => {
-        const act = data.actividades.find((a) => a.id === c.actividadId);
-        return {
-          id: c.id,
-          hora: formatHora(c.fechaHora),
-          name: act?.nombre ?? "Actividad",
-          lugar: act?.ubicacion ?? "—",
-          cupos: `${c.cuposOcupados}/${c.cuposMax}`,
-          estado: c.estado,
-          dot: ESTADO_DOT[c.estado],
-        };
-      }),
+      clases: g.clases.map((c) => ({
+        id: c.claseId,
+        hora: formatHora(c.fechaHora),
+        name: c.actividadNombre,
+        lugar: c.actividadUbicacion,
+        // Criterios 1, 3 y 4: la fila muestra los cupos DISPONIBLES y el badge de
+        // disponibilidad calculada, no el EstadoClase persistido.
+        cupos: `${c.cuposMax - c.cuposOcupados} de ${c.cuposMax} disponibles`,
+        disp: disponibilidad(c),
+        dot: ESTADO_DOT[c.estado],
+      })),
     }));
-  }, [currentUser, data.actividades, data.clases]);
+  }, [currentUser, misClases]);
 
   if (!currentUser || !aprobado) return null;
 
@@ -86,7 +98,23 @@ export default function InstructorProximasClases() {
         </p>
       </div>
       <div style={s("max-width:820px;padding:26px 32px 50px;")}>
-        {grupos.length === 0 && (
+        {errorCarga && (
+          <div style={s("background:#FBEAEB;border:1px solid #F3D2D3;border-radius:18px;padding:24px;text-align:center;")}>
+            <div style={s("color:#BE3A3E;font-weight:700;font-size:14px;margin-bottom:12px;")}>
+              No se pudo cargar el listado de clases.
+            </div>
+            <button
+              className="ah-btn"
+              onClick={cargar}
+              style={s(
+                "background:#fff;border:1px solid #D6DEE7;border-radius:10px;padding:9px 16px;font:700 13px Manrope;color:#41566B;cursor:pointer;",
+              )}
+            >
+              Reintentar
+            </button>
+          </div>
+        )}
+        {!errorCarga && !cargando && grupos.length === 0 && (
           <div style={s("background:#fff;border:1px dashed #D6DEE7;border-radius:18px;padding:40px;text-align:center;color:#7A8C9E;font-weight:600;")}>
             No tenés clases programadas próximamente.
           </div>
@@ -129,7 +157,7 @@ export default function InstructorProximasClases() {
                       </svg>
                       {c.cupos}
                     </span>
-                    <StatusBadge type={claseStatusType(c.estado)} />
+                    <StatusBadge type={c.disp.type} />
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#C2CCD6" strokeWidth={2}>
                       <path d="m9 18 6-6-6-6" />
                     </svg>

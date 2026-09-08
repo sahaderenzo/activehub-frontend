@@ -128,7 +128,16 @@ export default function AlumnoHome() {
                   placeholder="Meditación, running, trekking…"
                   style={s("border:none;outline:none;font:600 14.5px Manrope,sans-serif;color:#0E2A47;width:100%;")}
                   onKeyDown={(e) => {
+<<<<<<< Updated upstream
                     if (e.key === "Enter") goExplorar();
+=======
+                    // Enter tiene que hacer lo mismo que el botón "Buscar": buscar por
+                    // texto, sin filtro de distancia. Antes aplicaba un radio de 5 km en
+                    // silencio, así que la misma búsqueda daba resultados distintos según
+                    // se apretara Enter o el botón. El radio se pide explícitamente con el
+                    // control "cerca tuyo" de al lado.
+                    if (e.key === "Enter") irAExplorar();
+>>>>>>> Stashed changes
                   }}
                 />
               </div>
