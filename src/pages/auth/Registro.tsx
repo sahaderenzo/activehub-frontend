@@ -63,14 +63,10 @@ export default function Registro() {
     if (!form.email.trim()) e.email = "Este campo es obligatorio.";
     else if (!EMAIL_RE.test(form.email)) e.email = "Ingresá un correo electrónico válido.";
     if (!form.telefono.trim()) e.telefono = "Este campo es obligatorio.";
-<<<<<<< Updated upstream
-    if (!form.password || !passwordStrength(form.password).ok) e.password = "La contraseña necesita al menos 8 caracteres, una letra y un número.";
-=======
     if (!form.password || !passwordStrength(form.password).ok)
       e.password = "La contraseña necesita al menos 8 caracteres, una mayúscula y un número.";
     if (!confirmPassword) e.confirmPassword = "Confirmá tu contraseña.";
     else if (form.password !== confirmPassword) e.confirmPassword = "Las contraseñas no coinciden.";
->>>>>>> Stashed changes
     if (rol === "ALUMNO" && !form.fechaNacimiento) {
       e.fechaNacimiento = "Este campo es obligatorio.";
     }
@@ -106,21 +102,6 @@ export default function Registro() {
         });
         navigate(HOME_BY_ROL[user.rol]);
       } else {
-<<<<<<< Updated upstream
-        const user = await registerInstructor({
-          nombre: form.nombre,
-          apellido: form.apellido,
-          email: form.email,
-          telefono: form.telefono,
-          password: form.password,
-          fechaNacimiento: form.fechaNacimiento || undefined,
-          especialidad: form.especialidad,
-          aniosExperiencia: form.aniosExperiencia ? Number(form.aniosExperiencia) : undefined,
-          descripcion: form.descripcion || undefined,
-          aceptaTerminos: form.aceptaTerminos,
-        });
-        navigate(HOME_BY_ROL[user.rol]);
-=======
         // Los archivos van en el mismo request que los datos: si la subida falla, el
         // backend hace rollback y NO queda ninguna cuenta creada (E1A-HU04 criterio 9).
         setSubiendo(true);
@@ -144,7 +125,6 @@ export default function Registro() {
         } finally {
           setSubiendo(false);
         }
->>>>>>> Stashed changes
       }
     } catch (err) {
       if (err instanceof ApiError && err.fieldErrors) setErrors(err.fieldErrors);
@@ -426,8 +406,6 @@ export default function Registro() {
                   </div>
                   <div style={s("font-size:12px;color:#8194A8;margin-top:4px;")}>PDF, JPG o PNG · hasta 5 MB</div>
                 </div>
-<<<<<<< Updated upstream
-=======
                 {(archivosError || errors.documentos) && (
                   <div style={s("font-size:12px;color:#E5484D;font-weight:600;margin-top:8px;")}>
                     {archivosError ?? errors.documentos}
@@ -461,7 +439,6 @@ export default function Registro() {
                     ))}
                   </div>
                 )}
->>>>>>> Stashed changes
               </div>
             </div>
           )}
