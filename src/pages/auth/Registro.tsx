@@ -3,7 +3,6 @@ import type { ChangeEvent, DragEvent, FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { s } from "../../lib/style";
 import { ApiError, passwordStrength, useAuth } from "../../context/AuthContext";
-import { useData } from "../../context/DataContext";
 import { INTERESES } from "../../lib/mockData";
 import type { RolNombre } from "../../lib/types";
 
@@ -51,7 +50,6 @@ function formatTamanio(bytes: number): string {
 export default function Registro() {
   const navigate = useNavigate();
   const { registerAlumno, registerInstructor } = useAuth();
-  const { subirDocumento } = useData();
 
   const [rol, setRol] = useState<Rol>("ALUMNO");
   const [form, setForm] = useState<FormState>(EMPTY);
@@ -110,13 +108,19 @@ export default function Registro() {
     if (!form.email.trim()) e.email = "Este campo es obligatorio.";
     else if (!EMAIL_RE.test(form.email)) e.email = "Ingresá un correo electrónico válido.";
     if (!form.telefono.trim()) e.telefono = "Este campo es obligatorio.";
-    if (!form.password || !passwordStrength(form.password).ok) e.password = "La contraseña necesita al menos 8 caracteres, una letra y un número.";
+    if (!form.password || !passwordStrength(form.password).ok)
+      e.password = "La contraseña necesita al menos 8 caracteres, una mayúscula y un número.";
     if (!confirmPassword) e.confirmPassword = "Confirmá tu contraseña.";
     else if (form.password !== confirmPassword) e.confirmPassword = "Las contraseñas no coinciden.";
     if (rol === "ALUMNO" && !form.fechaNacimiento) {
       e.fechaNacimiento = "Este campo es obligatorio.";
     }
     if (rol === "INSTRUCTOR" && !form.especialidad.trim()) e.especialidad = "Este campo es obligatorio.";
+    // La documentación es obligatoria: sin ella el backend no crea la cuenta, así que
+    // conviene avisarlo acá antes de mandar el request.
+    if (rol === "INSTRUCTOR" && archivos.length === 0) {
+      e.documentos = "Adjuntá al menos un documento de certificación para crear tu cuenta.";
+    }
     if (!form.aceptaTerminos) e.aceptaTerminos = "Tenés que aceptar los términos para crear tu cuenta.";
     return e;
   };
@@ -144,37 +148,29 @@ export default function Registro() {
         });
         navigate(HOME_BY_ROL[user.rol]);
       } else {
-        const user = await registerInstructor({
-          nombre: form.nombre,
-          apellido: form.apellido,
-          email: form.email,
-          telefono: form.telefono,
-          password: form.password,
-          fechaNacimiento: form.fechaNacimiento || undefined,
-          especialidad: form.especialidad,
-          aniosExperiencia: form.aniosExperiencia ? Number(form.aniosExperiencia) : undefined,
-          descripcion: form.descripcion || undefined,
-          aceptaTerminos: form.aceptaTerminos,
-        });
-        if (archivos.length > 0) {
-          setSubiendo(true);
-          const fallidos: string[] = [];
-          for (const archivo of archivos) {
-            try {
-              await subirDocumento(archivo);
-            } catch {
-              fallidos.push(archivo.name);
-            }
-          }
+        // Los archivos van en el mismo request que los datos: si la subida falla, el
+        // backend hace rollback y NO queda ninguna cuenta creada (E1A-HU04 criterio 9).
+        setSubiendo(true);
+        try {
+          const user = await registerInstructor(
+            {
+              nombre: form.nombre,
+              apellido: form.apellido,
+              email: form.email,
+              telefono: form.telefono,
+              password: form.password,
+              fechaNacimiento: form.fechaNacimiento || undefined,
+              especialidad: form.especialidad,
+              aniosExperiencia: form.aniosExperiencia ? Number(form.aniosExperiencia) : undefined,
+              descripcion: form.descripcion || undefined,
+              aceptaTerminos: form.aceptaTerminos,
+            },
+            archivos,
+          );
+          navigate(HOME_BY_ROL[user.rol]);
+        } finally {
           setSubiendo(false);
-          if (fallidos.length > 0) {
-            // La cuenta ya se creó bien: esto no bloquea la navegación, solo avisamos.
-            window.alert(
-              `Tu cuenta se creó correctamente, pero no pudimos subir: ${fallidos.join(", ")}. Podés volver a intentarlo más tarde.`,
-            );
-          }
         }
-        navigate(HOME_BY_ROL[user.rol]);
       }
     } catch (err) {
       if (err instanceof ApiError && err.fieldErrors) setErrors(err.fieldErrors);
@@ -549,8 +545,10 @@ export default function Registro() {
                   </div>
                   <div style={s("font-size:12px;color:#8194A8;margin-top:4px;")}>PDF, JPG o PNG · hasta 5 MB</div>
                 </div>
-                {archivosError && (
-                  <div style={s("font-size:12px;color:#E5484D;font-weight:600;margin-top:8px;")}>{archivosError}</div>
+                {(archivosError || errors.documentos) && (
+                  <div style={s("font-size:12px;color:#E5484D;font-weight:600;margin-top:8px;")}>
+                    {archivosError ?? errors.documentos}
+                  </div>
                 )}
                 {archivos.length > 0 && (
                   <div style={s("display:flex;flex-direction:column;gap:8px;margin-top:12px;")}>

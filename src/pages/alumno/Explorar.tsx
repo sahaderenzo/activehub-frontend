@@ -438,7 +438,27 @@ export default function AlumnoExplorar() {
                 "background:#fff;border:1px dashed #D6DEE7;border-radius:16px;padding:50px 20px;text-align:center;color:#7A8C9E;font-weight:600;",
               )}
             >
-              No encontramos actividades con esos filtros. Probá ajustando los criterios.
+              {/* Si hay un filtro de distancia activo pero no tenemos la ubicación, el
+                  resultado vacío no es "no hay actividades": es que no se puede calcular
+                  la distancia. Decirlo evita que el alumno crea que no hay oferta. */}
+              {radio !== "Cualquier distancia" && !geolocation.coords ? (
+                <>
+                  <div style={s("margin-bottom:12px;")}>
+                    Para filtrar por distancia necesitamos tu ubicación, y todavía no la tenemos.
+                  </div>
+                  <button
+                    className="ah-btn"
+                    onClick={() => setRadio("Cualquier distancia")}
+                    style={s(
+                      "background:#fff;border:1px solid #D6DEE7;border-radius:10px;padding:9px 16px;font:700 13px Manrope;color:#41566B;cursor:pointer;",
+                    )}
+                  >
+                    Ver todas sin filtrar por distancia
+                  </button>
+                </>
+              ) : (
+                "No se encontraron actividades con esos criterios."
+              )}
             </div>
           ) : (
             <div className="ah-grid-3" style={s("display:grid;grid-template-columns:repeat(3,1fr);gap:20px;")}>

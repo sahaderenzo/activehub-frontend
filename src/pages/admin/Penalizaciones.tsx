@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import DashLayout from "../../components/DashLayout";
 import { s } from "../../lib/style";
-import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
+import type { PenalizacionAdmin, UsuarioAdmin } from "../../context/DataContext";
+import { ApiError } from "../../lib/api";
 import { formatFecha } from "../../lib/mockData";
 import type { TipoPenalizacion } from "../../lib/types";
 
@@ -15,46 +16,87 @@ interface FormState {
   usuarioId: string;
   tipo: TipoPenalizacion;
   motivo: string;
+  monto: string;
+  fechaInicio: string;
+  fechaFin: string;
 }
 
-export default function AdminPenalizaciones() {
-  const { users } = useAuth();
-  const { penalizaciones, aplicarPenalizacion } = useData();
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState<FormState>({ usuarioId: users[0]?.id ?? "", tipo: "Económica", motivo: "" });
+const FORM_VACIO: FormState = {
+  usuarioId: "",
+  tipo: "Económica",
+  motivo: "",
+  monto: "",
+  fechaInicio: "",
+  fechaFin: "",
+};
 
-  const acumPorUsuario = useMemo(() => {
-    const map = new Map<string, number>();
-    penalizaciones.forEach((p) => map.set(p.usuarioId, (map.get(p.usuarioId) ?? 0) + 1));
-    return map;
-  }, [penalizaciones]);
+export default function AdminPenalizaciones() {
+  const { listarPenalizaciones, crearPenalizacion, listarUsuariosAdmin } = useData();
+
+  const [penalizaciones, setPenalizaciones] = useState<PenalizacionAdmin[]>([]);
+  const [usuarios, setUsuarios] = useState<UsuarioAdmin[]>([]);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState<FormState>(FORM_VACIO);
+  const [error, setError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
+
+  // Datos reales: antes la pantalla leía el dataset mock del DataContext, así que lo que el
+  // admin "aplicaba" no se guardaba y las penalizaciones que sí creaba `resolverdenuncia`
+  // no aparecían nunca.
+  const cargar = useCallback(() => {
+    setError(null);
+    listarPenalizaciones()
+      .then(setPenalizaciones)
+      .catch((err) => setError(err instanceof ApiError ? err.message : "No pudimos cargar las penalizaciones."));
+    listarUsuariosAdmin().then(setUsuarios).catch(() => {});
+  }, [listarPenalizaciones, listarUsuariosAdmin]);
+
+  useEffect(() => {
+    cargar();
+  }, [cargar]);
 
   const kpis = useMemo(() => {
     const usuariosPenalizados = new Set(penalizaciones.map((p) => p.usuarioId)).size;
-    const suspensiones = penalizaciones.filter((p) => p.tipo === "Suspensión temporal").length;
+    const suspensionesVigentes = penalizaciones.filter((p) => p.vigente).length;
     return [
       { l: "Total penalizaciones", v: penalizaciones.length, c: "#0E2A47" },
       { l: "Usuarios sancionados", v: usuariosPenalizados, c: "#B9741A" },
-      { l: "Suspensiones activas", v: suspensiones, c: "#BE3A3E" },
+      { l: "Suspensiones vigentes", v: suspensionesVigentes, c: "#BE3A3E" },
     ];
   }, [penalizaciones]);
 
-  const rows = useMemo(
-    () =>
-      [...penalizaciones]
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-        .map((p) => {
-          const user = users.find((u) => u.id === p.usuarioId);
-          return { ...p, userNombre: user ? `${user.nombre} ${user.apellido}` : "Usuario eliminado", acum: acumPorUsuario.get(p.usuarioId) ?? 1 };
-        }),
-    [penalizaciones, users, acumPorUsuario],
-  );
+  const rows = penalizaciones;
 
-  const submit = () => {
-    if (!form.usuarioId || !form.motivo.trim()) return;
-    aplicarPenalizacion({ usuarioId: form.usuarioId, tipo: form.tipo, motivo: form.motivo.trim() });
-    setShowForm(false);
-    setForm({ usuarioId: users[0]?.id ?? "", tipo: "Económica", motivo: "" });
+  const submit = async () => {
+    setFormError(null);
+    if (!form.usuarioId) return setFormError("Elegí a qué usuario penalizar.");
+    if (!form.motivo.trim()) return setFormError("El motivo es obligatorio.");
+    if (form.tipo === "Económica" && (!form.monto || Number(form.monto) <= 0)) {
+      return setFormError("Ingresá el monto de la penalización económica.");
+    }
+    if (form.tipo === "Suspensión temporal" && (!form.fechaInicio || !form.fechaFin)) {
+      return setFormError("Indicá la fecha de inicio y de fin de la suspensión.");
+    }
+
+    setGuardando(true);
+    try {
+      await crearPenalizacion({
+        usuarioId: form.usuarioId,
+        tipo: form.tipo,
+        motivo: form.motivo.trim(),
+        monto: form.tipo === "Económica" ? Number(form.monto) : undefined,
+        fechaInicio: form.tipo === "Suspensión temporal" ? form.fechaInicio : undefined,
+        fechaFin: form.tipo === "Suspensión temporal" ? form.fechaFin : undefined,
+      });
+      setShowForm(false);
+      setForm(FORM_VACIO);
+      cargar();
+    } catch (err) {
+      setFormError(err instanceof ApiError ? err.message : "No se pudo aplicar la penalización. Intentá de nuevo.");
+    } finally {
+      setGuardando(false);
+    }
   };
 
   return (
@@ -118,9 +160,9 @@ export default function AdminPenalizaciones() {
                           "width:34px;height:34px;border-radius:99px;background:#FBEAEB;color:#BE3A3E;display:flex;align-items:center;justify-content:center;font:700 13px Space Grotesk,sans-serif;flex:none;",
                         )}
                       >
-                        {p.userNombre.charAt(0).toUpperCase()}
+                        {p.usuarioNombre.charAt(0).toUpperCase()}
                       </span>
-                      <span style={s("font:700 14px Manrope,sans-serif;color:#0E2A47;")}>{p.userNombre}</span>
+                      <span style={s("font:700 14px Manrope,sans-serif;color:#0E2A47;")}>{p.usuarioNombre}</span>
                     </div>
                     <span
                       style={s(
@@ -129,20 +171,55 @@ export default function AdminPenalizaciones() {
                     >
                       {p.tipo}
                     </span>
-                    <span style={s("font-size:13px;color:#65788C;font-weight:600;")}>{p.motivo}</span>
+                    <div>
+                      <div style={s("font-size:13px;color:#65788C;font-weight:600;")}>{p.motivo}</div>
+                      {p.monto != null && (
+                        <div style={s("font:700 12.5px Manrope,sans-serif;color:#B9741A;margin-top:2px;")}>
+                          Monto: ${p.monto.toLocaleString("es-AR")}
+                        </div>
+                      )}
+                      {p.fechaInicio && p.fechaFin && (
+                        <div style={s("font-size:12.5px;color:#7A8C9E;font-weight:600;margin-top:2px;")}>
+                          Vigencia: {formatFecha(p.fechaInicio)} → {formatFecha(p.fechaFin)}
+                        </div>
+                      )}
+                      {p.denunciaId && (
+                        <div style={s("font-size:12.5px;color:#3A6FF0;font-weight:700;margin-top:2px;")}>
+                          Originada en una denuncia
+                        </div>
+                      )}
+                    </div>
                     <span style={s("font-size:13px;color:#65788C;font-weight:600;")}>{formatFecha(p.createdAt)}</span>
-                    <span style={s("font:700 15px Space Grotesk,sans-serif;color:#BE3A3E;")}>{p.acum}</span>
+                    <span style={s("font:700 15px Space Grotesk,sans-serif;color:#BE3A3E;")}>
+                      {p.cantidadPenalizacionesUsuario}
+                    </span>
                     <span
                       style={s(
-                        "font:700 12px Manrope,sans-serif;padding:5px 11px;border-radius:99px;background:#FBEAEB;color:#BE3A3E;border:1px solid #F3D2D3;width:fit-content;",
+                        p.vigente
+                          ? "font:700 12px Manrope,sans-serif;padding:5px 11px;border-radius:99px;background:#FBEAEB;color:#BE3A3E;border:1px solid #F3D2D3;width:fit-content;"
+                          : "font:700 12px Manrope,sans-serif;padding:5px 11px;border-radius:99px;background:#F2F5F9;color:#65788C;border:1px solid #E2E9F0;width:fit-content;",
                       )}
                     >
-                      Aplicada
+                      {p.vigente ? "Vigente" : "Aplicada"}
                     </span>
                   </div>
                 );
               })}
-              {rows.length === 0 && (
+              {error && (
+                <div style={s("padding:30px 22px;text-align:center;")}>
+                  <div style={s("color:#BE3A3E;font:700 13.5px Manrope,sans-serif;margin-bottom:12px;")}>{error}</div>
+                  <button
+                    className="ah-btn"
+                    onClick={cargar}
+                    style={s(
+                      "background:#fff;border:1px solid #D6DEE7;border-radius:10px;padding:9px 16px;font:700 13px Manrope,sans-serif;color:#41566B;cursor:pointer;",
+                    )}
+                  >
+                    Reintentar
+                  </button>
+                </div>
+              )}
+              {!error && rows.length === 0 && (
                 <div style={s("padding:40px 22px;text-align:center;color:#90A1B2;font:600 13.5px Manrope,sans-serif;")}>No hay penalizaciones aplicadas.</div>
               )}
             </div>
@@ -161,9 +238,10 @@ export default function AdminPenalizaciones() {
               onChange={(e) => setForm({ ...form, usuarioId: e.target.value })}
               style={s("width:100%;border:1px solid #E2E9F0;border-radius:10px;padding:10px 12px;font:600 13.5px Manrope,sans-serif;color:#0E2A47;margin-bottom:14px;")}
             >
-              {users.map((u) => (
+              <option value="">Elegí un usuario…</option>
+              {usuarios.map((u) => (
                 <option key={u.id} value={u.id}>
-                  {u.nombre} {u.apellido} · {u.rol}
+                  {u.nombre} {u.apellido} · {u.rol} · {u.email}
                 </option>
               ))}
             </select>
@@ -178,14 +256,59 @@ export default function AdminPenalizaciones() {
               <option value="Suspensión temporal">Suspensión temporal</option>
             </select>
 
+            {/* Campos condicionales (criterios 4 y 5): monto para Económica, vigencia para Suspensión. */}
+            {form.tipo === "Económica" ? (
+              <>
+                <label style={s("display:block;font:700 12px Manrope,sans-serif;color:#41566B;margin-bottom:6px;")}>
+                  Monto ($)
+                </label>
+                <input
+                  value={form.monto}
+                  onChange={(e) => setForm({ ...form, monto: e.target.value.replace(/[^\d]/g, "") })}
+                  inputMode="numeric"
+                  placeholder="5000"
+                  style={s("width:100%;border:1px solid #E2E9F0;border-radius:10px;padding:10px 12px;font:600 13.5px Manrope,sans-serif;color:#0E2A47;margin-bottom:14px;")}
+                />
+              </>
+            ) : (
+              <div style={s("display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;")}>
+                <div>
+                  <label style={s("display:block;font:700 12px Manrope,sans-serif;color:#41566B;margin-bottom:6px;")}>
+                    Fecha inicio
+                  </label>
+                  <input
+                    type="date"
+                    value={form.fechaInicio}
+                    onChange={(e) => setForm({ ...form, fechaInicio: e.target.value })}
+                    style={s("width:100%;border:1px solid #E2E9F0;border-radius:10px;padding:10px 12px;font:600 13.5px Manrope,sans-serif;color:#0E2A47;")}
+                  />
+                </div>
+                <div>
+                  <label style={s("display:block;font:700 12px Manrope,sans-serif;color:#41566B;margin-bottom:6px;")}>
+                    Fecha fin
+                  </label>
+                  <input
+                    type="date"
+                    value={form.fechaFin}
+                    onChange={(e) => setForm({ ...form, fechaFin: e.target.value })}
+                    style={s("width:100%;border:1px solid #E2E9F0;border-radius:10px;padding:10px 12px;font:600 13.5px Manrope,sans-serif;color:#0E2A47;")}
+                  />
+                </div>
+              </div>
+            )}
+
             <label style={s("display:block;font:700 12px Manrope,sans-serif;color:#41566B;margin-bottom:6px;")}>Motivo</label>
             <textarea
               value={form.motivo}
               onChange={(e) => setForm({ ...form, motivo: e.target.value })}
               rows={3}
               placeholder="Describí el motivo de la sanción"
-              style={s("width:100%;border:1px solid #E2E9F0;border-radius:10px;padding:10px 12px;font:600 13.5px Manrope,sans-serif;color:#0E2A47;margin-bottom:20px;resize:vertical;")}
+              style={s("width:100%;border:1px solid #E2E9F0;border-radius:10px;padding:10px 12px;font:600 13.5px Manrope,sans-serif;color:#0E2A47;margin-bottom:12px;resize:vertical;")}
             />
+
+            {formError && (
+              <div style={s("font:700 12.5px Manrope,sans-serif;color:#BE3A3E;margin-bottom:12px;")}>{formError}</div>
+            )}
 
             <div style={s("display:flex;gap:10px;")}>
               <button
@@ -198,9 +321,14 @@ export default function AdminPenalizaciones() {
               <button
                 className="ah-btn"
                 onClick={submit}
-                style={s("flex:1;background:#E5484D;color:#fff;border:none;border-radius:10px;padding:11px;font:700 13.5px Manrope,sans-serif;cursor:pointer;")}
+                disabled={guardando}
+                style={s(
+                  `flex:1;background:#E5484D;color:#fff;border:none;border-radius:10px;padding:11px;font:700 13.5px Manrope,sans-serif;cursor:${
+                    guardando ? "not-allowed" : "pointer"
+                  };opacity:${guardando ? ".6" : "1"};`,
+                )}
               >
-                Aplicar
+                {guardando ? "Aplicando…" : form.tipo === "Suspensión temporal" ? "Suspender" : "Aplicar penalización"}
               </button>
             </div>
           </div>

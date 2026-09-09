@@ -102,8 +102,11 @@ export default function InstructorActividadDetalle() {
     }
   };
 
+  // Sólo se puede eliminar una clase sin inscriptos (E2I-HU05 criterio 7). El backend es
+  // quien decide de verdad — acá se oculta el botón cuando ya hay cupos ocupados para no
+  // ofrecer una acción que va a fallar.
   const eliminarClase = async (claseId: string) => {
-    if (window.confirm("¿Eliminar esta clase? Esta acción no se puede deshacer.")) {
+    if (window.confirm("¿Eliminar esta clase? No tiene inscriptos.")) {
       try {
         await data.eliminarClase(claseId, actividad.id);
       } catch (err) {
@@ -115,7 +118,11 @@ export default function InstructorActividadDetalle() {
   const eliminarActividad = async () => {
     if (window.confirm(`¿Eliminar la actividad "${actividad.nombre}" y todas sus clases? Esta acción no se puede deshacer.`)) {
       try {
-        for (const c of clases) await data.eliminarClase(c.id, actividad.id);
+        // NO borrar las clases una por una antes: `eliminarClase` es una baja lógica pelada
+        // y dejaba las clases invisibles (@SQLRestriction), con lo cual la cascada de
+        // `eliminarActividad` — que cancela inscripciones, reintegra los pagos Retenido y
+        // notifica a los alumnos — encontraba la lista vacía y no reintegraba nada.
+        // El backend ya hace todo el trabajo en una sola transacción.
         await data.eliminarActividad(actividad.id);
         navigate("/instructor/actividades");
       } catch (err) {
@@ -327,15 +334,17 @@ export default function InstructorActividadDetalle() {
                 >
                   Editar
                 </button>
-                <button
-                  className="ah-btn"
-                  onClick={() => eliminarClase(c.id)}
-                  style={s(
-                    "background:#fff;border:1px solid #F3D2D3;border-radius:8px;padding:7px 11px;font:700 12px Manrope;color:#BE3A3E;cursor:pointer;",
-                  )}
-                >
-                  Eliminar
-                </button>
+                {c.cuposOcupados === 0 && (
+                  <button
+                    className="ah-btn"
+                    onClick={() => eliminarClase(c.id)}
+                    style={s(
+                      "background:#fff;border:1px solid #F3D2D3;border-radius:8px;padding:7px 11px;font:700 12px Manrope;color:#BE3A3E;cursor:pointer;",
+                    )}
+                  >
+                    Eliminar
+                  </button>
+                )}
               </div>
             </div>
           ))}

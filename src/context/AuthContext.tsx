@@ -84,15 +84,22 @@ function saveUsers(users: StoredUsuario[]) {
   localStorage.setItem(USERS_KEY, JSON.stringify(users));
 }
 
+/**
+ * RN-20: mínimo 8 caracteres, al menos una MAYÚSCULA y al menos un número.
+ * Tiene que coincidir con la regex del backend (`^(?=.*[A-Z])(?=.*\d).{8,}$` en los tres
+ * Request de registro): antes acá alcanzaba con "una letra", así que `password1` pasaba
+ * la validación del cliente y también la del servidor.
+ */
 function passwordStrength(password: string): { ok: boolean; label: string; color: string } {
   if (password.length < 8) return { ok: false, label: "Contraseña muy débil (mínimo 8 caracteres)", color: "#E5484D" };
-  const hasLetter = /[a-zA-Z]/.test(password);
-  const hasNumber = /[0-9]/.test(password);
-  if (!hasLetter || !hasNumber) return { ok: false, label: "Necesitás al menos una letra y un número", color: "#E5484D" };
   const hasUpper = /[A-Z]/.test(password);
+  const hasNumber = /[0-9]/.test(password);
+  if (!hasUpper || !hasNumber) {
+    return { ok: false, label: "Necesitás al menos una mayúscula y un número", color: "#E5484D" };
+  }
   const hasSpecial = /[^a-zA-Z0-9]/.test(password);
-  if (password.length >= 10 && hasUpper && hasSpecial) return { ok: true, label: "Contraseña fuerte", color: "#0C8576" };
-  if (password.length >= 9 && hasUpper) return { ok: true, label: "Contraseña buena", color: "#0C8576" };
+  if (password.length >= 10 && hasSpecial) return { ok: true, label: "Contraseña fuerte", color: "#0C8576" };
+  if (password.length >= 9) return { ok: true, label: "Contraseña buena", color: "#0C8576" };
   return { ok: true, label: "Contraseña aceptable", color: "#B9741A" };
 }
 
@@ -146,7 +153,7 @@ interface AuthContextValue {
   initializing: boolean;
   users: StoredUsuario[];
   registerAlumno: (input: RegistrarAlumnoInput) => Promise<SesionUsuario>;
-  registerInstructor: (input: RegistrarInstructorInput) => Promise<SesionUsuario>;
+  registerInstructor: (input: RegistrarInstructorInput, documentos: File[]) => Promise<SesionUsuario>;
   login: (email: string, password: string) => Promise<SesionUsuario>;
   logout: () => void;
   createAdmin: (input: RegistrarAdminInput) => Promise<Usuario>;
@@ -200,8 +207,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return sesion;
   }, []);
 
-  const registerInstructor = useCallback(async (input: RegistrarInstructorInput) => {
-    const { usuario, token } = await api.post<AuthRespuesta>("/api/auth/registro/instructor", input);
+  // La documentación viaja en el MISMO request que los datos: la cuenta no puede crearse
+  // sin ella (E1A-HU04 criterio 9, RN-12). Si el backend rechaza los archivos, no se creó
+  // ningún Usuario y la excepción llega tal cual a la pantalla de registro.
+  const registerInstructor = useCallback(async (input: RegistrarInstructorInput, documentos: File[]) => {
+    const fd = new FormData();
+    fd.append("datos", new Blob([JSON.stringify(input)], { type: "application/json" }));
+    documentos.forEach((archivo) => fd.append("documentos", archivo));
+
+    const { usuario, token } = await api.postForm<AuthRespuesta>("/api/auth/registro/instructor", fd);
     setToken(token);
     const sesion: SesionUsuario = {
       ...usuario,

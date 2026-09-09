@@ -28,6 +28,7 @@ import InstructorCrearActividad from "./pages/instructor/CrearActividad";
 import InstructorActividadDetalle from "./pages/instructor/ActividadDetalle";
 import InstructorGestionClase from "./pages/instructor/GestionClase";
 import InstructorProximasClases from "./pages/instructor/ProximasClases";
+import InstructorHistorialClases from "./pages/instructor/HistorialClases";
 import InstructorMetricas from "./pages/instructor/Metricas";
 import InstructorResenas from "./pages/instructor/Resenas";
 import InstructorSolicitud from "./pages/instructor/Solicitud";
@@ -84,6 +85,7 @@ function AppRoutes() {
             <Route path="/instructor/actividades/:id" element={<InstructorActividadDetalle />} />
             <Route path="/instructor/clases/:id" element={<InstructorGestionClase />} />
             <Route path="/instructor/proximas-clases" element={<InstructorProximasClases />} />
+            <Route path="/instructor/historial" element={<InstructorHistorialClases />} />
             <Route path="/instructor/metricas" element={<InstructorMetricas />} />
             <Route path="/instructor/resenas" element={<InstructorResenas />} />
             <Route path="/instructor/solicitud" element={<InstructorSolicitud />} />

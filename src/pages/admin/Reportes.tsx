@@ -16,6 +16,34 @@ const TABS: { key: ReportTab; label: string; title: string }[] = [
 
 const DONUT_COLORS = ["#12B5A5", "#FF6A2B", "#2D5BC8", "#7A52D9", "#F5A623"];
 
+const PERIODOS: { dias: number; label: string }[] = [
+  { dias: 7, label: "Últimos 7 días" },
+  { dias: 30, label: "Últimos 30 días" },
+  { dias: 90, label: "Últimos 90 días" },
+  { dias: 365, label: "Último año" },
+  { dias: 0, label: "Todo el histórico" },
+];
+
+/**
+ * Descarga real de un CSV armado en el cliente. Antes los tres botones de exportación
+ * (PDF, Excel, CSV) llamaban al mismo `setModalOpen(true)` y no generaban ningún archivo.
+ * El CSV se abre en Excel sin conversión, así que cubre los dos formatos tabulares.
+ */
+function descargarCsv(nombreArchivo: string, filas: (string | number)[][]) {
+  const escapar = (v: string | number) => {
+    const texto = String(v ?? "");
+    return /[";\n]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
+  };
+  // BOM para que Excel respete los acentos; separador ";" que es lo que espera en es-AR.
+  const contenido = "﻿" + filas.map((f) => f.map(escapar).join(";")).join("\r\n");
+  const url = URL.createObjectURL(new Blob([contenido], { type: "text/csv;charset=utf-8;" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = nombreArchivo;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function money(n: number): string {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1).replace(".0", "")}M`;
   if (n >= 1_000) return `$${Math.round(n / 1000)}K`;
@@ -48,19 +76,48 @@ export default function AdminReportes() {
     listarClasesAdmin().then(setClasesAdmin).catch(() => {});
   }, [listarDenunciasAdmin, listarUsuariosAdmin, listarInscripcionesAdmin, listarClasesAdmin]);
 
+  // Los filtros se editan en un borrador y recién se aplican al presionar "Aplicar", que es
+  // lo que pide el criterio 5. Antes los chips eran divs de texto fijo y el botón no tenía
+  // handler, pero el encabezado del reporte igual afirmaba "Últimos 30 días".
+  const [borradorPeriodo, setBorradorPeriodo] = useState(30);
+  const [borradorCategoria, setBorradorCategoria] = useState("");
+  const [periodoDias, setPeriodoDias] = useState(30);
+  const [categoriaId, setCategoriaId] = useState("");
+
+  const periodoLabel = PERIODOS.find((p) => p.dias === periodoDias)?.label ?? "Todo el histórico";
+  const categoriaLabel = categoriaId
+    ? categorias.find((c) => c.id === categoriaId)?.nombre ?? "Categoría"
+    : "Todas las categorías";
+
+  /** Actividades que caen dentro de la categoría filtrada (todas si no hay filtro). */
+  const actividadIdsFiltradas = useMemo(() => {
+    if (!categoriaId) return null;
+    const tipoIds = tiposActividad.filter((t) => t.categoriaId === categoriaId).map((t) => t.id);
+    return new Set(actividades.filter((a) => tipoIds.includes(a.tipoActividadId)).map((a) => a.id));
+  }, [categoriaId, tiposActividad, actividades]);
+
+  const inscripcionesFiltradas = useMemo(() => {
+    const desde = periodoDias > 0 ? Date.now() - periodoDias * 24 * 60 * 60 * 1000 : null;
+    return inscripciones.filter((i) => {
+      if (desde !== null && new Date(i.createdAt).getTime() < desde) return false;
+      if (actividadIdsFiltradas && !actividadIdsFiltradas.has(i.actividadId)) return false;
+      return true;
+    });
+  }, [inscripciones, periodoDias, actividadIdsFiltradas]);
+
   const pagos = useMemo(
-    () => inscripciones.map((i) => i.pago).filter((p): p is NonNullable<InscripcionAdmin["pago"]> => p !== null),
-    [inscripciones],
+    () => inscripcionesFiltradas.map((i) => i.pago).filter((p): p is NonNullable<InscripcionAdmin["pago"]> => p !== null),
+    [inscripcionesFiltradas],
   );
 
   // --- Datos reales de la plataforma (page-level, siempre visibles) --------
   const globalKpis = useMemo(() => {
-    const totalReservas = inscripciones.length;
-    const canceladas = inscripciones.filter((i) => i.estado === "Cancelada").length;
+    const totalReservas = inscripcionesFiltradas.length;
+    const canceladas = inscripcionesFiltradas.filter((i) => i.estado === "Cancelada").length;
     const ingresos = pagos.filter((p) => p.estado === "Liberado" || p.estado === "Efectivo").reduce((sum, p) => sum + p.monto, 0);
     const cancelPct = totalReservas > 0 ? (canceladas / totalReservas) * 100 : 0;
     return { totalReservas, ingresos, cancelPct };
-  }, [inscripciones, pagos]);
+  }, [inscripcionesFiltradas, pagos]);
 
   const weekBars = useMemo(() => {
     const now = new Date();
@@ -69,7 +126,7 @@ export default function AdminReportes() {
       start.setDate(now.getDate() - (7 - i) * 7);
       const end = new Date(start);
       end.setDate(start.getDate() + 7);
-      const count = inscripciones.filter((insc) => {
+      const count = inscripcionesFiltradas.filter((insc) => {
         const d = new Date(insc.createdAt);
         return d >= start && d < end;
       }).length;
@@ -77,16 +134,31 @@ export default function AdminReportes() {
     });
     const max = Math.max(1, ...buckets.map((b) => b.count));
     return buckets.map((b) => ({ label: b.label, h: `${Math.max(6, Math.round((b.count / max) * 100))}%` }));
-  }, [inscripciones]);
+  }, [inscripcionesFiltradas]);
 
   const categoriaStats = useMemo(() => {
     return categorias.map((cat, i) => {
       const tipoIds = tiposActividad.filter((t) => t.categoriaId === cat.id).map((t) => t.id);
       const actIds = actividades.filter((a) => tipoIds.includes(a.tipoActividadId)).map((a) => a.id);
-      const reservasCat = inscripciones.filter((insc) => actIds.includes(insc.actividadId));
-      const ingresosCat = reservasCat.reduce((sum, insc) => sum + (insc.pago ? insc.pago.monto : 0), 0);
+      const reservasCat = inscripcionesFiltradas.filter((insc) => actIds.includes(insc.actividadId));
+      // Mismo criterio que el KPI de arriba: solo plata efectivamente acreditada. Antes esta
+      // columna sumaba TODOS los pagos, incluidos Cancelado y Retenido, así que la tabla no
+      // cerraba con el KPI y convivían dos definiciones de "ingresos" en la misma pantalla.
+      const ingresosCat = reservasCat.reduce(
+        (sum, insc) =>
+          insc.pago && (insc.pago.estado === "Liberado" || insc.pago.estado === "Efectivo")
+            ? sum + insc.pago.monto
+            : sum,
+        0,
+      );
+      // Top instructor por RESERVAS de la categoría, no por cantidad de actividades
+      // publicadas: antes ganaba quien más publicaba aunque no tuviera una sola inscripción.
       const instructorCounts = new Map<string, number>();
-      actividades.filter((a) => actIds.includes(a.id)).forEach((a) => instructorCounts.set(a.instructorId, (instructorCounts.get(a.instructorId) ?? 0) + 1));
+      reservasCat.forEach((insc) => {
+        const act = actividades.find((a) => a.id === insc.actividadId);
+        if (!act) return;
+        instructorCounts.set(act.instructorId, (instructorCounts.get(act.instructorId) ?? 0) + 1);
+      });
       let topInstructorId: string | null = null;
       let topCount = 0;
       instructorCounts.forEach((count, id) => {
@@ -104,7 +176,23 @@ export default function AdminReportes() {
         color: DONUT_COLORS[i % DONUT_COLORS.length],
       };
     });
-  }, [categorias, actividades, tiposActividad, inscripciones, usuarios]);
+  }, [categorias, actividades, tiposActividad, inscripcionesFiltradas, usuarios]);
+
+  const exportarCsv = () => {
+    const filas: (string | number)[][] = [
+      ["Reporte ActiveHub"],
+      ["Período", periodoLabel],
+      ["Alcance", categoriaLabel],
+      [],
+      ["Total reservas", globalKpis.totalReservas],
+      ["Ingresos acreditados", globalKpis.ingresos],
+      ["Cancelaciones (%)", globalKpis.cancelPct.toFixed(1)],
+      [],
+      ["Categoría", "Reservas", "Ingresos", "Top instructor"],
+      ...categoriaStats.map((c) => [c.cat, c.reservas, c.ingreso, c.top]),
+    ];
+    descargarCsv(`activehub-reporte-${new Date().toISOString().slice(0, 10)}.csv`, filas);
+  };
 
   const donut = useMemo(() => {
     const total = Math.max(1, categoriaStats.reduce((sum, c) => sum + c.reservas, 0));
@@ -190,6 +278,7 @@ export default function AdminReportes() {
           <button
             onClick={() => setModalOpen(true)}
             className="ah-btn"
+            title="Abre la vista previa lista para imprimir o guardar como PDF"
             style={s(
               "background:#fff;border:1px solid #E2E9F0;border-radius:10px;padding:10px 15px;font:700 13px Manrope,sans-serif;color:#41566B;cursor:pointer;display:flex;align-items:center;gap:7px;",
             )}
@@ -201,8 +290,9 @@ export default function AdminReportes() {
             PDF
           </button>
           <button
-            onClick={() => setModalOpen(true)}
+            onClick={exportarCsv}
             className="ah-btn"
+            title="Descarga un CSV con el período y la categoría seleccionados (se abre en Excel)"
             style={s(
               "background:#fff;border:1px solid #E2E9F0;border-radius:10px;padding:10px 15px;font:700 13px Manrope,sans-serif;color:#41566B;cursor:pointer;display:flex;align-items:center;gap:7px;",
             )}
@@ -211,14 +301,7 @@ export default function AdminReportes() {
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
               <path d="M14 2v6h6" />
             </svg>
-            Excel
-          </button>
-          <button
-            onClick={() => setModalOpen(true)}
-            className="ah-btn"
-            style={s("background:#fff;border:1px solid #E2E9F0;border-radius:10px;padding:10px 15px;font:700 13px Manrope,sans-serif;color:#41566B;cursor:pointer;")}
-          >
-            CSV
+            Excel / CSV
           </button>
         </div>
       </div>
@@ -226,22 +309,35 @@ export default function AdminReportes() {
       <div style={s("padding:24px 32px 50px;")}>
         <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:16px;padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;")}>
           <span style={s("font:700 12px Manrope,sans-serif;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;")}>Filtros</span>
-          <div style={s("display:flex;align-items:center;gap:8px;background:#F2F5F9;border:1px solid #E7EDF3;border-radius:10px;padding:9px 13px;font:700 13px Manrope,sans-serif;color:#41566B;")}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#41566B" strokeWidth={2}>
-              <rect x="3" y="4" width="18" height="18" rx="2" />
-              <path d="M16 2v4M8 2v4M3 10h18" />
-            </svg>
-            Últimos 30 días
-          </div>
-          <div style={s("display:flex;align-items:center;gap:8px;background:#F2F5F9;border:1px solid #E7EDF3;border-radius:10px;padding:9px 13px;font:700 13px Manrope,sans-serif;color:#41566B;")}>
-            Todas las categorías
-          </div>
-          <div style={s("display:flex;align-items:center;gap:8px;background:#F2F5F9;border:1px solid #E7EDF3;border-radius:10px;padding:9px 13px;font:700 13px Manrope,sans-serif;color:#41566B;")}>
-            Todos los instructores
-          </div>
+          <select
+            value={borradorPeriodo}
+            onChange={(e) => setBorradorPeriodo(Number(e.target.value))}
+            style={s("background:#F2F5F9;border:1px solid #E7EDF3;border-radius:10px;padding:9px 13px;font:700 13px Manrope,sans-serif;color:#41566B;cursor:pointer;")}
+          >
+            {PERIODOS.map((p) => (
+              <option key={p.dias} value={p.dias}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+          <select
+            value={borradorCategoria}
+            onChange={(e) => setBorradorCategoria(e.target.value)}
+            style={s("background:#F2F5F9;border:1px solid #E7EDF3;border-radius:10px;padding:9px 13px;font:700 13px Manrope,sans-serif;color:#41566B;cursor:pointer;")}
+          >
+            <option value="">Todas las categorías</option>
+            {categorias.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nombre}
+              </option>
+            ))}
+          </select>
           <button
             className="ah-btn"
-            title="Los filtros son informativos en este demo"
+            onClick={() => {
+              setPeriodoDias(borradorPeriodo);
+              setCategoriaId(borradorCategoria);
+            }}
             style={s("margin-left:auto;background:#FF6A2B;color:#fff;border:none;border-radius:10px;padding:9px 18px;font:700 13px Manrope,sans-serif;cursor:pointer;")}
           >
             Aplicar
@@ -402,7 +498,7 @@ export default function AdminReportes() {
                   </div>
                   <h1 style={s("font:700 28px Space Grotesk,sans-serif;margin:0;letter-spacing:-.6px;")}>{activeTab.title}</h1>
                   <p style={s("font:600 13.5px Manrope,sans-serif;color:#A9BDD2;margin:8px 0 0;")}>
-                    Reservas, ingresos y ocupación de cupos · Período de los últimos 30 días
+                    Reservas, ingresos y ocupación de cupos · {periodoLabel} · {categoriaLabel}
                   </p>
                 </div>
               </div>
@@ -418,11 +514,11 @@ export default function AdminReportes() {
                 </div>
                 <div style={s("padding:14px 22px;border-right:1px solid #E7EDF3;")}>
                   <div style={s("font:700 10px Manrope,sans-serif;color:#90A1B2;letter-spacing:.5px;text-transform:uppercase;margin-bottom:3px;")}>Período</div>
-                  <div style={s("font:700 13px Manrope,sans-serif;color:#0E2A47;")}>Últimos 30 días</div>
+                  <div style={s("font:700 13px Manrope,sans-serif;color:#0E2A47;")}>{periodoLabel}</div>
                 </div>
                 <div style={s("padding:14px 22px;")}>
                   <div style={s("font:700 10px Manrope,sans-serif;color:#90A1B2;letter-spacing:.5px;text-transform:uppercase;margin-bottom:3px;")}>Alcance</div>
-                  <div style={s("font:700 13px Manrope,sans-serif;color:#0E2A47;")}>Todas las categorías</div>
+                  <div style={s("font:700 13px Manrope,sans-serif;color:#0E2A47;")}>{categoriaLabel}</div>
                 </div>
               </div>
 

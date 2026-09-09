@@ -36,7 +36,7 @@ function ActionIcon({ d, color }: { d: string; color: string }) {
 }
 
 export default function AdminAuditoria() {
-  const { listarDenunciasAdmin, resolverDenuncia } = useData();
+  const { listarDenunciasAdmin, resolverDenuncia, tomarDenuncia } = useData();
   const [denuncias, setDenuncias] = useState<DenunciaAdmin[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -53,6 +53,21 @@ export default function AdminAuditoria() {
   }, [cargar]);
 
   const selected = useMemo(() => denuncias.find((d) => d.id === selectedId) ?? null, [denuncias, selectedId]);
+
+  // Criterio 3: abrir una denuncia Pendiente la pasa a "En Auditoría" y deja el evento en
+  // trazabilidad. Antes el click sólo cambiaba un useState local y el estado del medio de la
+  // máquina nunca se asignaba: la denuncia saltaba de Pendiente a Resuelta.
+  const abrirDenuncia = async (id: string) => {
+    setSelectedId(id);
+    const d = denuncias.find((x) => x.id === id);
+    if (!d || d.estado !== "Pendiente") return;
+    try {
+      await tomarDenuncia(id);
+      cargar();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos abrir la denuncia para auditarla.");
+    }
+  };
 
   const resolver = async (accion: AccionResolucion) => {
     if (!selected) return;
@@ -104,7 +119,7 @@ export default function AdminAuditoria() {
               <div
                 key={d.id}
                 className="ah-row"
-                onClick={() => setSelectedId(d.id)}
+                onClick={() => abrirDenuncia(d.id)}
                 style={s(
                   `display:grid;grid-template-columns:1.3fr 1.6fr 1.4fr 130px;padding:14px 22px;border-bottom:1px solid #F1F4F8;align-items:center;cursor:pointer;transition:background .14s;${selectedId === d.id ? "background:#F7FAFC;" : ""}`,
                 )}
