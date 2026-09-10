@@ -3,19 +3,14 @@ import { s } from "../lib/style";
 import StatusBadge, { type StatusType } from "./StatusBadge";
 import ActivityPhoto from "./ActivityPhoto";
 import { formatDistanciaKm } from "../lib/geo";
-import type { NivelIntensidad } from "../lib/types";
-
-const NIVEL_COLORS: Record<NivelIntensidad, [bg: string, fg: string, bd: string]> = {
-  "Física baja": ["#E7F8F5", "#0C8576", "#CBEDE7"],
-  "Física media": ["#FFF3E0", "#B9741A", "#F6E2C0"],
-  "Física alta": ["#FBEAEB", "#BE3A3E", "#F3D2D3"],
-};
+import { nivelStyle } from "../lib/nivelStyle";
 
 interface ActivityCardProps {
   id: string;
   name: string;
   catName: string;
-  nivel: NivelIntensidad;
+  /** Nombre del nivel. Es texto libre: los niveles son un ABM (E4Ad-HU05). */
+  nivel: string;
   photoTint: string;
   statusType: StatusType;
   rating: number;
@@ -45,7 +40,7 @@ export default function ActivityCard({
   href,
 }: ActivityCardProps) {
   const navigate = useNavigate();
-  const [nivelBg, nivelFg, nivelBd] = NIVEL_COLORS[nivel];
+  const [nivelBg, nivelFg, nivelBd] = nivelStyle(nivel);
 
   return (
     <div

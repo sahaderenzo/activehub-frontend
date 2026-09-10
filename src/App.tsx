@@ -1,7 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { DataProvider } from "./context/DataContext";
-import RequireRole from "./components/RequireRole";
+import RequireArea from "./components/RequireArea";
 
 import Landing from "./pages/public/Landing";
 import Ayuda from "./pages/public/Ayuda";
@@ -15,7 +15,7 @@ import AlumnoDetalle from "./pages/alumno/Detalle";
 import AlumnoCalendario from "./pages/alumno/Calendario";
 import AlumnoFavoritos from "./pages/alumno/Favoritos";
 import AlumnoMisClases from "./pages/alumno/MisClases";
-import AlumnoReserva from "./pages/alumno/Reserva";
+import AlumnoPreInscripcion from "./pages/alumno/PreInscripcion";
 import AlumnoInscripcion from "./pages/alumno/Inscripcion";
 import AlumnoMisPagos from "./pages/alumno/MisPagos";
 import AlumnoMisResenas from "./pages/alumno/MisResenas";
@@ -62,14 +62,14 @@ function AppRoutes() {
           <Route path="/registro" element={<Registro />} />
           <Route path="/ayuda" element={<Ayuda />} />
 
-          <Route element={<RequireRole role="ALUMNO" />}>
+          <Route element={<RequireArea area="alumno" />}>
             <Route path="/alumno" element={<AlumnoHome />} />
             <Route path="/alumno/explorar" element={<AlumnoExplorar />} />
             <Route path="/alumno/actividad/:id" element={<AlumnoDetalle />} />
             <Route path="/alumno/calendario" element={<AlumnoCalendario />} />
             <Route path="/alumno/favoritos" element={<AlumnoFavoritos />} />
             <Route path="/alumno/mis-clases" element={<AlumnoMisClases />} />
-            <Route path="/alumno/reserva/:id" element={<AlumnoReserva />} />
+            <Route path="/alumno/preinscripcion/:id" element={<AlumnoPreInscripcion />} />
             <Route path="/alumno/inscripcion/:id" element={<AlumnoInscripcion />} />
             <Route path="/alumno/mis-pagos" element={<AlumnoMisPagos />} />
             <Route path="/alumno/mis-resenas" element={<AlumnoMisResenas />} />
@@ -77,7 +77,7 @@ function AppRoutes() {
             <Route path="/alumno/perfil" element={<AlumnoPerfil />} />
           </Route>
 
-          <Route element={<RequireRole role="INSTRUCTOR" />}>
+          <Route element={<RequireArea area="instructor" />}>
             <Route path="/instructor" element={<InstructorPanel />} />
             <Route path="/instructor/actividades" element={<InstructorMisActividades />} />
             <Route path="/instructor/actividades/nueva" element={<InstructorCrearActividad />} />
@@ -91,7 +91,7 @@ function AppRoutes() {
             <Route path="/instructor/solicitud" element={<InstructorSolicitud />} />
           </Route>
 
-          <Route element={<RequireRole role="ADMIN" />}>
+          <Route element={<RequireArea area="admin" />}>
             <Route path="/admin" element={<AdminDashboard />} />
             <Route path="/admin/gestion" element={<AdminGestion />} />
             <Route path="/admin/gestion/:tab" element={<AdminGestion />} />

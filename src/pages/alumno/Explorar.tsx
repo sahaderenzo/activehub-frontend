@@ -5,9 +5,7 @@ import ActivityCard from "../../components/ActivityCard";
 import { s } from "../../lib/style";
 import { useData } from "../../context/DataContext";
 import { haversineKm, useGeolocation } from "../../lib/geo";
-import type { Actividad, Categoria, NivelIntensidad, TipoActividad } from "../../lib/types";
-
-const NIVELES: NivelIntensidad[] = ["Física baja", "Física media", "Física alta"];
+import type { Actividad, Categoria, TipoActividad } from "../../lib/types";
 const SORTS = ["Relevancia", "Precio: menor", "Precio: mayor", "Mejor valoradas", "Cercanía"] as const;
 type Sort = (typeof SORTS)[number];
 
@@ -89,19 +87,43 @@ function cardProps(
   };
 }
 
+const FRANJAS = ["Cualquier horario", "Mañana", "Tarde", "Noche"] as const;
+type Franja = (typeof FRANJAS)[number];
+
+/** Franja horaria de la próxima clase, en hora local (que es la del alumno y la del negocio). */
+function franjaDe(iso: string): Franja {
+  const hora = new Date(iso).getHours();
+  if (hora < 12) return "Mañana";
+  if (hora < 18) return "Tarde";
+  return "Noche";
+}
+
+/** `YYYY-MM-DD` local, para comparar contra el `<input type="date">` sin que UTC corra el día. */
+function diaLocal(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 interface ExplorarNavState {
   search?: string;
   categoriaId?: string;
+  tipoActividadId?: string;
+  /** Nombre del nivel (E4Ad-HU05: ya no es una union fija). */
+  nivel?: string;
+  maxPrecio?: number;
   radio?: string;
+  fecha?: string;
+  franja?: string;
 }
 
 export default function AlumnoExplorar() {
-  const { actividades, tiposActividad, categorias, getTipoActividad, getCategoria, instructorNombre } = useData();
+  const { actividades, tiposActividad, categorias, nivelesIntensidad, getTipoActividad, getCategoria, instructorNombre } =
+    useData();
   const location = useLocation();
   const [search, setSearch] = useState("");
   const [catSel, setCatSel] = useState<Set<string>>(new Set());
   const [tipoSel, setTipoSel] = useState<Set<string>>(new Set());
-  const [nivelSel, setNivelSel] = useState<Set<NivelIntensidad>>(new Set());
+  const [nivelSel, setNivelSel] = useState<Set<string>>(new Set());
   // null = sin tocar el filtro todavía (sin límite). El rango del slider se
   // calcula de los precios reales en vez de un tope fijo, que quedaba
   // desactualizado apenas una actividad costaba más que ese tope.
@@ -109,6 +131,10 @@ export default function AlumnoExplorar() {
   const [soloDisponibles, setSoloDisponibles] = useState(false);
   const [sort, setSort] = useState<Sort>("Relevancia");
   const [radio, setRadio] = useState<Radio>("Cualquier distancia");
+  // Fecha y horario filtran sobre la próxima clase de cada actividad: son los dos filtros
+  // rápidos que el Home ofrece y que acá no existían.
+  const [fecha, setFecha] = useState("");
+  const [franja, setFranja] = useState<Franja>("Cualquier horario");
   const geolocation = useGeolocation();
 
   // Entrar desde otra pantalla (buscador del header, buscador/chips de
@@ -116,10 +142,19 @@ export default function AlumnoExplorar() {
   // location.state. Se sincroniza con cada navegación nueva (location.key
   // cambia incluso si la ruta es la misma, ej. buscar de nuevo desde el header
   // estando ya parado en Explorar) — no solo al montar el componente.
+  /* eslint-disable react-hooks/set-state-in-effect -- sincroniza los filtros con la navegación
+     (location.state), que es un sistema externo al componente. */
   useEffect(() => {
     const navState = (location.state ?? {}) as ExplorarNavState;
     if (navState.search !== undefined) setSearch(navState.search);
     if (navState.categoriaId) setCatSel(new Set([navState.categoriaId]));
+    if (navState.tipoActividadId) setTipoSel(new Set([navState.tipoActividadId]));
+    if (navState.nivel) setNivelSel(new Set([navState.nivel]));
+    if (navState.maxPrecio !== undefined) setMaxPrecio(navState.maxPrecio);
+    if (navState.fecha !== undefined) setFecha(navState.fecha);
+    if (navState.franja && (FRANJAS as readonly string[]).includes(navState.franja)) {
+      setFranja(navState.franja as Franja);
+    }
     if (navState.radio && (RADIOS as readonly string[]).includes(navState.radio)) {
       const r = navState.radio as Radio;
       setRadio(r);
@@ -127,6 +162,7 @@ export default function AlumnoExplorar() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.key]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const precioMin = actividades.length ? Math.min(...actividades.map((a) => a.precio)) : 0;
   const precioMax = actividades.length ? Math.max(...actividades.map((a) => a.precio)) : 10000;
@@ -198,6 +234,12 @@ export default function AlumnoExplorar() {
       if (nivelSel.size > 0 && !nivelSel.has(a.nivelIntensidad)) return false;
       if (maxPrecio !== null && a.precio > maxPrecio) return false;
       if (!dentroDelRadio(distanciaKm(a, geolocation.coords), radio)) return false;
+      if (fecha || franja !== "Cualquier horario") {
+        // Sin próxima clase no hay ni fecha ni horario que puedan coincidir.
+        if (!a.proximaClase) return false;
+        if (fecha && diaLocal(a.proximaClase.fechaHora) !== fecha) return false;
+        if (franja !== "Cualquier horario" && franjaDe(a.proximaClase.fechaHora) !== franja) return false;
+      }
       if (soloDisponibles) {
         const props = cardProps(a, getTipoActividad, getCategoria, instructorNombre, geolocation.coords);
         if (props.disp.type === "sincupos") return false;
@@ -332,7 +374,8 @@ export default function AlumnoExplorar() {
           </div>
           <div style={s("font:700 13px Manrope,sans-serif;color:#41566B;margin-bottom:11px;")}>Nivel de exigencia</div>
           <div style={s("display:flex;flex-wrap:wrap;gap:7px;margin-bottom:22px;")}>
-            {NIVELES.map((n) => {
+            {nivelesIntensidad.map((nivel) => {
+              const n = nivel.nombre;
               const on = nivelSel.has(n);
               return (
                 <span
@@ -360,6 +403,31 @@ export default function AlumnoExplorar() {
           <div style={s("display:flex;justify-content:space-between;font-size:12px;color:#9AAABA;font-weight:600;margin-top:6px;")}>
             <span>${precioMin.toLocaleString("es-AR")}</span>
             <span>${precioSlider.toLocaleString("es-AR")}</span>
+          </div>
+          <div style={s("font:700 13px Manrope,sans-serif;color:#41566B;margin:22px 0 11px;")}>Fecha</div>
+          <input
+            type="date"
+            value={fecha}
+            onChange={(e) => setFecha(e.target.value)}
+            style={s("width:100%;border:1px solid #E2E9F0;border-radius:9px;padding:8px 10px;font:600 13px Manrope,sans-serif;color:#41566B;")}
+          />
+          <div style={s("font:700 13px Manrope,sans-serif;color:#41566B;margin:22px 0 11px;")}>Horario</div>
+          <div style={s("display:flex;flex-wrap:wrap;gap:7px;")}>
+            {FRANJAS.map((opt) => {
+              const on = franja === opt;
+              return (
+                <span
+                  key={opt}
+                  className="ah-btn"
+                  onClick={() => setFranja(opt)}
+                  style={s(
+                    `cursor:pointer;padding:6px 12px;border-radius:99px;font:700 12.5px Manrope,sans-serif;background:${on ? "#0E2A47" : "#F2F5F9"};color:${on ? "#fff" : "#41566B"};border:1px solid ${on ? "#0E2A47" : "#E2E9F0"};`,
+                  )}
+                >
+                  {opt}
+                </span>
+              );
+            })}
           </div>
           <div style={s("font:700 13px Manrope,sans-serif;color:#41566B;margin:22px 0 11px;")}>Disponibilidad</div>
           <label

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import AlumnoNav from "../../components/AlumnoNav";
 import StatusBadge from "../../components/StatusBadge";
 import { s } from "../../lib/style";
+import { useAhora } from "../../lib/ahora";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import type { MiInscripcion } from "../../context/DataContext";
@@ -23,6 +24,7 @@ const TABS: { key: TabKey; label: string }[] = [
 ];
 
 export default function AlumnoMisClases() {
+  const ahora = useAhora();
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const { getActividad, getTipoActividad, getCategoria, instructorNombre, cancelarInscripcion, crearDenuncia, listarMisInscripciones } =
@@ -88,7 +90,7 @@ export default function AlumnoMisClases() {
 
   return (
     <div className="ah-screen" style={s("min-height:100vh;background:#F4F7FA;")}>
-      <AlumnoNav active="misreservas" />
+      <AlumnoNav active="misclases" />
       <div style={s("max-width:1000px;margin:0 auto;padding:30px 28px 60px;")}>
         <h1 style={s("font:700 30px Space Grotesk,sans-serif;letter-spacing:-.7px;margin:0 0 4px;")}>Mis clases</h1>
         <p style={s("font-size:14.5px;color:#7A8C9E;margin:0 0 24px;")}>
@@ -141,11 +143,11 @@ export default function AlumnoMisClases() {
               const tipo = actividad ? getTipoActividad(actividad.tipoActividadId) : undefined;
               const cat = tipo ? getCategoria(tipo.categoriaId) : undefined;
               const instructor = actividad ? instructorNombre[actividad.instructorId] : undefined;
-              const claseFutura = new Date(r.claseFechaHora).getTime() > Date.now();
-              const diasHasta = (new Date(r.claseFechaHora).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+              const claseFutura = new Date(r.claseFechaHora).getTime() > ahora;
+              const diasHasta = (new Date(r.claseFechaHora).getTime() - ahora) / (1000 * 60 * 60 * 24);
               const ingreso: "preinscripcion" | "inscripcion" = diasHasta > 4 ? "preinscripcion" : "inscripcion";
 
-              let note = "";
+              let note: string;
               if (r.estado === "PreInscripción") {
                 note = ingreso === "inscripcion" ? "Ya podés inscribirte y pagar tu lugar." : "Esperá a que falten 4 días para inscribirte.";
               } else if (r.estado === "PagoPendiente") {
@@ -164,7 +166,7 @@ export default function AlumnoMisClases() {
 
               const puedeCancelar = claseFutura && (r.estado === "PreInscripción" || r.estado === "PagoPendiente" || r.estado === "Inscripto");
 
-              const horasDesdeInicio = (Date.now() - new Date(r.claseFechaHora).getTime()) / (1000 * 60 * 60);
+              const horasDesdeInicio = (ahora - new Date(r.claseFechaHora).getTime()) / (1000 * 60 * 60);
               const yaReportada = reportadas.has(r.id);
               const repEnabled = r.estado === "Inscripto" && horasDesdeInicio >= 1 && !yaReportada;
               const repDisabled = r.estado === "Inscripto" && horasDesdeInicio < 1 && !yaReportada;

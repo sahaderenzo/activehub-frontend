@@ -1,46 +1,56 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import AlumnoNav from "../../components/AlumnoNav";
 import StatusBadge from "../../components/StatusBadge";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
-import type { MiInscripcion } from "../../context/DataContext";
+import type { MiPago } from "../../context/DataContext";
 import { ApiError } from "../../lib/api";
 import { formatFecha } from "../../lib/mockData";
 import { pagoStatusType } from "../../lib/status";
-import type { EstadoPago } from "../../lib/types";
 
 export default function AlumnoMisPagos() {
   const { currentUser } = useAuth();
-  const { listarMisInscripciones } = useData();
-  const [filas, setFilas] = useState<(MiInscripcion & { pago: NonNullable<MiInscripcion["pago"]> })[]>([]);
+  const { listarMisPagos } = useData();
+  const [filas, setFilas] = useState<MiPago[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [cargando, setCargando] = useState(true);
+
+  // GET /api/alumno/pagos y no las inscripciones: un pago sobrevive a su inscripción
+  // (reintegro por cancelación, liberación post-clase) y esa lista lo perdía.
+  const cargar = useCallback(() => {
+    listarMisPagos()
+      .then((lista) => {
+        lista.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        setFilas(lista);
+        setError(null);
+      })
+      .catch((err) => setError(err instanceof ApiError ? err.message : "No pudimos cargar tus pagos."))
+      .finally(() => setCargando(false));
+  }, [listarMisPagos]);
 
   useEffect(() => {
     if (!currentUser) return;
-    listarMisInscripciones()
-      .then((todas) => {
-        const conPago = todas.filter((i): i is MiInscripcion & { pago: NonNullable<MiInscripcion["pago"]> } => !!i.pago);
-        conPago.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-        setFilas(conPago);
-      })
-      .catch((err) => setError(err instanceof ApiError ? err.message : "No pudimos cargar tus pagos."));
-  }, [currentUser, listarMisInscripciones]);
+    cargar();
+  }, [currentUser, cargar]);
 
-  const totalPagado = filas.filter((f) => f.pago.estado === "Liberado" || f.pago.estado === "Efectivo").reduce((s2, f) => s2 + f.pago.monto, 0);
-  const totalRetenido = filas.filter((f) => f.pago.estado === "Retenido").reduce((s2, f) => s2 + f.pago.monto, 0);
+  const acreditado = filas.filter((f) => f.estado === "Liberado" || f.estado === "Efectivo");
+  const totalPagado = acreditado.reduce((acum, f) => acum + f.monto, 0);
+  const totalRetenido = filas.filter((f) => f.estado === "Retenido").reduce((acum, f) => acum + f.monto, 0);
+  const totalReintegrado = filas.filter((f) => f.estado === "Cancelado").reduce((acum, f) => acum + f.monto, 0);
 
   return (
     <div className="ah-screen" style={s("min-height:100vh;background:#F4F7FA;")}>
-      <AlumnoNav active="misreservas" />
+      <AlumnoNav active="misclases" />
       <div style={s("max-width:1080px;margin:0 auto;padding:30px 28px 60px;")}>
         <h1 style={s("font:700 30px Space Grotesk,sans-serif;letter-spacing:-.7px;margin:0 0 4px;")}>Mis pagos</h1>
         <p style={s("font-size:14.5px;color:#7A8C9E;margin:0 0 24px;")}>
           Historial de pagos por tus inscripciones, con su estado y comprobante.
         </p>
-        <div className="ah-grid-3" style={s("display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-bottom:26px;")}>
+        <div className="ah-grid-3" style={s("display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-bottom:26px;")}>
           <SummaryTile label="Total pagado" value={`$${totalPagado.toLocaleString("es-AR")}`} color="#0C8576" />
           <SummaryTile label="Retenido (Mercado Pago)" value={`$${totalRetenido.toLocaleString("es-AR")}`} color="#B9741A" />
+          <SummaryTile label="Reintegrado" value={`$${totalReintegrado.toLocaleString("es-AR")}`} color="#65788C" />
           <SummaryTile label="Cantidad de pagos" value={`${filas.length}`} color="#0E2A47" />
         </div>
 
@@ -50,11 +60,22 @@ export default function AlumnoMisPagos() {
               "display:flex;align-items:center;gap:11px;background:#FBEAEB;border:1px solid #F3D2D3;border-radius:12px;padding:13px 15px;margin-bottom:18px;",
             )}
           >
-            <span style={s("font-size:13px;line-height:1.4;color:#BE3A3E;font-weight:600;")}>{error}</span>
+            <span style={s("flex:1;font-size:13px;line-height:1.4;color:#BE3A3E;font-weight:600;")}>{error}</span>
+            <button
+              className="ah-btn"
+              onClick={() => { setCargando(true); cargar(); }}
+              style={s("background:#fff;border:1px solid #F3C6C7;border-radius:9px;padding:8px 14px;font:700 12.5px Manrope,sans-serif;color:#BE3A3E;cursor:pointer;flex:none;")}
+            >
+              Reintentar
+            </button>
           </div>
         )}
 
-        {filas.length === 0 ? (
+        {cargando ? (
+          <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:16px;padding:50px 20px;text-align:center;color:#9AAABA;font-weight:600;")}>
+            Cargando tus pagos…
+          </div>
+        ) : filas.length === 0 && !error ? (
           <div
             style={s(
               "background:#fff;border:1px dashed #D6DEE7;border-radius:16px;padding:50px 20px;text-align:center;color:#7A8C9E;font-weight:600;",
@@ -62,7 +83,7 @@ export default function AlumnoMisPagos() {
           >
             Todavía no tenés pagos registrados.
           </div>
-        ) : (
+        ) : filas.length === 0 ? null : (
           <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:18px;overflow:hidden;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
             <div
               className="ah-grid-5"
@@ -71,34 +92,36 @@ export default function AlumnoMisPagos() {
               )}
             >
               <span>Actividad</span>
-              <span>Fecha</span>
+              <span>Fecha de pago</span>
               <span>Método</span>
               <span>Monto</span>
               <span>Estado pago</span>
             </div>
             {filas.map((r) => (
               <div
-                key={r.pago.id}
+                key={r.pagoId}
                 className="ah-grid-5"
                 style={s("display:grid;grid-template-columns:2fr 1.3fr 1.1fr 1fr 130px;padding:14px 22px;border-bottom:1px solid #F1F4F8;align-items:center;")}
               >
                 <div>
                   <div style={s("font:700 14px Manrope,sans-serif;color:#0E2A47;")}>{r.actividadNombre}</div>
-                  <div style={s("font-size:12px;color:#9AAABA;font-weight:600;font-family:ui-monospace,Menlo,monospace;")}>{r.pago.id}</div>
+                  <div style={s("font-size:12px;color:#9AAABA;font-weight:600;")}>
+                    Clase del {formatFecha(r.claseFechaHora)} · {r.claseEstado}
+                  </div>
                 </div>
                 <span style={s("font-size:13px;color:#65788C;font-weight:600;")}>{formatFecha(r.createdAt)}</span>
                 <span style={s("display:flex;align-items:center;gap:6px;font-size:13px;color:#41566B;font-weight:700;")}>
-                  {r.pago.metodo === "Mercado Pago" && (
+                  {r.metodo === "Mercado Pago" && (
                     <span style={s("width:18px;height:18px;border-radius:5px;background:#009EE3;display:flex;align-items:center;justify-content:center;flex:none;")}>
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.4}>
                         <path d="M2 9a3 3 0 0 1 3-3h14a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3z" />
                       </svg>
                     </span>
                   )}
-                  {r.pago.metodo}
+                  {r.metodo}
                 </span>
-                <span style={s("font:700 14px Space Grotesk,sans-serif;color:#0E2A47;")}>${r.pago.monto.toLocaleString("es-AR")}</span>
-                <StatusBadge type={pagoStatusType(r.pago.estado as EstadoPago)} />
+                <span style={s("font:700 14px Space Grotesk,sans-serif;color:#0E2A47;")}>${r.monto.toLocaleString("es-AR")}</span>
+                <StatusBadge type={pagoStatusType(r.estado)} />
               </div>
             ))}
           </div>

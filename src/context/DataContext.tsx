@@ -1,3 +1,6 @@
+/* eslint-disable react-refresh/only-export-components -- el provider y su hook viven
+   juntos a propósito: separarlos obligaría a tocar los imports de todas las pantallas y solo
+   afecta al fast refresh en desarrollo. */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import type {
@@ -9,64 +12,22 @@ import type {
   EstadoInscripcion,
   EstadoPago,
   EstadoUsuario,
-  Inscripcion,
-  Pago,
-  Penalizacion,
+  NivelIntensidad,
   RolNombre,
   TipoActividad,
   TipoPenalizacion,
 } from "../lib/types";
-import {
-  inscripciones as seedInscripciones,
-  pagos as seedPagos,
-  penalizaciones as seedPenalizaciones,
-} from "../lib/mockData";
 import { api } from "../lib/api";
 
 /**
- * Catálogo, inscripción y pago (del alumno/instructor logueado) están
- * cableados a activehub-api real vía funciones dedicadas
- * (inscribirse/cancelarInscripcion/confirmarCobroEfectivo/listarMisInscripciones/
- * listarRosterClase). Los arrays `inscripciones`/`pagos` de acá abajo son un
- * mock estático sin relación con esas llamadas reales: los usan pantallas de
- * analítica/administración de alcance amplio (Dashboard, Reportes, Métricas)
- * para las que todavía no existe un endpoint "todas las inscripciones de la
- * plataforma" — quedan como estaban, sin tocar, igual que penalizaciones.
- * Reseñas, denuncias y favoritos ya están cableados a la API real (ver
- * secciones correspondientes más abajo).
+ * Todo lo que expone este contexto pega contra activehub-api. Ya no queda ningún
+ * dataset mock acá: los arrays `inscripciones`/`pagos`/`penalizaciones` que vivían
+ * en localStorage se borraron cuando las últimas dos pantallas que los leían
+ * (Perfil del alumno y Reportes del admin) pasaron a `listarMisInscripciones()` y
+ * `listarPenalizaciones()`. `lib/mockData.ts` sigue existiendo **solo** por sus
+ * helpers de formato de fecha/hora, no por sus datos.
  */
 
-const MOCK_KEY = "ah_data_mock";
-
-interface MockShape {
-  inscripciones: Inscripcion[];
-  pagos: Pago[];
-  penalizaciones: Penalizacion[];
-}
-
-function seedMock(): MockShape {
-  return {
-    inscripciones: seedInscripciones,
-    pagos: seedPagos,
-    penalizaciones: seedPenalizaciones,
-  };
-}
-
-function loadMock(): MockShape {
-  try {
-    const raw = localStorage.getItem(MOCK_KEY);
-    if (raw) return JSON.parse(raw) as MockShape;
-  } catch {
-    /* ignore corrupt storage */
-  }
-  return seedMock();
-}
-
-let uid = 0;
-function nextId(prefix: string): string {
-  uid += 1;
-  return `${prefix}-${Date.now()}-${uid}`;
-}
 
 // --- Shapes de respuesta reales de activehub-api ---------------------------
 
@@ -86,13 +47,13 @@ interface ActividadCamposComunes {
   nombre: string;
   tipoActividad: { id: string; nombre: string };
   categoria: { id: string; nombre: string };
-  nivelIntensidad: string;
+  nivelIntensidad: { id: string; nombre: string };
   instructor: { id: string; nombre: string; apellido: string };
   precio: number;
   ubicacion: string;
   photoTint: string;
   rating: number | null;
-  cuposMax: number;
+  duracionMin: number;
   latitud: number | null;
   longitud: number | null;
 }
@@ -104,6 +65,7 @@ interface ActividadListResp extends ActividadCamposComunes {
 interface ClaseResp {
   id: string;
   fechaHora: string;
+  horaFin: string;
   estado: string;
   cuposMax: number;
   cuposOcupados: number;
@@ -115,6 +77,7 @@ interface ClaseDetalleResp extends ClaseResp {
 
 interface ActividadDetalleResp extends ActividadCamposComunes {
   descripcion: string;
+  imagenes: string[];
   clases: ClaseDetalleResp[];
 }
 
@@ -181,7 +144,6 @@ export interface RosterAlumno {
   apellido: string;
   telefono?: string;
   estado: string;
-  presente?: boolean | null;
 }
 
 /** Clase propia del instructor (GET /api/instructor/clases). Incluye Finalizadas y Canceladas. */
@@ -212,6 +174,30 @@ export interface InscripcionMiClase {
   pagoMonto: number | null;
 }
 
+/** Pago del alumno logueado (GET /api/alumno/pagos). */
+export interface MiPago {
+  pagoId: string;
+  inscripcionId: string;
+  claseId: string;
+  actividadId: string;
+  actividadNombre: string;
+  claseFechaHora: string;
+  claseEstado: EstadoClase;
+  inscripcionEstado: EstadoInscripcion;
+  estado: EstadoPago;
+  metodo: string;
+  monto: number;
+  createdAt: string;
+}
+
+export interface ActualizarUsuarioAdminInput {
+  nombre: string;
+  apellido: string;
+  email: string;
+  telefono?: string;
+  fechaNacimiento?: string;
+}
+
 export interface PenalizacionAdmin {
   id: string;
   usuarioId: string;
@@ -231,11 +217,20 @@ export interface PenalizacionAdmin {
 
 export interface CrearPenalizacionInput {
   usuarioId: string;
-  tipo: TipoPenalizacion;
+  /** Se pueden aplicar los dos a la vez: el backend guarda una penalización por tipo. */
+  tipos: TipoPenalizacion[];
   motivo: string;
   monto?: number;
   fechaInicio?: string;
   fechaFin?: string;
+}
+
+/** Datos extra que pide "Suspender al instructor" al resolver una denuncia. */
+export interface SancionSuspension {
+  /** Puede ser 0: en ese caso la sanción es solo la suspensión, sin multa. */
+  montoMulta: number;
+  /** Mínimo 15 días (lo valida también el backend). */
+  diasSuspension: number;
 }
 
 export interface RosterClase {
@@ -254,7 +249,8 @@ export interface ReseniaActividad {
   claseId: string;
   alumno: { id: string; nombre: string; apellido: string };
   puntaje: number;
-  comentario: string;
+  /** Opcional: una reseña puede ser solo estrellas. */
+  comentario: string | null;
   createdAt: string;
 }
 
@@ -266,7 +262,8 @@ export interface MiResenia {
   actividadNombre: string;
   instructorNombre: string;
   puntaje: number;
-  comentario: string;
+  /** Opcional: una reseña puede ser solo estrellas. */
+  comentario: string | null;
   enModeracion: boolean;
   createdAt: string;
 }
@@ -279,8 +276,15 @@ export interface ReseniaInstructor {
   actividadNombre: string;
   alumno: { id: string; nombre: string; apellido: string };
   puntaje: number;
-  comentario: string;
+  /** Opcional: una reseña puede ser solo estrellas. */
+  comentario: string | null;
+  /** Pendiente de aprobación del admin. NO significa "denunciada" — para eso está `denunciada`. */
   enModeracion: boolean;
+  respuestaInstructor?: string;
+  respuestaInstructorAt?: string;
+  /** El instructor ya la denunció y la denuncia sigue abierta. */
+  denunciada: boolean;
+  oculta: boolean;
   createdAt: string;
 }
 
@@ -292,11 +296,45 @@ export interface ReseniaPendiente {
   actividadNombre: string;
   alumno: { id: string; nombre: string; apellido: string };
   puntaje: number;
-  comentario: string;
+  /** Opcional: una reseña puede ser solo estrellas. */
+  comentario: string | null;
   createdAt: string;
 }
 
-export type AccionResolucion = "REINTEGRAR" | "SUSPENDER" | "PENALIZAR" | "DESESTIMAR";
+
+/** E4Ad-HU08: la matriz de "Roles y permisos" (GET /api/admin/roles). */
+export interface RolAdmin {
+  id: string;
+  nombre: string;
+  descripcion: string | null;
+  /** Los tres del sistema (ALUMNO/INSTRUCTOR/ADMIN) son los únicos que el backend sabe asignar. */
+  sistema: boolean;
+  usuarios: number;
+  /** Claves habilitadas para este rol. */
+  permisos: string[];
+}
+
+export interface PermisoAdmin {
+  id: string;
+  clave: string;
+  modulo: string;
+  accion: string;
+  /** Sin él el Administrador se queda sin gobierno: el backend rechaza quitarlo. */
+  critico: boolean;
+  /**
+   * `false` = permiso implícito (`Permiso.IMPLICITOS` en el backend): lo tienen todos los
+   * roles y no se puede apagar, así que la pantalla no lo ofrece como checkbox.
+   */
+  configurable: boolean;
+}
+
+export interface RolesPermisos {
+  roles: RolAdmin[];
+  permisos: PermisoAdmin[];
+}
+
+/** Acciones válidas al resolver. OCULTAR_RESENIA solo aplica a denuncias de reseña. */
+export type AccionResolucion = "REINTEGRAR" | "SUSPENDER" | "PENALIZAR" | "DESESTIMAR" | "OCULTAR_RESENIA";
 
 export interface Notificacion {
   id: string;
@@ -329,14 +367,21 @@ export interface AuditoriaEntry {
   createdAt: string;
 }
 
+export type ResolucionDenuncia = "REINTEGRAR" | "SUSPENDER" | "PENALIZAR" | "DESESTIMAR" | "OCULTAR_RESENIA";
+
 export interface MiDenuncia {
   id: string;
+  /** "CLASE" (la hizo un alumno) o "RESENIA" (la hizo el instructor). */
+  tipo: "CLASE" | "RESENIA";
   claseId: string;
   claseFechaHora: string;
   actividadId: string;
   actividadNombre: string;
   motivo: string;
   estado: EstadoDenuncia;
+  /** Cómo la cerró el admin. Null mientras siga abierta (E3A-HU11 criterios 2 y 7). */
+  resolucion: ResolucionDenuncia | null;
+  detalle: string | null;
   createdAt: string;
 }
 
@@ -346,22 +391,38 @@ export interface UsuarioAdmin {
   apellido: string;
   email: string;
   telefono?: string;
-  rol: RolNombre;
+  /** Nombre del rol: los tres del sistema o uno creado por el admin. */
+  rol: string;
   estado: EstadoUsuario;
   cantidadPenalizaciones: number;
   createdAt: string;
+  /** Si su rol puede dictar clases. Solo a estos usuarios se les puede aplicar una penalización. */
+  puedeDarClases: boolean;
+}
+
+interface Persona {
+  id: string;
+  nombre: string;
+  apellido: string;
 }
 
 export interface DenunciaAdmin {
   id: string;
+  /** Decide qué acciones de resolución ofrece la pantalla. */
+  tipo: "CLASE" | "RESENIA";
   claseId: string;
   claseFechaHora: string;
   actividadId: string;
   actividadNombre: string;
-  alumno: { id: string; nombre: string; apellido: string };
-  instructor: { id: string; nombre: string; apellido: string };
+  /** Null en las denuncias sobre una reseña: el autor viaja dentro de `resenia`. */
+  alumno: Persona | null;
+  instructor: Persona;
+  denunciante: Persona;
+  resenia: { id: string; puntaje: number; comentario: string | null; autor: Persona; oculta: boolean } | null;
   motivo: string;
   estado: EstadoDenuncia;
+  resolucion: ResolucionDenuncia | null;
+  detalle: string | null;
   pago: { id: string; estado: string; monto: number; metodo: string } | null;
   createdAt: string;
 }
@@ -372,13 +433,15 @@ function aplanarActividad(r: ActividadCamposComunes, proximaClase?: ActividadLis
     nombre: r.nombre,
     descripcion: "",
     tipoActividadId: r.tipoActividad.id,
-    nivelIntensidad: r.nivelIntensidad as Actividad["nivelIntensidad"],
+    nivelIntensidadId: r.nivelIntensidad.id,
+    nivelIntensidad: r.nivelIntensidad.nombre,
     instructorId: r.instructor.id,
     precio: Number(r.precio),
     ubicacion: r.ubicacion,
     photoTint: r.photoTint,
     rating: Number(r.rating ?? 0),
-    cuposMax: r.cuposMax,
+    duracionMin: r.duracionMin,
+    imagenes: "imagenes" in r ? (r as ActividadDetalleResp).imagenes : undefined,
     lat: r.latitud ?? undefined,
     lng: r.longitud ?? undefined,
     proximaClase: proximaClase
@@ -397,6 +460,7 @@ function aplanarClase(r: ClaseResp | ClaseDetalleResp): Clase {
     id: r.id,
     actividadId: "",
     fechaHora: r.fechaHora,
+    horaFin: r.horaFin,
     estado: r.estado as Clase["estado"],
     cuposMax: r.cuposMax,
     cuposOcupados: r.cuposOcupados,
@@ -408,18 +472,29 @@ interface ActividadInput {
   nombre: string;
   descripcion: string;
   tipoActividadId: string;
-  nivelIntensidad: string;
+  nivelIntensidadId: string;
   precio: number;
   ubicacion: string;
   photoTint: string;
-  cuposMax: number;
+  /** Duración de una clase en minutos. El cupo se define por clase, no acá. */
+  duracionMin: number;
   lat?: number;
   lng?: number;
 }
 
+interface NivelIntensidadInput {
+  nombre: string;
+  descripcion: string;
+}
+
 interface ClaseInput {
   fechaHora: string;
+  /** Fin de la clase. Obligatorio: el backend valida que sea posterior al inicio. */
+  horaFin: string;
   cuposMax: number;
+  repetirSemanalmente?: boolean;
+  /** Fecha de corte de la repetición (YYYY-MM-DD). Sin valor = sin corte. */
+  repetirHasta?: string;
 }
 
 interface TipoActividadInput {
@@ -434,11 +509,16 @@ interface CategoriaInput {
 interface DataContextValue {
   // catálogo real
   categorias: Categoria[];
+  nivelesIntensidad: NivelIntensidad[];
+  getNivelIntensidad: (id: string) => NivelIntensidad | undefined;
   tiposActividad: TipoActividad[];
   actividades: Actividad[];
   clases: Clase[];
   instructorNombre: Record<string, string>;
   cargandoCatalogo: boolean;
+  /** La carga del catálogo falló: las pantallas muestran "Reintentar" en vez de un vacío que miente. */
+  errorCatalogo: boolean;
+  refrescarCatalogo: () => Promise<void>;
 
   getActividad: (id: string) => Actividad | undefined;
   getTipoActividad: (id: string) => TipoActividad | undefined;
@@ -462,6 +542,9 @@ interface DataContextValue {
   actualizarTipoActividad: (id: string, input: TipoActividadInput) => Promise<TipoActividad>;
   eliminarTipoActividad: (id: string) => Promise<void>;
 
+  crearNivelIntensidad: (input: NivelIntensidadInput) => Promise<void>;
+  actualizarNivelIntensidad: (id: string, input: NivelIntensidadInput) => Promise<void>;
+  eliminarNivelIntensidad: (id: string) => Promise<void>;
   crearCategoria: (input: CategoriaInput) => Promise<Categoria>;
   actualizarCategoria: (id: string, input: CategoriaInput) => Promise<Categoria>;
   eliminarCategoria: (id: string) => Promise<void>;
@@ -470,7 +553,6 @@ interface DataContextValue {
   inscribirse: (clase: Clase, alumnoId: string, metodo?: "Mercado Pago" | "Efectivo") => Promise<void>;
   cancelarInscripcion: (id: string) => Promise<void>;
   confirmarCobroEfectivo: (inscripcionId: string) => Promise<void>;
-  marcarAsistencia: (inscripcionId: string, presente: boolean) => Promise<void>;
   listarMisInscripciones: (estado?: EstadoInscripcion) => Promise<MiInscripcion[]>;
   listarRosterClase: (claseId: string) => Promise<RosterClase>;
   listarMisClases: () => Promise<MiClaseInstructor[]>;
@@ -503,9 +585,28 @@ interface DataContextValue {
   crearDenuncia: (claseId: string, motivo: string) => Promise<void>;
   listarMisDenuncias: () => Promise<MiDenuncia[]>;
   listarDenunciasAdmin: () => Promise<DenunciaAdmin[]>;
-  resolverDenuncia: (id: string, accion: AccionResolucion) => Promise<void>;
+  /** `detalle`: texto que el denunciante ve junto a la resolución (E3A-HU11 criterio 7). */
+  resolverDenuncia: (id: string, accion: AccionResolucion, detalle?: string, sancion?: SancionSuspension) => Promise<void>;
   tomarDenuncia: (id: string) => Promise<void>;
+  listarMisPagos: () => Promise<MiPago[]>;
+  actualizarResenia: (id: string, puntaje: number, comentario: string) => Promise<void>;
+  actualizarUsuarioAdmin: (id: string, input: ActualizarUsuarioAdminInput) => Promise<void>;
+  responderResenia: (
+    id: string,
+    respuesta: string,
+  ) => Promise<{ id: string; respuestaInstructor: string; respuestaInstructorAt: string }>;
+  denunciarResenia: (id: string, motivo: string) => Promise<void>;
+  agregarImagenActividad: (
+    actividadId: string,
+    archivo: File,
+  ) => Promise<{ id: string; actividadId: string; orden: number }>;
+  eliminarImagenActividad: (actividadId: string, imagenId: string) => Promise<void>;
   listarPenalizaciones: () => Promise<PenalizacionAdmin[]>;
+  listarRolesPermisos: () => Promise<RolesPermisos>;
+  /** Cambia el rol de una cuenta, incluidos los roles creados por el admin. */
+  asignarRolUsuario: (usuarioId: string, rolId: string) => Promise<void>;
+  actualizarPermisosRol: (rolId: string, permisos: string[]) => Promise<void>;
+  crearRol: (nombre: string, descripcion?: string) => Promise<RolAdmin>;
   crearPenalizacion: (input: CrearPenalizacionInput) => Promise<void>;
 
   // gestión de usuarios real
@@ -523,56 +624,50 @@ interface DataContextValue {
   agregarFavorito: (actividadId: string) => Promise<void>;
   quitarFavorito: (actividadId: string) => Promise<void>;
 
-  // fuera de alcance: mock puro, sin tocar
-  inscripciones: Inscripcion[];
-  pagos: Pago[];
-  penalizaciones: Penalizacion[];
-  aplicarPenalizacion: (input: Omit<Penalizacion, "id" | "createdAt">) => Penalizacion;
 }
 
 const DataContext = createContext<DataContextValue | null>(null);
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const [mock, setMock] = useState<MockShape>(() => loadMock());
   const [categorias, setCategorias] = useState<Categoria[]>([]);
+  const [nivelesIntensidad, setNivelesIntensidad] = useState<NivelIntensidad[]>([]);
   const [tiposActividad, setTiposActividad] = useState<TipoActividad[]>([]);
   const [actividades, setActividades] = useState<Actividad[]>([]);
   const [clases, setClases] = useState<Clase[]>([]);
   const [instructorNombre, setInstructorNombre] = useState<Record<string, string>>({});
   const [cargandoCatalogo, setCargandoCatalogo] = useState(true);
+  const [errorCatalogo, setErrorCatalogo] = useState(false);
 
-  useEffect(() => {
-    localStorage.setItem(MOCK_KEY, JSON.stringify(mock));
-  }, [mock]);
-
-  const patchMock = useCallback(<K extends keyof MockShape>(key: K, updater: (list: MockShape[K]) => MockShape[K]) => {
-    setMock((prev) => ({ ...prev, [key]: updater(prev[key]) }));
-  }, []);
-
-  const refrescarCatalogo = useCallback(async () => {
-    setCargandoCatalogo(true);
-    try {
-      const [cats, tipos, acts] = await Promise.all([
-        api.get<CategoriaResp[]>("/api/categorias"),
-        api.get<TipoActividadResp[]>("/api/tipos-actividad"),
-        api.get<ActividadListResp[]>("/api/actividades"),
-      ]);
-      setCategorias(cats);
-      setTiposActividad(tipos);
-      setActividades((prev) => {
-        const previas = new Map(prev.map((a) => [a.id, a]));
-        return acts.map((r) => {
-          const anterior = previas.get(r.id);
-          const plano = aplanarActividad(r, r.proximaClase ?? undefined);
-          return anterior ? { ...plano, descripcion: anterior.descripcion } : plano;
+  const refrescarCatalogo = useCallback(() => {
+    return Promise.all([
+      api.get<CategoriaResp[]>("/api/categorias"),
+      api.get<TipoActividadResp[]>("/api/tipos-actividad"),
+      api.get<NivelIntensidad[]>("/api/niveles-intensidad"),
+      api.get<ActividadListResp[]>("/api/actividades"),
+    ])
+      .then(([cats, tipos, niveles, acts]) => {
+        setCategorias(cats);
+        setTiposActividad(tipos);
+        setNivelesIntensidad(niveles);
+        setActividades((prev) => {
+          const previas = new Map(prev.map((a) => [a.id, a]));
+          return acts.map((r) => {
+            const anterior = previas.get(r.id);
+            const plano = aplanarActividad(r, r.proximaClase ?? undefined);
+            return anterior ? { ...plano, descripcion: anterior.descripcion } : plano;
+          });
         });
-      });
-      const nombres: Record<string, string> = {};
-      for (const a of acts) nombres[a.instructor.id] = `${a.instructor.nombre} ${a.instructor.apellido}`;
-      setInstructorNombre(nombres);
-    } finally {
-      setCargandoCatalogo(false);
-    }
+        const nombres: Record<string, string> = {};
+        for (const a of acts) nombres[a.instructor.id] = `${a.instructor.nombre} ${a.instructor.apellido}`;
+        setInstructorNombre(nombres);
+        setErrorCatalogo(false);
+      })
+      .catch(() => {
+        // Sin esto la excepción quedaba sin atrapar y el catálogo vacío se veía igual que
+        // "no hay actividades publicadas".
+        setErrorCatalogo(true);
+      })
+      .finally(() => setCargandoCatalogo(false));
   }, []);
 
   useEffect(() => {
@@ -582,6 +677,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const getActividad = useCallback((id: string) => actividades.find((a) => a.id === id), [actividades]);
   const getTipoActividad = useCallback((id: string) => tiposActividad.find((t) => t.id === id), [tiposActividad]);
   const getCategoria = useCallback((id: string) => categorias.find((c) => c.id === id), [categorias]);
+  const getNivelIntensidad = useCallback(
+    (id: string) => nivelesIntensidad.find((n) => n.id === id),
+    [nivelesIntensidad],
+  );
   const getClasesDeActividad = useCallback(
     (actividadId: string) => clases.filter((c) => c.actividadId === actividadId),
     [clases],
@@ -608,11 +707,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
     nombre: input.nombre,
     descripcion: input.descripcion,
     tipoActividadId: input.tipoActividadId,
-    nivelIntensidad: input.nivelIntensidad,
+    nivelIntensidadId: input.nivelIntensidadId,
     precio: input.precio,
     ubicacion: input.ubicacion,
     photoTint: input.photoTint,
-    cuposMax: input.cuposMax,
+    duracionMin: input.duracionMin,
     latitud: input.lat ?? null,
     longitud: input.lng ?? null,
   });
@@ -715,6 +814,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setCategorias((prev) => prev.filter((c) => c.id !== id));
   }, []);
 
+  // E4Ad-HU05. Los niveles vuelven a leerse enteros despues de cada alta/baja porque la
+  // respuesta del backend no trae el contador de actividades y la tabla lo muestra.
+  const crearNivelIntensidad = useCallback(async (input: NivelIntensidadInput) => {
+    await api.post("/api/admin/niveles-intensidad", input);
+    setNivelesIntensidad(await api.get<NivelIntensidad[]>("/api/niveles-intensidad"));
+  }, []);
+
+  const actualizarNivelIntensidad = useCallback(async (id: string, input: NivelIntensidadInput) => {
+    await api.put(`/api/admin/niveles-intensidad/${id}`, input);
+    setNivelesIntensidad(await api.get<NivelIntensidad[]>("/api/niveles-intensidad"));
+  }, []);
+
+  const eliminarNivelIntensidad = useCallback(async (id: string) => {
+    await api.delete(`/api/admin/niveles-intensidad/${id}`);
+    setNivelesIntensidad((prev) => prev.filter((n) => n.id !== id));
+  }, []);
+
   const inscribirse = useCallback(
     async (clase: Clase, _alumnoId: string, metodo?: "Mercado Pago" | "Efectivo") => {
       void _alumnoId;
@@ -736,9 +852,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await api.post(`/api/instructor/inscripciones/${inscripcionId}/confirmar-cobro`);
   }, []);
 
-  const marcarAsistencia = useCallback(async (inscripcionId: string, presente: boolean) => {
-    await api.post(`/api/instructor/inscripciones/${inscripcionId}/asistencia`, { presente });
-  }, []);
 
   const listarMisInscripciones = useCallback(async (estado?: EstadoInscripcion) => {
     const query = estado ? `?estado=${encodeURIComponent(estado)}` : "";
@@ -868,13 +981,80 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return api.get<DenunciaAdmin[]>("/api/admin/denuncias");
   }, []);
 
-  const resolverDenuncia = useCallback(async (id: string, accion: AccionResolucion) => {
-    await api.post(`/api/admin/denuncias/${id}/resolver`, { accion });
-  }, []);
+  const resolverDenuncia = useCallback(
+    async (id: string, accion: AccionResolucion, detalle?: string, sancion?: SancionSuspension) => {
+      await api.post(`/api/admin/denuncias/${id}/resolver`, {
+        accion,
+        detalle: detalle?.trim() || undefined,
+        // Solo viajan con SUSPENDER; el backend los exige en ese caso.
+        montoMulta: sancion?.montoMulta,
+        diasSuspension: sancion?.diasSuspension,
+      });
+    },
+    [],
+  );
 
   // Pendiente -> En Auditoría al abrir la denuncia (E4Ad-HU07 criterio 3).
   const tomarDenuncia = useCallback(async (id: string) => {
     await api.post(`/api/admin/denuncias/${id}/auditar`);
+  }, []);
+
+  const listarMisPagos = useCallback(async () => {
+    return api.get<MiPago[]>("/api/alumno/pagos");
+  }, []);
+
+  // Edición real: antes "editar" era borrar y volver a crear en dos requests sin transacción.
+  const actualizarResenia = useCallback(async (id: string, puntaje: number, comentario: string) => {
+    await api.put(`/api/alumno/resenas/${id}`, { puntaje, comentario });
+  }, []);
+
+  // RN-19: los permisos salen de ConfiguracionRol, no de una constante del componente.
+  const listarRolesPermisos = useCallback(async () => {
+    return api.get<RolesPermisos>("/api/admin/roles");
+  }, []);
+
+  const asignarRolUsuario = useCallback(async (usuarioId: string, rolId: string) => {
+    await api.put(`/api/admin/usuarios/${usuarioId}/rol`, { rolId });
+  }, []);
+
+  const actualizarPermisosRol = useCallback(async (rolId: string, permisos: string[]) => {
+    // Se manda la foto completa del rol: lo que no viaja queda deshabilitado.
+    await api.put(`/api/admin/roles/${rolId}/permisos`, { permisos });
+  }, []);
+
+  const crearRol = useCallback(async (nombre: string, descripcion?: string) => {
+    return api.post<RolAdmin>("/api/admin/roles", { nombre, descripcion });
+  }, []);
+
+  const actualizarUsuarioAdmin = useCallback(async (id: string, input: ActualizarUsuarioAdminInput) => {
+    await api.put(`/api/admin/usuarios/${id}`, input);
+  }, []);
+
+  // E2I-HU11 criterio 4. Antes las dos acciones eran estado local de la pantalla: la
+  // respuesta y la denuncia se perdían al recargar.
+  const responderResenia = useCallback(async (id: string, respuesta: string) => {
+    return api.post<{ id: string; respuestaInstructor: string; respuestaInstructorAt: string }>(
+      `/api/instructor/resenas/${id}/respuesta`,
+      { respuesta },
+    );
+  }, []);
+
+  const denunciarResenia = useCallback(async (id: string, motivo: string) => {
+    await api.post(`/api/instructor/resenas/${id}/denuncia`, { motivo });
+  }, []);
+
+  // Galería de la actividad (sección 2: `imagenes[]`). La portada sigue siendo `subirFotoActividad`.
+  const agregarImagenActividad = useCallback(async (actividadId: string, archivo: File) => {
+    const fd = new FormData();
+    fd.append("archivo", archivo);
+    return api.postForm<{ id: string; actividadId: string; orden: number }>(
+      `/api/instructor/actividades/${actividadId}/imagenes`,
+      fd,
+    );
+  }, []);
+
+  const eliminarImagenActividad = useCallback(async (actividadId: string, imagenId: string) => {
+    await api.delete(`/api/instructor/actividades/${actividadId}/imagenes/${imagenId}`);
   }, []);
 
   const listarPenalizaciones = useCallback(async () => {
@@ -913,25 +1093,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await api.delete(`/api/alumno/actividades/${actividadId}/favorito`);
   }, []);
 
-  // --- Fuera de alcance: mock puro (penalizaciones) ---
-
-  const aplicarPenalizacion = useCallback(
-    (input: Omit<Penalizacion, "id" | "createdAt">) => {
-      const nueva: Penalizacion = { ...input, id: nextId("pen"), createdAt: new Date().toISOString() };
-      patchMock("penalizaciones", (l) => [...l, nueva]);
-      return nueva;
-    },
-    [patchMock],
-  );
 
   const value: DataContextValue = useMemo(
     () => ({
       categorias,
+      nivelesIntensidad,
+      getNivelIntensidad,
       tiposActividad,
       actividades,
       clases,
       instructorNombre,
       cargandoCatalogo,
+      errorCatalogo,
+      refrescarCatalogo,
       getActividad,
       getTipoActividad,
       getCategoria,
@@ -950,13 +1124,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
       crearTipoActividad,
       actualizarTipoActividad,
       eliminarTipoActividad,
+      crearNivelIntensidad,
+      actualizarNivelIntensidad,
+      eliminarNivelIntensidad,
       crearCategoria,
       actualizarCategoria,
       eliminarCategoria,
       inscribirse,
       cancelarInscripcion,
       confirmarCobroEfectivo,
-      marcarAsistencia,
       listarMisInscripciones,
       listarRosterClase,
       listarMisClases,
@@ -985,7 +1161,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
       listarDenunciasAdmin,
       resolverDenuncia,
       tomarDenuncia,
+      listarMisPagos,
+      actualizarResenia,
+      actualizarUsuarioAdmin,
+      responderResenia,
+      denunciarResenia,
+      agregarImagenActividad,
+      eliminarImagenActividad,
       listarPenalizaciones,
+      listarRolesPermisos,
+      asignarRolUsuario,
+      actualizarPermisosRol,
+      crearRol,
       crearPenalizacion,
       listarUsuariosAdmin,
       actualizarEstadoUsuario,
@@ -994,18 +1181,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
       listarMisFavoritos,
       agregarFavorito,
       quitarFavorito,
-      inscripciones: mock.inscripciones,
-      pagos: mock.pagos,
-      penalizaciones: mock.penalizaciones,
-      aplicarPenalizacion,
     }),
     [
       categorias,
+      nivelesIntensidad,
+      getNivelIntensidad,
       tiposActividad,
       actividades,
       clases,
       instructorNombre,
       cargandoCatalogo,
+      errorCatalogo,
+      refrescarCatalogo,
       getActividad,
       getTipoActividad,
       getCategoria,
@@ -1024,13 +1211,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
       crearTipoActividad,
       actualizarTipoActividad,
       eliminarTipoActividad,
+      crearNivelIntensidad,
+      actualizarNivelIntensidad,
+      eliminarNivelIntensidad,
       crearCategoria,
       actualizarCategoria,
       eliminarCategoria,
       inscribirse,
       cancelarInscripcion,
       confirmarCobroEfectivo,
-      marcarAsistencia,
       listarMisInscripciones,
       listarRosterClase,
       listarMisClases,
@@ -1059,7 +1248,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
       listarDenunciasAdmin,
       resolverDenuncia,
       tomarDenuncia,
+      listarMisPagos,
+      actualizarResenia,
+      actualizarUsuarioAdmin,
+      responderResenia,
+      denunciarResenia,
+      agregarImagenActividad,
+      eliminarImagenActividad,
       listarPenalizaciones,
+      listarRolesPermisos,
+      asignarRolUsuario,
+      actualizarPermisosRol,
+      crearRol,
       crearPenalizacion,
       listarUsuariosAdmin,
       actualizarEstadoUsuario,
@@ -1068,8 +1268,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       listarMisFavoritos,
       agregarFavorito,
       quitarFavorito,
-      mock,
-      aplicarPenalizacion,
     ],
   );
 

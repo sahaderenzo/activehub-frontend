@@ -3,14 +3,13 @@ import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { s } from "../../lib/style";
 import { ApiError, useAuth } from "../../context/AuthContext";
-import type { RolNombre } from "../../lib/types";
-
-const HOME_BY_ROL: Record<RolNombre, string> = { ALUMNO: "/alumno", INSTRUCTOR: "/instructor", ADMIN: "/admin" };
+import { homeDe } from "../../lib/areas";
 
 export default function Login() {
   const navigate = useNavigate();
   const { login } = useAuth();
-  const [email, setEmail] = useState("");
+  // Correo o DNI: el backend acepta las dos credenciales.
+  const [identificador, setIdentificador] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -20,8 +19,10 @@ export default function Login() {
     setError(null);
     setLoading(true);
     try {
-      const user = await login(email, password);
-      navigate(HOME_BY_ROL[user.rol]);
+      const user = await login(identificador.trim(), password);
+      // RN-19: adonde entra lo deciden sus permisos, no el nombre de su rol. Un rol creado
+      // en "Roles y permisos" no tiene entrada en ningun mapa fijo por rol.
+      navigate(homeDe(user.permisos ?? []));
     } catch (err) {
       if (err instanceof ApiError) setError(err.message);
       else setError("Ocurrió un error inesperado. Intentá de nuevo.");
@@ -77,11 +78,11 @@ export default function Login() {
             Tu próxima clase está a <span style={s("color:#FF8A4C;")}>un clic</span> de distancia
           </h2>
           <p style={s("font-size:16px;line-height:1.6;color:#E4EDF5;max-width:380px;margin:0 0 30px;text-shadow:0 1px 10px rgba(8,22,38,.65);")}>
-            Ingresá para ver tus reservas, inscribirte a nuevas clases y descubrir actividades cerca tuyo.
+            Ingresá para ver tus inscripciones, anotarte en nuevas clases y descubrir actividades cerca tuyo.
           </p>
           <div style={s("display:flex;flex-direction:column;gap:14px;")}>
             {[
-              "Reservá y pagá en pocos pasos",
+              "Inscribite y pagá en pocos pasos",
               "Cupos y horarios en tiempo real",
               "Calificá y comentá tus actividades",
             ].map((txt, i) => (
@@ -126,18 +127,22 @@ export default function Login() {
             </div>
           )}
 
-          <label style={s("display:block;font:700 13px Manrope;color:#41566B;margin-bottom:7px;")}>Correo electrónico</label>
+          <label style={s("display:block;font:700 13px Manrope;color:#41566B;margin-bottom:7px;")}>
+            Correo electrónico o DNI
+          </label>
           <div style={fieldStyle(!!error)}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9AAABA" strokeWidth={2}>
               <rect x="2" y="4" width="20" height="16" rx="2" />
               <path d="m22 7-10 5L2 7" />
             </svg>
+            {/* type="text" y no "email": con "email" el navegador rechazaba un DNI válido. */}
             <input
-              type="email"
+              type="text"
               required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="vos@email.com"
+              value={identificador}
+              onChange={(e) => setIdentificador(e.target.value)}
+              placeholder="vos@email.com o 30123456"
+              autoComplete="username"
               style={s("border:none;outline:none;font:600 15px Manrope;color:#0E2A47;width:100%;background:transparent;")}
             />
           </div>

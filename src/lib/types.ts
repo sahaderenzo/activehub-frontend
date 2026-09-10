@@ -19,13 +19,27 @@ export type EstadoDenuncia = "Pendiente" | "En Auditoría" | "Resuelta";
 
 export type Disponibilidad = "Disponible" | "Últimos cupos" | "Sin cupos";
 
-export type NivelIntensidad = "Física baja" | "Física media" | "Física alta";
+/**
+ * Desde la V21 del backend el nivel es una **entidad** con ABM propio (E4Ad-HU05), no una
+ * unión de tres literales: el admin puede crear los que quiera desde "Tipos y niveles".
+ * Por eso el nombre es `string` abierto y los mapas de color/copy que había keyed por los
+ * tres valores fijos necesitan un valor por defecto.
+ */
+export interface NivelIntensidad {
+  id: string;
+  nombre: string;
+  descripcion: string;
+  /** Cuántas actividades lo usan. Lo calcula el backend; la tabla del admin lo muestra. */
+  actividades: number;
+}
 
 export interface Usuario {
   id: string;
   nombre: string;
   apellido: string;
   email: string;
+  /** Credencial alternativa de login. Opcional: las cuentas viejas no lo tienen. */
+  dni?: string;
   telefono?: string;
   fechaNacimiento?: string;
   rol: RolNombre;
@@ -34,9 +48,20 @@ export interface Usuario {
   createdAt: string;
 }
 
+/**
+ * Un interés del alumno es un TipoActividad del catálogo, no texto libre: por eso trae su
+ * categoría (Trekking sabe que es de Aventura). Lo cambió la migración V19 del backend.
+ */
+export interface InteresAlumno {
+  tipoActividadId: string;
+  nombre: string;
+  categoriaId: string;
+  categoria: string;
+}
+
 export interface PerfilAlumno {
   usuarioId: string;
-  intereses: string[];
+  intereses: InteresAlumno[];
   condicionSalud?: string;
 }
 
@@ -65,13 +90,18 @@ export interface Actividad {
   nombre: string;
   descripcion: string;
   tipoActividadId: string;
-  nivelIntensidad: NivelIntensidad;
+  nivelIntensidadId: string;
+  /** Nombre del nivel, desnormalizado para no tener que buscarlo en cada tarjeta. */
+  nivelIntensidad: string;
   instructorId: string;
   precio: number;
   ubicacion: string;
   photoTint: string;
   rating: number;
-  cuposMax: number;
+  /** Duración de una clase, en minutos. El cupo NO vive acá: es de la Clase. */
+  duracionMin: number;
+  /** Ids de la galería (`GET /api/fotos/actividad/imagen/{id}`). Solo en el detalle. */
+  imagenes?: string[];
   lat?: number;
   lng?: number;
   /** Solo presente cuando la actividad viene del catálogo real (listaractividades). */
@@ -81,7 +111,8 @@ export interface Actividad {
 export interface AgendaClases {
   id: string;
   actividadId: string;
-  diaSemana: number; // 0=domingo .. 6=sabado
+  /** 1=lunes .. 7=domingo, igual que `DayOfWeek.getValue()` del backend. */
+  diaSemana: number;
   horaInicio: string;
   horaFin: string;
   edadMin?: number;
@@ -93,6 +124,7 @@ export interface Clase {
   id: string;
   actividadId: string;
   fechaHora: string;
+  horaFin: string;
   estado: EstadoClase;
   cuposMax: number;
   cuposOcupados: number;
@@ -122,7 +154,8 @@ export interface Resenia {
   claseId: string;
   alumnoId: string;
   puntaje: number;
-  comentario: string;
+  /** Opcional: una reseña puede ser solo estrellas. */
+  comentario: string | null;
   enModeracion: boolean;
   createdAt: string;
 }

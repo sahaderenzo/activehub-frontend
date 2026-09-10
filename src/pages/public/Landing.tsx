@@ -37,7 +37,7 @@ const CAT_ICONS: Record<string, { bg: string; stroke: string; path: string }> = 
 
 const BENEFITS = [
   {
-    title: "Reservá en segundos",
+    title: "Inscribite en segundos",
     text: "Elegí horario y cupo disponible, confirmá y listo. Sin llamados ni formularios eternos.",
     path: "M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11",
   },
@@ -137,12 +137,12 @@ export default function Landing() {
             Cupos en tiempo real · +{actividades.length * 20} actividades en Mendoza
           </div>
           <h1 className="ah-hero-title" style={s("font:700 56px/1.05 Space Grotesk,sans-serif;letter-spacing:-1.5px;margin:0 0 18px;")}>
-            Encontrá y reservá
+            Encontrá e inscribite
             <br />
             actividades <span style={s("color:#FF6A2B;")}>cerca tuyo</span>
           </h1>
           <p style={s("font-size:18px;line-height:1.6;color:#54697E;max-width:480px;margin:0 0 30px;")}>
-            Buscá clases deportivas y recreativas, mirá horarios y cupos disponibles, y reservá tu lugar en pocos pasos.
+            Buscá clases deportivas y recreativas, mirá horarios y cupos disponibles, e inscribite en pocos pasos.
             Todo en un solo lugar.
           </p>
 
@@ -383,7 +383,7 @@ export default function Landing() {
               <span style={s("font:700 19px Space Grotesk;color:#fff;")}>ActiveHub</span>
             </div>
             <p style={s("font-size:14px;line-height:1.6;max-width:280px;margin:0;")}>
-              La plataforma para encontrar, reservar e inscribirte a actividades físicas y recreativas cerca tuyo.
+              La plataforma para encontrar actividades físicas y recreativas cerca tuyo e inscribirte a sus clases.
             </p>
           </div>
           <div>

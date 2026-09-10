@@ -8,7 +8,7 @@ import { useData } from "../../context/DataContext";
 import { ApiError } from "../../lib/api";
 import { formatFecha, formatHora, tipoIngreso } from "../../lib/mockData";
 
-export default function AlumnoReserva() {
+export default function AlumnoPreInscripcion() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { currentUser } = useAuth();
@@ -41,7 +41,7 @@ export default function AlumnoReserva() {
   const cat = tipo ? getCategoria(tipo.categoriaId) : undefined;
   const instructor = instructorNombre[actividad.instructorId];
 
-  const confirmReserva = async () => {
+  const confirmarPreInscripcion = async () => {
     if (!currentUser) return;
     setError(null);
     setEnviando(true);
@@ -188,7 +188,7 @@ export default function AlumnoReserva() {
               </button>
               <button
                 className="ah-btn"
-                onClick={confirmReserva}
+                onClick={confirmarPreInscripcion}
                 disabled={enviando}
                 style={s(
                   `flex:1;background:#0FB8A9;color:#fff;border:none;border-radius:12px;padding:15px;font:700 15.5px Manrope,sans-serif;cursor:pointer;box-shadow:0 8px 18px rgba(15,184,169,.3);display:flex;align-items:center;justify-content:center;gap:9px;opacity:${enviando ? ".7" : "1"};`,

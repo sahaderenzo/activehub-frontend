@@ -8,26 +8,14 @@ import type {
   AgendaClases,
   Categoria,
   Clase,
-  Inscripcion,
-  Pago,
-  Penalizacion,
   PerfilAlumno,
   PerfilInstructor,
   TipoActividad,
   Usuario,
 } from "./types";
 
-export const INTERESES: string[] = [
-  "Running",
-  "Gimnasia",
-  "Trekking",
-  "Senderismo",
-  "Defensa Personal",
-  "Meditación",
-  "Yoga",
-  "Pilates",
-  "Ciclismo",
-];
+// La lista fija de intereses se borró: desde V19 los intereses del alumno son
+// TipoActividad reales, que salen de la API (`/api/tipos-actividad`).
 
 export const categorias: Categoria[] = [
   { id: "cat-bienestar", nombre: "Bienestar" },
@@ -171,12 +159,17 @@ export const usuarios: Usuario[] = [
   },
 ];
 
+/**
+ * Los intereses de estos perfiles de demo quedan vacíos: desde V19 son `TipoActividad` reales
+ * (con id de base), y este archivo no tiene forma de inventar ids que existan. Los intereses
+ * de una cuenta real llegan de `/api/auth/me`.
+ */
 export const perfilesAlumno: Record<string, PerfilAlumno> = {
-  "u-martina": { usuarioId: "u-martina", intereses: ["Running", "Meditación", "Yoga"] },
-  "u-lucia": { usuarioId: "u-lucia", intereses: ["Trekking", "Senderismo"] },
-  "u-bruno": { usuarioId: "u-bruno", intereses: ["Defensa Personal", "Ciclismo"] },
-  "u-valentina": { usuarioId: "u-valentina", intereses: ["Pilates", "Gimnasia"] },
-  "u-facundo": { usuarioId: "u-facundo", intereses: ["Running"] },
+  "u-martina": { usuarioId: "u-martina", intereses: [] },
+  "u-lucia": { usuarioId: "u-lucia", intereses: [] },
+  "u-bruno": { usuarioId: "u-bruno", intereses: [] },
+  "u-valentina": { usuarioId: "u-valentina", intereses: [] },
+  "u-facundo": { usuarioId: "u-facundo", intereses: [] },
 };
 
 export const perfilesInstructor: Record<string, PerfilInstructor> = {
@@ -220,118 +213,144 @@ export const actividades: Actividad[] = [
     nombre: "Running en Grupo",
     descripcion: "Salidas grupales de running por el Parque General San Martín, con planes progresivos para todos los niveles.",
     tipoActividadId: "tipo-aventura",
+    nivelIntensidadId: "nivel-alta",
     nivelIntensidad: "Física alta",
     instructorId: "u-mateo",
     precio: 4500,
     ubicacion: "Parque Gral. San Martín, Mendoza",
     photoTint: tint("#1B3A5C", "#12B5A5"),
     rating: 4.8,
-    cuposMax: 16,
+    duracionMin: 60,
   },
   {
     id: "act-trekking",
     nombre: "Trekking Cerro Arco",
     descripcion: "Ascenso guiado al Cerro Arco, ideal para iniciarse en montaña con acompañamiento técnico.",
     tipoActividadId: "tipo-aventura",
+    nivelIntensidadId: "nivel-alta",
     nivelIntensidad: "Física alta",
     instructorId: "u-mateo",
     precio: 6200,
     ubicacion: "Cerro Arco, Las Heras",
     photoTint: tint("#22543D", "#12B5A5"),
     rating: 4.9,
-    cuposMax: 12,
+    duracionMin: 180,
   },
   {
     id: "act-senderismo",
     nombre: "Senderismo Familiar",
     descripcion: "Caminatas de baja exigencia por senderos del Cacheuta, aptas para todas las edades.",
     tipoActividadId: "tipo-aventura",
+    nivelIntensidadId: "nivel-media",
     nivelIntensidad: "Física media",
     instructorId: "u-diego",
     precio: 3800,
     ubicacion: "Cacheuta, Luján de Cuyo",
     photoTint: tint("#173250", "#0FB8A9"),
     rating: 4.7,
-    cuposMax: 20,
+    duracionMin: 120,
   },
   {
     id: "act-defensa",
     nombre: "Defensa Personal",
     descripcion: "Técnicas prácticas de defensa personal orientadas a situaciones cotidianas.",
     tipoActividadId: "tipo-defensa",
+    nivelIntensidadId: "nivel-alta",
     nivelIntensidad: "Física alta",
     instructorId: "u-diego",
     precio: 5000,
     ubicacion: "Polideportivo Ciudad, Mendoza",
     photoTint: tint("#3B1F2B", "#FF6A2B"),
     rating: 4.6,
-    cuposMax: 14,
+    duracionMin: 75,
   },
   {
     id: "act-meditacion",
     nombre: "Meditación Guiada",
     descripcion: "Sesiones de meditación y respiración consciente para reducir el estrés y mejorar el foco.",
     tipoActividadId: "tipo-relajacion",
+    nivelIntensidadId: "nivel-baja",
     nivelIntensidad: "Física baja",
     instructorId: "u-carla",
     precio: 3200,
     ubicacion: "Espacio Vital, Godoy Cruz",
     photoTint: tint("#0E2A47", "#7A52D9"),
     rating: 4.9,
-    cuposMax: 18,
+    duracionMin: 60,
   },
   {
     id: "act-yoga",
     nombre: "Yoga Integral",
     descripcion: "Clases de yoga hatha y vinyasa para todos los niveles, con foco en flexibilidad y respiración.",
     tipoActividadId: "tipo-bienestar",
+    nivelIntensidadId: "nivel-baja",
     nivelIntensidad: "Física baja",
     instructorId: "u-carla",
     precio: 3600,
     ubicacion: "Espacio Vital, Godoy Cruz",
     photoTint: tint("#143A5E", "#22D3C0"),
     rating: 4.8,
-    cuposMax: 16,
+    duracionMin: 45,
   },
   {
     id: "act-gimnasia",
     nombre: "Gimnasia Funcional",
     descripcion: "Entrenamiento funcional en grupo para mejorar fuerza, resistencia y movilidad.",
     tipoActividadId: "tipo-bienestar",
+    nivelIntensidadId: "nivel-media",
     nivelIntensidad: "Física media",
     instructorId: "u-sofia",
     precio: 4200,
     ubicacion: "Complejo Deportivo Andes Talleres",
     photoTint: tint("#0E2A47", "#F5A623"),
     rating: 4.5,
-    cuposMax: 20,
+    duracionMin: 60,
   },
   {
     id: "act-pilates",
     nombre: "Pilates",
     descripcion: "Clases de pilates con y sin elementos, enfocadas en el fortalecimiento del core.",
     tipoActividadId: "tipo-bienestar",
+    nivelIntensidadId: "nivel-baja",
     nivelIntensidad: "Física baja",
     instructorId: "u-sofia",
     precio: 3900,
     ubicacion: "Complejo Deportivo Andes Talleres",
     photoTint: tint("#1B3A5C", "#FF8A4C"),
     rating: 4.7,
-    cuposMax: 14,
+    duracionMin: 90,
   },
 ];
 
 // --- Agenda + clases --------------------------------------------------------
 
+/**
+ * El cupo es de la Clase (y de la Agenda), no de la Actividad — la Actividad solo tiene
+ * `duracionMin`. Acá se fija uno por actividad para que el dataset mock sea determinista.
+ */
+const CUPO_MOCK: Record<string, number> = {
+  "act-running": 16,
+  "act-trekking": 12,
+  "act-senderismo": 20,
+  "act-defensa": 14,
+  "act-meditacion": 18,
+  "act-yoga": 16,
+  "act-funcional": 20,
+  "act-gimnasia": 14,
+};
+
+const cupoDe = (actividadId: string) => CUPO_MOCK[actividadId] ?? 15;
+
 export const agendas: AgendaClases[] = actividades.map((a, i) => ({
   id: `ag-${a.id}`,
   actividadId: a.id,
-  diaSemana: (i * 2) % 7,
+  // 1=lunes .. 7=domingo, igual que el backend.
+  diaSemana: ((i * 2) % 7) + 1,
   horaInicio: i % 2 === 0 ? "08:00" : "18:30",
   horaFin: i % 2 === 0 ? "09:00" : "19:30",
   edadMin: 12,
   edadMax: 70,
-  cuposMax: a.cuposMax,
+  cuposMax: cupoDe(a.id),
 }));
 
 function addDays(base: Date, days: number): Date {
@@ -344,89 +363,28 @@ const NOW = new Date();
 
 export const clases: Clase[] = actividades.flatMap((a, i) => {
   const offsets = [1, 3, 6, 9, 13];
+  const cupos = cupoDe(a.id);
   return offsets.map((offset, j) => {
     const fecha = addDays(NOW, offset + i);
-    const ocupados = Math.max(0, a.cuposMax - ((i + j) % (a.cuposMax + 1)));
+    const fin = new Date(fecha.getTime() + a.duracionMin * 60_000);
+    const ocupados = Math.max(0, cupos - ((i + j) % (cupos + 1)));
     const estado: Clase["estado"] =
-      offset < 0 ? "Finalizada" : ocupados >= a.cuposMax ? "Habilitada" : "Programada";
+      offset < 0 ? "Finalizada" : ocupados >= cupos ? "Habilitada" : "Programada";
     return {
       id: `${a.id}-c${j}`,
       actividadId: a.id,
       fechaHora: fecha.toISOString(),
+      horaFin: fin.toISOString(),
       estado,
-      cuposMax: a.cuposMax,
-      cuposOcupados: Math.min(ocupados, a.cuposMax),
+      cuposMax: cupos,
+      cuposOcupados: Math.min(ocupados, cupos),
     };
   });
 });
 
-// --- Inscripciones / pagos --------------------------------------------------
-
-export const inscripciones: Inscripcion[] = [
-  {
-    id: "insc-1",
-    claseId: clases[0].id,
-    alumnoId: "u-martina",
-    estado: "Inscripto",
-    createdAt: addDays(NOW, -2).toISOString(),
-    pagoId: "pago-1",
-  },
-  {
-    id: "insc-2",
-    claseId: clases[5].id,
-    alumnoId: "u-martina",
-    estado: "PreInscripción",
-    createdAt: addDays(NOW, -1).toISOString(),
-  },
-  {
-    id: "insc-3",
-    claseId: clases[2].id,
-    alumnoId: "u-lucia",
-    estado: "PagoPendiente",
-    createdAt: addDays(NOW, -1).toISOString(),
-    pagoId: "pago-2",
-  },
-  {
-    id: "insc-4",
-    claseId: clases[1].id,
-    alumnoId: "u-bruno",
-    estado: "Inscripto",
-    createdAt: addDays(NOW, -3).toISOString(),
-    pagoId: "pago-3",
-  },
-  {
-    id: "insc-5",
-    claseId: clases[0].id,
-    alumnoId: "u-valentina",
-    estado: "Cancelada",
-    createdAt: addDays(NOW, -5).toISOString(),
-  },
-];
-
-export const pagos: Pago[] = [
-  { id: "pago-1", inscripcionId: "insc-1", estado: "Liberado", monto: 4500, metodo: "Mercado Pago" },
-  { id: "pago-2", inscripcionId: "insc-3", estado: "Retenido", monto: 3800, metodo: "Mercado Pago" },
-  { id: "pago-3", inscripcionId: "insc-4", estado: "Efectivo", monto: 6200, metodo: "Efectivo" },
-];
-
-// --- Penalizaciones -----------------------------------------------------
-
-export const penalizaciones: Penalizacion[] = [
-  {
-    id: "pen-1",
-    usuarioId: "u-facundo",
-    tipo: "Suspensión temporal",
-    motivo: "Ausencias reiteradas sin aviso a clases confirmadas.",
-    createdAt: addDays(NOW, -20).toISOString(),
-  },
-  {
-    id: "pen-2",
-    usuarioId: "u-bruno",
-    tipo: "Económica",
-    motivo: "Cancelación fuera de término con reintegro parcial.",
-    createdAt: addDays(NOW, -8).toISOString(),
-  },
-];
+// Los datasets de inscripciones, pagos y penalizaciones se borraron: las pantallas que
+// los leían ya consumen la API (listarMisInscripciones / listarPenalizaciones). De este
+// archivo sobreviven el catálogo de demo y los helpers de formato de fecha/hora.
 
 // --- Helpers -----------------------------------------------------------------
 
@@ -452,10 +410,6 @@ export function getClasesDeActividad(actividadId: string): Clase[] {
 
 export function getActividadesDeInstructor(instructorId: string): Actividad[] {
   return actividades.filter((a) => a.instructorId === instructorId);
-}
-
-export function getInscripcionesDeAlumno(alumnoId: string): Inscripcion[] {
-  return inscripciones.filter((i) => i.alumnoId === alumnoId);
 }
 
 /**

@@ -4,7 +4,7 @@ import DashLayout from "../../components/DashLayout";
 import { s } from "../../lib/style";
 import { useData } from "../../context/DataContext";
 import { ApiError } from "../../lib/api";
-import type { NivelIntensidad } from "../../lib/types";
+import { nivelStyle } from "../../lib/nivelStyle";
 
 type Tab = "tipos" | "niveles";
 
@@ -22,30 +22,6 @@ function tintFor(seed: string): [string, string] {
   return TIPO_COLORS[h % TIPO_COLORS.length];
 }
 
-const NIVELES: { nombre: NivelIntensidad; desc: string; bg: string; fg: string; bd: string }[] = [
-  {
-    nombre: "Física baja",
-    desc: "Bajo impacto físico, apto para todo público. Ej: meditación, pilates, estiramiento.",
-    bg: "#E7F8F5",
-    fg: "#0C8576",
-    bd: "#CBEDE7",
-  },
-  {
-    nombre: "Física media",
-    desc: "Esfuerzo moderado, requiere algo de condición física previa. Ej: senderismo, gimnasia funcional.",
-    bg: "#FFF3E0",
-    fg: "#B9741A",
-    bd: "#F6E2C0",
-  },
-  {
-    nombre: "Física alta",
-    desc: "Alta exigencia física y cardiovascular. Recomendado para participantes entrenados.",
-    bg: "#FBEAEB",
-    fg: "#BE3A3E",
-    bd: "#F3D2D3",
-  },
-];
-
 interface TipoFormState {
   id: string | null;
   nombre: string;
@@ -55,6 +31,12 @@ interface TipoFormState {
 interface CategoriaFormState {
   id: string | null;
   nombre: string;
+}
+
+interface NivelFormState {
+  id: string | null;
+  nombre: string;
+  descripcion: string;
 }
 
 export default function AdminTaxonomia() {
@@ -71,9 +53,16 @@ export default function AdminTaxonomia() {
     crearCategoria,
     actualizarCategoria,
     eliminarCategoria,
+    nivelesIntensidad,
+    crearNivelIntensidad,
+    actualizarNivelIntensidad,
+    eliminarNivelIntensidad,
   } = useData();
   const [form, setForm] = useState<TipoFormState | null>(null);
   const [catForm, setCatForm] = useState<CategoriaFormState | null>(null);
+  const [nivelForm, setNivelForm] = useState<NivelFormState | null>(null);
+  const [nivelTocado, setNivelTocado] = useState(false);
+  const nivelFormCompleto = !!nivelForm?.nombre.trim() && !!nivelForm?.descripcion.trim();
   const [error, setError] = useState<string | null>(null);
 
   const goTab = (t: Tab) => navigate(`/admin/taxonomia/${t}`);
@@ -98,7 +87,7 @@ export default function AdminTaxonomia() {
     [tiposActividad, actividades, categorias],
   );
 
-  const nivelesConCount = NIVELES.map((n) => ({ ...n, acts: actividades.filter((a) => a.nivelIntensidad === n.nombre).length }));
+
 
   const submitForm = async () => {
     if (!form || !form.nombre.trim() || !form.categoriaId) return;
@@ -119,6 +108,37 @@ export default function AdminTaxonomia() {
       } catch (err) {
         setError(err instanceof ApiError ? err.message : "No pudimos quitar el tipo de actividad.");
       }
+    }
+  };
+
+  const submitNivelForm = async () => {
+    // Criterio 3: nombre y descripción son obligatorios; el botón ya está deshabilitado,
+    // esto es la red por si llega vacío igual.
+    setNivelTocado(true);
+    if (!nivelForm || !nivelForm.nombre.trim() || !nivelForm.descripcion.trim()) return;
+    setError(null);
+    const input = { nombre: nivelForm.nombre.trim(), descripcion: nivelForm.descripcion.trim() };
+    try {
+      if (nivelForm.id) await actualizarNivelIntensidad(nivelForm.id, input);
+      else await crearNivelIntensidad(input);
+      setNivelForm(null);
+      setNivelTocado(false);
+    } catch (err) {
+      // Criterio 4 (duplicado) y 8 (falla genérica): el mensaje del backend es el que manda.
+      setError(err instanceof ApiError ? err.message : "No se pudo completar la operación. Intentá de nuevo.");
+    }
+  };
+
+  const eliminarNivel = async (id: string, nombre: string) => {
+    // Criterio 7: confirmación explícita antes de la baja lógica.
+    if (!window.confirm(`¿Eliminar el nivel "${nombre}"?`)) return;
+    setError(null);
+    try {
+      await eliminarNivelIntensidad(id);
+    } catch (err) {
+      // Criterio 6: si tiene actividades asociadas el backend responde 409 con el texto
+      // "No podés eliminar este Nivel porque tiene actividades asociadas."
+      setError(err instanceof ApiError ? err.message : "No se pudo completar la operación. Intentá de nuevo.");
     }
   };
 
@@ -317,14 +337,16 @@ export default function AdminTaxonomia() {
               <div>
                 <div style={s("font:700 16px Space Grotesk,sans-serif;")}>Niveles de intensidad</div>
                 <p style={s("font-size:12.5px;color:#7A8C9E;margin:2px 0 0;")}>
-                  Nivel de esfuerzo físico que requiere cada actividad. Es un conjunto fijo del sistema.
+                  Nivel de esfuerzo físico que requiere cada actividad.
                 </p>
               </div>
               <button
                 className="ah-btn"
-                disabled
-                title="Los niveles de intensidad son fijos en este demo"
-                style={s("background:#FF6A2B;color:#fff;border:none;border-radius:11px;padding:10px 16px;font:700 13px Manrope,sans-serif;cursor:not-allowed;opacity:.6;display:flex;align-items:center;gap:7px;")}
+                onClick={() => {
+                  setNivelForm({ id: null, nombre: "", descripcion: "" });
+                  setNivelTocado(false);
+                }}
+                style={s("background:#FF6A2B;color:#fff;border:none;border-radius:11px;padding:10px 16px;font:700 13px Manrope,sans-serif;cursor:pointer;display:flex;align-items:center;gap:7px;")}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.4}>
                   <path d="M12 5v14M5 12h14" />
@@ -335,26 +357,54 @@ export default function AdminTaxonomia() {
             <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:16px;overflow:hidden;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
               <div
                 style={s(
-                  "display:grid;grid-template-columns:1fr 2fr 1fr;padding:12px 22px;background:#F7FAFC;border-bottom:1px solid #EEF2F6;font:700 11.5px Manrope,sans-serif;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;",
+                  "display:grid;grid-template-columns:1fr 2fr .6fr 1fr;padding:12px 22px;background:#F7FAFC;border-bottom:1px solid #EEF2F6;font:700 11.5px Manrope,sans-serif;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;",
                 )}
               >
                 <span>Nivel</span>
                 <span>Descripción</span>
                 <span>Actividades</span>
+                <span>Acciones</span>
               </div>
-              {nivelesConCount.map((n) => (
-                <div key={n.nombre} style={s("display:grid;grid-template-columns:1fr 2fr 1fr;padding:14px 22px;border-bottom:1px solid #F1F4F8;align-items:center;")}>
-                  <span
-                    style={s(
-                      `justify-self:start;font:700 13px Manrope,sans-serif;padding:5px 12px;border-radius:99px;background:${n.bg};color:${n.fg};border:1px solid ${n.bd};`,
-                    )}
-                  >
-                    {n.nombre}
-                  </span>
-                  <span style={s("font-size:13px;color:#65788C;font-weight:600;line-height:1.5;")}>{n.desc}</span>
-                  <span style={s("font-size:14px;color:#41566B;font-weight:700;")}>{n.acts}</span>
+              {nivelesIntensidad.length === 0 && (
+                <div style={s("padding:26px 22px;text-align:center;font-size:13px;color:#7A8C9E;font-weight:600;")}>
+                  Todavía no hay niveles de intensidad cargados.
                 </div>
-              ))}
+              )}
+              {nivelesIntensidad.map((n) => {
+                const [bg, fg, bd] = nivelStyle(n.nombre);
+                return (
+                  <div key={n.id} style={s("display:grid;grid-template-columns:1fr 2fr .6fr 1fr;padding:14px 22px;border-bottom:1px solid #F1F4F8;align-items:center;")}>
+                    <span
+                      style={s(
+                        `justify-self:start;font:700 13px Manrope,sans-serif;padding:5px 12px;border-radius:99px;background:${bg};color:${fg};border:1px solid ${bd};`,
+                      )}
+                    >
+                      {n.nombre}
+                    </span>
+                    <span style={s("font-size:13px;color:#65788C;font-weight:600;line-height:1.5;")}>{n.descripcion}</span>
+                    <span style={s("font-size:14px;color:#41566B;font-weight:700;")}>{n.actividades}</span>
+                    <span style={s("display:flex;gap:8px;")}>
+                      <button
+                        className="ah-btn"
+                        onClick={() => {
+                          setNivelForm({ id: n.id, nombre: n.nombre, descripcion: n.descripcion });
+                          setNivelTocado(false);
+                        }}
+                        style={s("background:#F4F7FA;color:#41566B;border:none;border-radius:9px;padding:7px 13px;font:700 12.5px Manrope,sans-serif;cursor:pointer;")}
+                      >
+                        Editar
+                      </button>
+                      <button
+                        className="ah-btn"
+                        onClick={() => eliminarNivel(n.id, n.nombre)}
+                        style={s("background:#FBEAEB;color:#BE3A3E;border:none;border-radius:9px;padding:7px 13px;font:700 12.5px Manrope,sans-serif;cursor:pointer;")}
+                      >
+                        Quitar
+                      </button>
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </>
         )}
@@ -428,6 +478,64 @@ export default function AdminTaxonomia() {
                 className="ah-btn"
                 onClick={submitCatForm}
                 style={s("flex:1;background:#FF6A2B;color:#fff;border:none;border-radius:10px;padding:11px;font:700 13.5px Manrope,sans-serif;cursor:pointer;")}
+              >
+                Guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* E4Ad-HU05 criterio 2: modal con Nombre* y Descripción*, ambos obligatorios. */}
+      {nivelForm && (
+        <div style={s("position:fixed;inset:0;z-index:80;background:rgba(8,22,38,.5);display:flex;align-items:center;justify-content:center;")}>
+          <div style={s("width:100%;max-width:420px;background:#fff;border-radius:16px;padding:22px;box-shadow:0 26px 64px rgba(0,0,0,.3);")}>
+            <div style={s("font:700 16px Space Grotesk,sans-serif;color:#0E2A47;margin-bottom:14px;")}>
+              {nivelForm.id ? "Editar nivel de intensidad" : "Nuevo nivel de intensidad"}
+            </div>
+            <label style={s("display:block;font:700 12px Manrope,sans-serif;color:#41566B;margin-bottom:6px;")}>Nombre*</label>
+            <input
+              value={nivelForm.nombre}
+              onChange={(e) => setNivelForm({ ...nivelForm, nombre: e.target.value })}
+              maxLength={60}
+              style={s(
+                `width:100%;border:1px solid ${nivelTocado && !nivelForm.nombre.trim() ? "#E5484D" : "#E2E9F0"};border-radius:10px;padding:10px 12px;font:600 13.5px Manrope,sans-serif;color:#0E2A47;margin-bottom:${nivelTocado && !nivelForm.nombre.trim() ? "6px" : "14px"};`,
+              )}
+            />
+            {nivelTocado && !nivelForm.nombre.trim() && (
+              <div style={s("font-size:12px;color:#E5484D;font-weight:600;margin-bottom:12px;")}>Este campo es obligatorio</div>
+            )}
+            <label style={s("display:block;font:700 12px Manrope,sans-serif;color:#41566B;margin-bottom:6px;")}>Descripción*</label>
+            <textarea
+              value={nivelForm.descripcion}
+              onChange={(e) => setNivelForm({ ...nivelForm, descripcion: e.target.value })}
+              maxLength={300}
+              rows={3}
+              style={s(
+                `width:100%;box-sizing:border-box;resize:vertical;border:1px solid ${nivelTocado && !nivelForm.descripcion.trim() ? "#E5484D" : "#E2E9F0"};border-radius:10px;padding:10px 12px;font:600 13.5px Manrope,sans-serif;color:#0E2A47;margin-bottom:${nivelTocado && !nivelForm.descripcion.trim() ? "6px" : "20px"};`,
+              )}
+            />
+            {nivelTocado && !nivelForm.descripcion.trim() && (
+              <div style={s("font-size:12px;color:#E5484D;font-weight:600;margin-bottom:18px;")}>Este campo es obligatorio</div>
+            )}
+            <div style={s("display:flex;gap:10px;")}>
+              <button
+                className="ah-btn"
+                onClick={() => {
+                  setNivelForm(null);
+                  setNivelTocado(false);
+                }}
+                style={s("flex:1;background:#F4F7FA;color:#41566B;border:none;border-radius:10px;padding:11px;font:700 13.5px Manrope,sans-serif;cursor:pointer;")}
+              >
+                Cancelar
+              </button>
+              <button
+                className="ah-btn"
+                disabled={!nivelFormCompleto}
+                onClick={submitNivelForm}
+                style={s(
+                  `flex:1;background:#FF6A2B;color:#fff;border:none;border-radius:10px;padding:11px;font:700 13.5px Manrope,sans-serif;cursor:${nivelFormCompleto ? "pointer" : "not-allowed"};opacity:${nivelFormCompleto ? 1 : 0.55};`,
+                )}
               >
                 Guardar
               </button>

@@ -32,11 +32,11 @@ export default function InstructorMetricas() {
 
   const cargar = useCallback(() => {
     if (!aprobado) return;
-    setErrorCarga(false);
     Promise.all([data.listarMisClases(), data.listarInscripcionesMisClases()])
       .then(([clases, inscs]) => {
         setMisClases(clases);
         setInscripciones(inscs);
+        setErrorCarga(false);
       })
       .catch(() => setErrorCarga(true));
   }, [aprobado, data.listarMisClases, data.listarInscripcionesMisClases]);
@@ -103,11 +103,11 @@ export default function InstructorMetricas() {
         return { l: a.nombre, count, c: PALETTE[i % PALETTE.length] };
       })
       .sort((a, b) => b.count - a.count);
-    const totalReservas = porActividad.reduce((s, d) => s + d.count, 0);
-    const reservasPorActividad = porActividad.map((d) => ({
+    const totalInscripciones = porActividad.reduce((s, d) => s + d.count, 0);
+    const inscripcionesPorActividad = porActividad.map((d) => ({
       l: d.l,
       c: d.c,
-      p: `${totalReservas ? Math.round((d.count / totalReservas) * 100) : 0}%`,
+      p: `${totalInscripciones ? Math.round((d.count / totalInscripciones) * 100) : 0}%`,
     }));
 
     const ocupacionPorActividad = misActividades.map((a, i) => {
@@ -124,7 +124,7 @@ export default function InstructorMetricas() {
       ingresosPendientes,
       ocupacionProm,
       monthBars,
-      reservasPorActividad,
+      inscripcionesPorActividad,
       ocupacionPorActividad,
     };
   }, [currentUser, misClases, inscripciones]);
@@ -235,7 +235,7 @@ export default function InstructorMetricas() {
 
         <div className="ah-grid-side" style={s("display:grid;grid-template-columns:1.6fr 1fr;gap:18px;margin-bottom:24px;")}>
           <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:18px;padding:22px;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
-            <div style={s("font:700 16px Space Grotesk;margin-bottom:22px;")}>Reservas por mes</div>
+            <div style={s("font:700 16px Space Grotesk;margin-bottom:22px;")}>Inscripciones por mes</div>
             <div style={s("display:flex;align-items:flex-end;gap:9px;height:170px;")}>
               {stats.monthBars.map((b, i) => (
                 <div key={i} style={s("flex:1;display:flex;flex-direction:column;align-items:center;gap:7px;justify-content:flex-end;height:100%;")}>
@@ -246,12 +246,12 @@ export default function InstructorMetricas() {
             </div>
           </div>
           <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:18px;padding:22px;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
-            <div style={s("font:700 16px Space Grotesk;margin-bottom:20px;")}>Reservas por actividad</div>
-            {stats.reservasPorActividad.length === 0 ? (
-              <p style={s("font-size:13px;color:#90A1B2;font-weight:600;")}>Todavía no tenés reservas.</p>
+            <div style={s("font:700 16px Space Grotesk;margin-bottom:20px;")}>Inscripciones por actividad</div>
+            {stats.inscripcionesPorActividad.length === 0 ? (
+              <p style={s("font-size:13px;color:#90A1B2;font-weight:600;")}>Todavía no tenés inscripciones.</p>
             ) : (
               <div style={s("display:flex;flex-direction:column;gap:13px;")}>
-                {stats.reservasPorActividad.map((d) => (
+                {stats.inscripcionesPorActividad.map((d) => (
                   <div key={d.l}>
                     <div style={s("display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;")}>
                       <span style={s("font-size:13px;font-weight:600;color:#41566B;display:flex;align-items:center;gap:8px;min-width:0;")}>

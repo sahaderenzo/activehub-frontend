@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { s } from "../lib/style";
+import ErrorReintentar from "./ErrorReintentar";
 import { useData } from "../context/DataContext";
 import type { Notificacion } from "../context/DataContext";
 
@@ -21,8 +22,15 @@ export default function NotificationBell({ variant = "light", align = "right" }:
   const [notificaciones, setNotificaciones] = useState<Notificacion[]>([]);
   const [open, setOpen] = useState(false);
 
+  const [errorCarga, setErrorCarga] = useState(false);
+
   const cargar = () => {
-    listarNotificaciones().then(setNotificaciones).catch(() => {});
+    listarNotificaciones()
+      .then((lista) => {
+        setNotificaciones(lista);
+        setErrorCarga(false);
+      })
+      .catch(() => setErrorCarga(true));
   };
 
   useEffect(() => {
@@ -79,7 +87,12 @@ export default function NotificationBell({ variant = "light", align = "right" }:
             <div style={s("padding:14px 16px;border-bottom:1px solid #F1F4F8;font:700 13.5px Manrope,sans-serif;color:#0E2A47;")}>
               Notificaciones
             </div>
-            {notificaciones.length === 0 ? (
+            {errorCarga ? (
+              // "No tenés notificaciones" con el backend caído es una afirmación falsa.
+              <div style={s("padding:16px;")}>
+                <ErrorReintentar mensaje="No pudimos cargar tus notificaciones." onReintentar={cargar} />
+              </div>
+            ) : notificaciones.length === 0 ? (
               <div style={s("padding:26px 16px;text-align:center;font-size:13px;color:#90A1B2;")}>
                 No tenés notificaciones.
               </div>

@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import AlumnoNav from "../../components/AlumnoNav";
 import StatusBadge from "../../components/StatusBadge";
+import ErrorReintentar from "../../components/ErrorReintentar";
 import { s } from "../../lib/style";
+import { useAhora } from "../../lib/ahora";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import type { MiInscripcion } from "../../context/DataContext";
@@ -24,6 +26,7 @@ function mismoDia(a: Date, b: Date): boolean {
 }
 
 export default function AlumnoCalendario() {
+  const ahora = useAhora();
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const { getActividad, getTipoActividad, getCategoria, instructorNombre, listarMisInscripciones } = useData();
@@ -32,14 +35,25 @@ export default function AlumnoCalendario() {
   const [mesCursor, setMesCursor] = useState(() => inicioDeMes(new Date()));
   const [diaSeleccionado, setDiaSeleccionado] = useState<string>(() => diaKey(new Date()));
 
-  useEffect(() => {
-    if (currentUser) listarMisInscripciones().then(setInscripciones).catch(() => {});
+  const [errorCarga, setErrorCarga] = useState(false);
+
+  const cargar = useCallback(() => {
+    if (!currentUser) return;
+    listarMisInscripciones()
+      .then((lista) => {
+        setInscripciones(lista);
+        setErrorCarga(false);
+      })
+      .catch(() => setErrorCarga(true));
   }, [currentUser, listarMisInscripciones]);
+
+  useEffect(() => {
+    cargar();
+  }, [cargar]);
 
   // Solo lo que todavía no pasó: una vez que la clase finaliza, este
   // calendario deja de mostrarla (para eso está "Mis clases" > Finalizadas).
   const proximas = useMemo(() => {
-    const ahora = Date.now();
     return inscripciones
       .filter((i) => i.estado !== "Cancelada" && new Date(i.claseFechaHora).getTime() > ahora)
       .slice()
@@ -124,7 +138,16 @@ export default function AlumnoCalendario() {
           </div>
         </div>
 
-        {proximas.length === 0 && (
+        {errorCarga && (
+          <div style={s("margin-bottom:18px;")}>
+            <ErrorReintentar
+              mensaje="No pudimos cargar tus clases."
+              onReintentar={cargar}
+            />
+          </div>
+        )}
+
+        {proximas.length === 0 && !errorCarga && (
           <div
             style={s(
               "background:#fff;border:1px dashed #D6DEE7;border-radius:16px;padding:50px 20px;text-align:center;color:#7A8C9E;font-weight:600;",

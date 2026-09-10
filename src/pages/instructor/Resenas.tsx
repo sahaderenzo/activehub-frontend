@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import type { ReseniaInstructor } from "../../context/DataContext";
+import { ApiError } from "../../lib/api";
 import { formatFecha } from "../../lib/mockData";
 
 const STAR_PATH = "m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14l-5-4.87 6.91-1.01L12 2z";
@@ -37,9 +38,22 @@ export default function InstructorResenas() {
   );
 
   const [misResenias, setMisResenias] = useState<ReseniaInstructor[]>([]);
-  useEffect(() => {
-    if (aprobado) data.listarResenasInstructor().then(setMisResenias).catch(() => {});
+  const [errorCarga, setErrorCarga] = useState(false);
+
+  const cargar = useCallback(() => {
+    if (!aprobado) return;
+    data
+      .listarResenasInstructor()
+      .then((rs) => {
+        setMisResenias(rs);
+        setErrorCarga(false);
+      })
+      .catch(() => setErrorCarga(true));
   }, [aprobado, data.listarResenasInstructor]);
+
+  useEffect(() => {
+    cargar();
+  }, [cargar]);
 
   const sidebar = useMemo(
     () =>
@@ -53,9 +67,11 @@ export default function InstructorResenas() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [respondiendo, setRespondiendo] = useState<Record<string, string>>({});
-  const [respondidas, setRespondidas] = useState<Record<string, boolean>>({});
-  const [denunciadas, setDenunciadas] = useState<Record<string, boolean>>({});
+  const [accionError, setAccionError] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState<string | null>(null);
 
+  /* eslint-disable react-hooks/set-state-in-effect -- elige la actividad por defecto cuando
+     llega la lista del backend. */
   useEffect(() => {
     if (selectedId && misActividades.some((a) => a.id === selectedId)) return;
     if (misActividades.length > 0) {
@@ -66,6 +82,7 @@ export default function InstructorResenas() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [misActividades]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   if (!currentUser || !aprobado) return null;
 
@@ -83,26 +100,60 @@ export default function InstructorResenas() {
   });
 
   const toggleResponder = (id: string) => {
+    setAccionError(null);
     setRespondiendo((prev) => {
       const next = { ...prev };
       if (id in next) delete next[id];
-      else next[id] = "";
+      // Al editar, se arranca del texto ya publicado.
+      else next[id] = misResenias.find((r) => r.id === id)?.respuestaInstructor ?? "";
       return next;
     });
   };
 
-  const enviarRespuesta = (id: string) => {
-    setRespondidas((prev) => ({ ...prev, [id]: true }));
-    setRespondiendo((prev) => {
-      const next = { ...prev };
-      delete next[id];
-      return next;
-    });
+  // Antes las dos acciones solo movían estado local: la respuesta y la denuncia
+  // desaparecían al recargar la pantalla.
+  const enviarRespuesta = async (id: string) => {
+    const texto = (respondiendo[id] ?? "").trim();
+    if (!texto) return;
+    setAccionError(null);
+    setEnviando(id);
+    try {
+      const r = await data.responderResenia(id, texto);
+      setMisResenias((prev) =>
+        prev.map((rv) =>
+          rv.id === id
+            ? { ...rv, respuestaInstructor: r.respuestaInstructor, respuestaInstructorAt: r.respuestaInstructorAt }
+            : rv,
+        ),
+      );
+      setRespondiendo((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    } catch (err) {
+      setAccionError(err instanceof ApiError ? err.message : "No pudimos enviar tu respuesta.");
+    } finally {
+      setEnviando(null);
+    }
   };
 
-  const denunciar = (id: string) => {
-    if (window.confirm("¿Denunciar esta reseña para revisión del equipo de ActiveHub?")) {
-      setDenunciadas((prev) => ({ ...prev, [id]: true }));
+  const denunciar = async (id: string) => {
+    const motivo = window.prompt("¿Por qué denunciás esta reseña? El equipo de ActiveHub la va a revisar.");
+    if (motivo === null) return;
+    if (!motivo.trim()) {
+      setAccionError("Contanos por qué denunciás esta reseña.");
+      return;
+    }
+    setAccionError(null);
+    setEnviando(id);
+    try {
+      await data.denunciarResenia(id, motivo.trim());
+      setMisResenias((prev) => prev.map((rv) => (rv.id === id ? { ...rv, denunciada: true } : rv)));
+    } catch (err) {
+      setAccionError(err instanceof ApiError ? err.message : "No pudimos registrar la denuncia.");
+    } finally {
+      setEnviando(null);
     }
   };
 
@@ -192,7 +243,30 @@ export default function InstructorResenas() {
             </div>
 
             <div style={s("display:flex;flex-direction:column;gap:14px;")}>
-              {reviews.length === 0 && (
+              {errorCarga && (
+                <div
+                  style={s(
+                    "display:flex;align-items:center;gap:11px;background:#FBEAEB;border:1px solid #F3D2D3;border-radius:12px;padding:13px 15px;",
+                  )}
+                >
+                  <span style={s("flex:1;font-size:13px;color:#BE3A3E;font-weight:600;")}>
+                    No pudimos cargar las reseñas.
+                  </span>
+                  <button
+                    className="ah-btn"
+                    onClick={cargar}
+                    style={s("background:#fff;border:1px solid #F3C6C7;border-radius:9px;padding:8px 14px;font:700 12.5px Manrope;color:#BE3A3E;cursor:pointer;")}
+                  >
+                    Reintentar
+                  </button>
+                </div>
+              )}
+              {accionError && (
+                <div style={s("background:#FBEAEB;border:1px solid #F3C6C7;border-radius:12px;padding:12px 15px;font:600 13px Manrope;color:#BE3A3E;")} role="alert">
+                  {accionError}
+                </div>
+              )}
+              {reviews.length === 0 && !errorCarga && (
                 <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:16px;padding:30px;text-align:center;color:#90A1B2;font-weight:600;")}>
                   Esta actividad todavía no tiene reseñas.
                 </div>
@@ -204,7 +278,7 @@ export default function InstructorResenas() {
                   <div
                     key={rv.id}
                     style={s(
-                      `background:#fff;border:1px solid ${rv.enModeracion ? "#F3D2D3" : "#E7EDF3"};border-radius:16px;padding:18px 20px;box-shadow:0 1px 2px rgba(14,42,71,.04);`,
+                      `background:#fff;border:1px solid ${rv.denunciada || rv.oculta ? "#F3D2D3" : rv.enModeracion ? "#F6E2C0" : "#E7EDF3"};border-radius:16px;padding:18px 20px;box-shadow:0 1px 2px rgba(14,42,71,.04);`,
                     )}
                   >
                     <div style={s("display:flex;align-items:center;gap:11px;margin-bottom:10px;")}>
@@ -221,9 +295,42 @@ export default function InstructorResenas() {
                       </div>
                       <Stars value={rv.puntaje} />
                     </div>
-                    <p style={s("font-size:14.5px;line-height:1.6;color:#54697E;margin:0 0 12px;")}>{rv.comentario}</p>
+                    <p style={s("font-size:14.5px;line-height:1.6;color:#54697E;margin:0 0 12px;")}>{rv.comentario?.trim() ? rv.comentario : <span style={s("color:#9AAABA;font-style:italic;")}>Sin comentario</span>}</p>
+
+                    {rv.respuestaInstructor && (
+                      <div
+                        style={s(
+                          "margin:0 0 12px;border-left:3px solid #12B5A5;background:#F4FBFA;border-radius:0 10px 10px 0;padding:10px 14px;",
+                        )}
+                      >
+                        <div style={s("font:700 11.5px Manrope;color:#0C8576;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;")}>
+                          Tu respuesta{rv.respuestaInstructorAt ? ` · ${formatFecha(rv.respuestaInstructorAt)}` : ""}
+                        </div>
+                        <div style={s("font-size:13.5px;line-height:1.5;color:#41566B;font-weight:600;")}>
+                          {rv.respuestaInstructor}
+                        </div>
+                      </div>
+                    )}
+
                     <div style={s("display:flex;align-items:center;gap:9px;flex-wrap:wrap;")}>
+                      {/* "En moderación" y "Denunciada" son cosas distintas: la primera es que el
+                          admin todavía no aprobó la reseña, la segunda que vos la reportaste.
+                          Antes las dos se pintaban con el mismo cartel rojo "Reportada". */}
                       {rv.enModeracion && (
+                        <span
+                          style={s(
+                            "font:700 11px Manrope;background:#FFF3E0;color:#B9741A;border:1px solid #F6E2C0;padding:4px 10px;border-radius:99px;display:inline-flex;align-items:center;gap:5px;",
+                          )}
+                          title="Todavía no es visible para el resto: un administrador tiene que aprobarla."
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#B9741A" strokeWidth={2.4}>
+                            <circle cx="12" cy="12" r="9" />
+                            <path d="M12 7v5l3 2" />
+                          </svg>
+                          Pendiente de moderación
+                        </span>
+                      )}
+                      {rv.denunciada && (
                         <span
                           style={s(
                             "font:700 11px Manrope;background:#FBEAEB;color:#BE3A3E;border:1px solid #F3D2D3;padding:4px 10px;border-radius:99px;display:inline-flex;align-items:center;gap:5px;",
@@ -233,42 +340,52 @@ export default function InstructorResenas() {
                             <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
                             <path d="M12 9v4M12 17h.01" />
                           </svg>
-                          Reportada · en revisión
+                          Denunciada · en revisión
                         </span>
                       )}
-                      {respondidas[rv.id] && (
+                      {rv.oculta && (
+                        <span style={s("font:700 11px Manrope;background:#EEF2F6;color:#65788C;border:1px solid #DDE5EC;padding:4px 10px;border-radius:99px;")}>
+                          Oculta
+                        </span>
+                      )}
+                      {rv.respuestaInstructor && (
                         <span style={s("font:700 11px Manrope;background:#E7F8F5;color:#0C8576;border:1px solid #CBEDE7;padding:4px 10px;border-radius:99px;")}>
-                          Respuesta enviada
-                        </span>
-                      )}
-                      {denunciadas[rv.id] && (
-                        <span style={s("font:700 11px Manrope;background:#FBEAEB;color:#BE3A3E;border:1px solid #F3D2D3;padding:4px 10px;border-radius:99px;")}>
-                          Denunciada
+                          Respondida
                         </span>
                       )}
                       <button
                         className="ah-btn"
                         onClick={() => toggleResponder(rv.id)}
+                        disabled={rv.enModeracion || rv.oculta}
+                        title={
+                          rv.enModeracion
+                            ? "Vas a poder responder cuando el administrador apruebe la reseña."
+                            : rv.oculta
+                              ? "Esta reseña fue ocultada."
+                              : undefined
+                        }
                         style={s(
-                          "background:#fff;border:1px solid #E2E9F0;border-radius:9px;padding:7px 13px;font:700 12.5px Manrope;color:#41566B;cursor:pointer;display:flex;align-items:center;gap:6px;",
+                          `background:#fff;border:1px solid #E2E9F0;border-radius:9px;padding:7px 13px;font:700 12.5px Manrope;color:#41566B;cursor:${
+                            rv.enModeracion || rv.oculta ? "not-allowed" : "pointer"
+                          };opacity:${rv.enModeracion || rv.oculta ? ".55" : "1"};display:flex;align-items:center;gap:6px;`,
                         )}
                       >
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#41566B" strokeWidth={2}>
                           <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
                         </svg>
-                        Responder
+                        {rv.respuestaInstructor ? "Editar respuesta" : "Responder"}
                       </button>
                       <button
                         className="ah-btn"
                         onClick={() => denunciar(rv.id)}
-                        disabled={!!denunciadas[rv.id]}
+                        disabled={rv.denunciada || rv.oculta || enviando === rv.id}
                         style={s(
-                          `margin-left:auto;background:#fff;border:1px solid #F3D2D3;border-radius:9px;padding:7px 13px;font:700 12.5px Manrope;color:#BE3A3E;cursor:pointer;opacity:${
-                            denunciadas[rv.id] ? ".55" : "1"
-                          };`,
+                          `margin-left:auto;background:#fff;border:1px solid #F3D2D3;border-radius:9px;padding:7px 13px;font:700 12.5px Manrope;color:#BE3A3E;cursor:${
+                            rv.denunciada || rv.oculta ? "not-allowed" : "pointer"
+                          };opacity:${rv.denunciada || rv.oculta ? ".55" : "1"};`,
                         )}
                       >
-                        Denunciar reseña
+                        {rv.denunciada ? "Ya denunciada" : "Denunciar reseña"}
                       </button>
                     </div>
                     {respondiendoAbierto && (
@@ -285,14 +402,14 @@ export default function InstructorResenas() {
                           <button
                             className="ah-btn"
                             onClick={() => enviarRespuesta(rv.id)}
-                            disabled={!respondiendo[rv.id]?.trim()}
+                            disabled={!respondiendo[rv.id]?.trim() || enviando === rv.id}
                             style={s(
                               `background:#12B5A5;color:#fff;border:none;border-radius:8px;padding:8px 14px;font:700 12.5px Manrope;cursor:pointer;opacity:${
-                                respondiendo[rv.id]?.trim() ? "1" : ".55"
+                                respondiendo[rv.id]?.trim() && enviando !== rv.id ? "1" : ".55"
                               };`,
                             )}
                           >
-                            Enviar respuesta
+                            {enviando === rv.id ? "Enviando…" : "Enviar respuesta"}
                           </button>
                           <button
                             className="ah-btn"

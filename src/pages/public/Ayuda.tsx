@@ -4,13 +4,14 @@ import { useNavigate } from "react-router-dom";
 import { s } from "../../lib/style";
 import Logo from "../../components/Logo";
 import { useAuth } from "../../context/AuthContext";
+import { FAQS } from "../../lib/faqs";
 
 const GUIAS = [
   {
     tint: "#E7F8F5",
     stroke: "#12B5A5",
     path: "M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11",
-    title: "Cómo reservar una clase",
+    title: "Cómo inscribirte a una clase",
     desc: "Elegí actividad, horario y confirmá tu lugar en pocos pasos.",
   },
   {
@@ -29,28 +30,6 @@ const GUIAS = [
   },
 ];
 
-const FAQS = [
-  {
-    q: "¿Cuál es la diferencia entre PreInscripción e Inscripción?",
-    a: "Si faltan más de 4 días para la clase, solo podés PreInscribirte (registra tu interés, no ocupa cupo ni genera pago). A 4 días o menos, la inscripción es definitiva y ocupa un cupo hasta 1 hora antes del inicio.",
-  },
-  {
-    q: "¿Cómo pago mi inscripción?",
-    a: "Con Mercado Pago (el pago queda Retenido y se Libera al confirmarse la clase) o en efectivo directamente con tu instructor, quien confirma el cobro manualmente.",
-  },
-  {
-    q: "¿Puedo cancelar una clase ya inscripta?",
-    a: "Sí, desde 'Mis clases' podés cancelar tu inscripción. Una vez cancelada, no puede volver a un estado anterior.",
-  },
-  {
-    q: "¿Cómo dejo una reseña?",
-    a: "Después de que una clase en la que estuviste Inscripto finalice, vas a poder calificarla desde 'Mis reseñas'.",
-  },
-  {
-    q: "Soy instructor, ¿cuándo puedo publicar actividades?",
-    a: "Un administrador valida tu cuenta después del registro. Mientras esté en revisión podés ingresar, pero no publicar actividades.",
-  },
-];
 
 export default function Ayuda() {
   const navigate = useNavigate();

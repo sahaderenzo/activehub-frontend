@@ -12,9 +12,14 @@ const TIPO_STYLE: Record<TipoPenalizacion, [string, string, string]> = {
   "Suspensión temporal": ["#FBEAEB", "#BE3A3E", "#F3D2D3"],
 };
 
+/** Espejo de `VentanaPenalizacion.MINIMO_DIAS_SUSPENSION` del backend. */
+const MIN_DIAS_SUSPENSION = 15;
+
 interface FormState {
   usuarioId: string;
-  tipo: TipoPenalizacion;
+  /** Los dos tipos se pueden aplicar juntos; el backend guarda una penalización por cada uno. */
+  economica: boolean;
+  suspension: boolean;
   motivo: string;
   monto: string;
   fechaInicio: string;
@@ -23,12 +28,18 @@ interface FormState {
 
 const FORM_VACIO: FormState = {
   usuarioId: "",
-  tipo: "Económica",
+  economica: true,
+  suspension: false,
   motivo: "",
   monto: "",
   fechaInicio: "",
   fechaFin: "",
 };
+
+/** Días enteros entre dos fechas `YYYY-MM-DD`. */
+function diasEntre(desde: string, hasta: string): number {
+  return Math.round((new Date(hasta).getTime() - new Date(desde).getTime()) / 86400000);
+}
 
 export default function AdminPenalizaciones() {
   const { listarPenalizaciones, crearPenalizacion, listarUsuariosAdmin } = useData();
@@ -45,11 +56,22 @@ export default function AdminPenalizaciones() {
   // admin "aplicaba" no se guardaba y las penalizaciones que sí creaba `resolverdenuncia`
   // no aparecían nunca.
   const cargar = useCallback(() => {
-    setError(null);
     listarPenalizaciones()
-      .then(setPenalizaciones)
+      .then((lista) => {
+        setPenalizaciones(lista);
+        setError(null);
+      })
       .catch((err) => setError(err instanceof ApiError ? err.message : "No pudimos cargar las penalizaciones."));
-    listarUsuariosAdmin().then(setUsuarios).catch(() => {});
+    // Sin el listado de usuarios el formulario no tiene a quién penalizar, así que un fallo
+    // acá también es un error de pantalla y no un select vacío sin explicación.
+    //
+    // Solo instructores (`puedeDarClases`): la penalización existe por la inasistencia del
+    // profesor (E4Ad-HU06 / RN-13), así que multar o suspender a un alumno o a un
+    // administrador no significa nada. El backend rechaza igual el resto — acá se evita
+    // ofrecerlo. El flag viene calculado por permiso, no por nombre de rol (RN-19).
+    listarUsuariosAdmin()
+      .then((lista) => setUsuarios(lista.filter((u) => u.puedeDarClases)))
+      .catch(() => setError("No pudimos cargar el listado de usuarios."));
   }, [listarPenalizaciones, listarUsuariosAdmin]);
 
   useEffect(() => {
@@ -72,22 +94,34 @@ export default function AdminPenalizaciones() {
     setFormError(null);
     if (!form.usuarioId) return setFormError("Elegí a qué usuario penalizar.");
     if (!form.motivo.trim()) return setFormError("El motivo es obligatorio.");
-    if (form.tipo === "Económica" && (!form.monto || Number(form.monto) <= 0)) {
+    if (!form.economica && !form.suspension) {
+      return setFormError("Elegí al menos un tipo de penalización.");
+    }
+    if (form.economica && (!form.monto || Number(form.monto) <= 0)) {
       return setFormError("Ingresá el monto de la penalización económica.");
     }
-    if (form.tipo === "Suspensión temporal" && (!form.fechaInicio || !form.fechaFin)) {
-      return setFormError("Indicá la fecha de inicio y de fin de la suspensión.");
+    if (form.suspension) {
+      if (!form.fechaInicio || !form.fechaFin) {
+        return setFormError("Indicá la fecha de inicio y de fin de la suspensión.");
+      }
+      if (diasEntre(form.fechaInicio, form.fechaFin) < MIN_DIAS_SUSPENSION) {
+        return setFormError(`La suspensión no puede durar menos de ${MIN_DIAS_SUSPENSION} días.`);
+      }
     }
 
     setGuardando(true);
     try {
+      const tipos: TipoPenalizacion[] = [];
+      if (form.economica) tipos.push("Económica");
+      if (form.suspension) tipos.push("Suspensión temporal");
+
       await crearPenalizacion({
         usuarioId: form.usuarioId,
-        tipo: form.tipo,
+        tipos,
         motivo: form.motivo.trim(),
-        monto: form.tipo === "Económica" ? Number(form.monto) : undefined,
-        fechaInicio: form.tipo === "Suspensión temporal" ? form.fechaInicio : undefined,
-        fechaFin: form.tipo === "Suspensión temporal" ? form.fechaFin : undefined,
+        monto: form.economica ? Number(form.monto) : undefined,
+        fechaInicio: form.suspension ? form.fechaInicio : undefined,
+        fechaFin: form.suspension ? form.fechaFin : undefined,
       });
       setShowForm(false);
       setForm(FORM_VACIO);
@@ -105,7 +139,7 @@ export default function AdminPenalizaciones() {
         <div>
           <h1 style={s("font:700 22px Space Grotesk,sans-serif;margin:0;")}>Penalizaciones</h1>
           <p style={s("font-size:13.5px;color:#7A8C9E;margin:3px 0 0;")}>
-            Sanciones a usuarios: económicas o suspensión temporal. Cada usuario acumula su cantidad.
+            Sanciones a instructores: económicas o suspensión temporal. Cada instructor acumula su cantidad.
           </p>
         </div>
         <button
@@ -180,7 +214,8 @@ export default function AdminPenalizaciones() {
                       )}
                       {p.fechaInicio && p.fechaFin && (
                         <div style={s("font-size:12.5px;color:#7A8C9E;font-weight:600;margin-top:2px;")}>
-                          Vigencia: {formatFecha(p.fechaInicio)} → {formatFecha(p.fechaFin)}
+                          Vigencia: {formatFecha(p.fechaInicio)} → {formatFecha(p.fechaFin)}{" "}
+                          <span style={s("color:#BE3A3E;")}>({diasEntre(p.fechaInicio, p.fechaFin)} días)</span>
                         </div>
                       )}
                       {p.denunciaId && (
@@ -232,13 +267,13 @@ export default function AdminPenalizaciones() {
           <div style={s("width:100%;max-width:420px;background:#fff;border-radius:16px;padding:22px;box-shadow:0 26px 64px rgba(0,0,0,.3);")}>
             <div style={s("font:700 16px Space Grotesk,sans-serif;color:#0E2A47;margin-bottom:14px;")}>Nueva penalización</div>
 
-            <label style={s("display:block;font:700 12px Manrope,sans-serif;color:#41566B;margin-bottom:6px;")}>Usuario</label>
+            <label style={s("display:block;font:700 12px Manrope,sans-serif;color:#41566B;margin-bottom:6px;")}>Instructor</label>
             <select
               value={form.usuarioId}
               onChange={(e) => setForm({ ...form, usuarioId: e.target.value })}
               style={s("width:100%;border:1px solid #E2E9F0;border-radius:10px;padding:10px 12px;font:600 13.5px Manrope,sans-serif;color:#0E2A47;margin-bottom:14px;")}
             >
-              <option value="">Elegí un usuario…</option>
+              <option value="">Elegí un instructor…</option>
               {usuarios.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.nombre} {u.apellido} · {u.rol} · {u.email}
@@ -246,18 +281,31 @@ export default function AdminPenalizaciones() {
               ))}
             </select>
 
+            {/* Los dos tipos son combinables: se puede multar y suspender en la misma sanción.
+                El backend guarda una Penalización por cada tipo tildado. */}
             <label style={s("display:block;font:700 12px Manrope,sans-serif;color:#41566B;margin-bottom:6px;")}>Tipo</label>
-            <select
-              value={form.tipo}
-              onChange={(e) => setForm({ ...form, tipo: e.target.value as TipoPenalizacion })}
-              style={s("width:100%;border:1px solid #E2E9F0;border-radius:10px;padding:10px 12px;font:600 13.5px Manrope,sans-serif;color:#0E2A47;margin-bottom:14px;")}
-            >
-              <option value="Económica">Económica</option>
-              <option value="Suspensión temporal">Suspensión temporal</option>
-            </select>
+            <div style={s("display:flex;flex-direction:column;gap:8px;margin-bottom:14px;")}>
+              {[
+                { key: "economica" as const, label: "Económica" },
+                { key: "suspension" as const, label: "Suspensión temporal" },
+              ].map((opt) => (
+                <label
+                  key={opt.key}
+                  style={s("display:flex;align-items:center;gap:9px;font:600 13.5px Manrope,sans-serif;color:#41566B;cursor:pointer;")}
+                >
+                  <input
+                    type="checkbox"
+                    checked={form[opt.key]}
+                    onChange={(e) => setForm({ ...form, [opt.key]: e.target.checked })}
+                    style={s("width:16px;height:16px;accent-color:#E5484D;cursor:pointer;")}
+                  />
+                  {opt.label}
+                </label>
+              ))}
+            </div>
 
             {/* Campos condicionales (criterios 4 y 5): monto para Económica, vigencia para Suspensión. */}
-            {form.tipo === "Económica" ? (
+            {form.economica && (
               <>
                 <label style={s("display:block;font:700 12px Manrope,sans-serif;color:#41566B;margin-bottom:6px;")}>
                   Monto ($)
@@ -270,7 +318,8 @@ export default function AdminPenalizaciones() {
                   style={s("width:100%;border:1px solid #E2E9F0;border-radius:10px;padding:10px 12px;font:600 13.5px Manrope,sans-serif;color:#0E2A47;margin-bottom:14px;")}
                 />
               </>
-            ) : (
+            )}
+            {form.suspension && (
               <div style={s("display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;")}>
                 <div>
                   <label style={s("display:block;font:700 12px Manrope,sans-serif;color:#41566B;margin-bottom:6px;")}>
@@ -328,7 +377,7 @@ export default function AdminPenalizaciones() {
                   };opacity:${guardando ? ".6" : "1"};`,
                 )}
               >
-                {guardando ? "Aplicando…" : form.tipo === "Suspensión temporal" ? "Suspender" : "Aplicar penalización"}
+                {guardando ? "Aplicando…" : "Aplicar penalización"}
               </button>
             </div>
           </div>

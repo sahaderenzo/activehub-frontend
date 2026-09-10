@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
 import StatusBadge from "../../components/StatusBadge";
+import ErrorReintentar from "../../components/ErrorReintentar";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
@@ -23,9 +24,6 @@ export default function InstructorPanel() {
   }, [currentUser, aprobado, navigate]);
 
   const [resenasInstructor, setResenasInstructor] = useState<ReseniaInstructor[]>([]);
-  useEffect(() => {
-    if (aprobado) data.listarResenasInstructor().then(setResenasInstructor).catch(() => {});
-  }, [aprobado, data.listarResenasInstructor]);
 
   // Datos reales del instructor. Antes el panel derivaba todo de `data.clases` (caché
   // parcial que sólo se llena al visitar el detalle de una actividad) y de
@@ -37,16 +35,18 @@ export default function InstructorPanel() {
 
   const cargar = useCallback(() => {
     if (!aprobado) return;
-    setCargando(true);
-    setErrorCarga(false);
-    Promise.all([data.listarMisClases(), data.listarInscripcionesMisClases()])
-      .then(([clases, inscs]) => {
+    // Las reseñas entran acá y no en su propio effect: alimentan una de las alertas, así que
+    // si fallan el panel también está incompleto y tiene que ofrecer "Reintentar".
+    Promise.all([data.listarMisClases(), data.listarInscripcionesMisClases(), data.listarResenasInstructor()])
+      .then(([clases, inscs, resenias]) => {
         setMisClases(clases);
         setInscripciones(inscs);
+        setResenasInstructor(resenias);
+        setErrorCarga(false);
       })
       .catch(() => setErrorCarga(true))
       .finally(() => setCargando(false));
-  }, [aprobado, data.listarMisClases, data.listarInscripcionesMisClases]);
+  }, [aprobado, data.listarMisClases, data.listarInscripcionesMisClases, data.listarResenasInstructor]);
 
   useEffect(() => {
     cargar();
@@ -179,7 +179,7 @@ export default function InstructorPanel() {
             )}
           >
             <div style={s("display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;")}>
-              <div style={s("font:700 16px Space Grotesk;")}>Reservas últimos 7 días</div>
+              <div style={s("font:700 16px Space Grotesk;")}>Inscripciones últimos 7 días</div>
               <span
                 style={s(
                   "font:700 12px Manrope;color:#0C8576;background:#E7F8F5;border:1px solid #CBEDE7;padding:4px 10px;border-radius:99px;",
@@ -215,19 +215,12 @@ export default function InstructorPanel() {
           >
             <div style={s("font:700 16px Space Grotesk;margin-bottom:18px;")}>Alertas y solicitudes</div>
             {errorCarga && (
-              <div style={s("display:flex;flex-direction:column;gap:10px;align-items:flex-start;margin-bottom:16px;")}>
-                <span style={s("font-size:13.5px;color:#BE3A3E;font-weight:600;")}>
-                  No se pudo cargar la información del panel, intentá nuevamente.
-                </span>
-                <button
-                  className="ah-btn"
-                  onClick={cargar}
-                  style={s(
-                    "background:#fff;border:1px solid #D6DEE7;border-radius:10px;padding:8px 14px;font:700 13px Manrope;color:#41566B;cursor:pointer;",
-                  )}
-                >
-                  Reintentar
-                </button>
+              <div style={s("margin-bottom:16px;")}>
+                <ErrorReintentar
+                  mensaje="No se pudo cargar la información del panel."
+                  onReintentar={cargar}
+                  variant="banner"
+                />
               </div>
             )}
             <div style={s("display:flex;flex-direction:column;gap:14px;")}>

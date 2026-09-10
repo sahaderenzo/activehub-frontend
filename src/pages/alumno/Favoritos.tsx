@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import AlumnoNav from "../../components/AlumnoNav";
 import ActivityCard from "../../components/ActivityCard";
+import ErrorReintentar from "../../components/ErrorReintentar";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
@@ -49,10 +50,22 @@ export default function AlumnoFavoritos() {
 
   const [favoritoIds, setFavoritoIds] = useState<string[]>([]);
 
-  useEffect(() => {
-    if (currentUser) listarMisFavoritos().then(setFavoritoIds).catch(() => {});
+  const [errorCarga, setErrorCarga] = useState(false);
+
+  const cargar = useCallback(() => {
+    if (!currentUser) return;
+    listarMisFavoritos()
+      .then((ids) => {
+        setFavoritoIds(ids);
+        setErrorCarga(false);
+      })
+      .catch(() => setErrorCarga(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser]);
+
+  useEffect(() => {
+    cargar();
+  }, [cargar]);
 
   const misFavoritas = useMemo(
     () => favoritoIds.map((id) => actividades.find((a) => a.id === id)).filter((a): a is Actividad => !!a),
@@ -84,11 +97,13 @@ export default function AlumnoFavoritos() {
           <h1 style={s("font:700 30px Space Grotesk,sans-serif;letter-spacing:-.7px;margin:0;")}>Mis actividades favoritas</h1>
         </div>
         <p style={s("font-size:14.5px;color:#7A8C9E;margin:0 0 16px;")}>
-          Te avisamos cuando se habilite la inscripción a una nueva clase de estas actividades. Marcar favoritos no reserva ni
+          Te avisamos cuando se habilite la inscripción a una nueva clase de estas actividades. Marcar favoritos no te preinscribe ni
           inscribe.
         </p>
 
-        {misFavoritas.length === 0 ? (
+        {errorCarga ? (
+          <ErrorReintentar mensaje="No pudimos cargar tus favoritos." onReintentar={cargar} />
+        ) : misFavoritas.length === 0 ? (
           <div style={s("background:#fff;border:1px dashed #D6DEE7;border-radius:16px;padding:50px 20px;text-align:center;color:#7A8C9E;font-weight:600;")}>
             No tenés actividades favoritas todavía.{" "}
             <Link to="/alumno/explorar" className="ah-link" style={s("color:#FF6A2B;font-weight:700;text-decoration:none;")}>

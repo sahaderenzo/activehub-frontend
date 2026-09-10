@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import DashLayout from "../../components/DashLayout";
 import { s } from "../../lib/style";
+import { useAhora } from "../../lib/ahora";
+import ErrorReintentar from "../../components/ErrorReintentar";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
-import type { ClaseAdmin, DenunciaAdmin, InscripcionAdmin, UsuarioAdmin } from "../../context/DataContext";
+import type { ClaseAdmin, DenunciaAdmin, InscripcionAdmin, PenalizacionAdmin, UsuarioAdmin } from "../../context/DataContext";
 
 type ReportTab = "desempeno" | "financiero" | "actividades" | "reclamos";
 
@@ -51,12 +53,13 @@ function money(n: number): string {
 }
 
 export default function AdminReportes() {
+  const ahora = useAhora();
   const { currentUser } = useAuth();
   const {
     actividades,
     tiposActividad,
     categorias,
-    penalizaciones,
+    listarPenalizaciones,
     listarDenunciasAdmin,
     listarUsuariosAdmin,
     listarInscripcionesAdmin,
@@ -68,13 +71,35 @@ export default function AdminReportes() {
   const [usuarios, setUsuarios] = useState<UsuarioAdmin[]>([]);
   const [inscripciones, setInscripciones] = useState<InscripcionAdmin[]>([]);
   const [clasesAdmin, setClasesAdmin] = useState<ClaseAdmin[]>([]);
+  // Real desde que existe GET /api/admin/penalizaciones; antes el KPI contaba el dataset mock.
+  const [penalizaciones, setPenalizaciones] = useState<PenalizacionAdmin[]>([]);
+
+  const [errorCarga, setErrorCarga] = useState(false);
+
+  // Un reporte con datos a medias miente: si falla cualquiera de las cuatro consultas se
+  // muestra el error con "Reintentar" en vez de KPIs calculados sobre listas vacías.
+  const cargar = useCallback(() => {
+    Promise.all([
+      listarDenunciasAdmin(),
+      listarUsuariosAdmin(),
+      listarInscripcionesAdmin(),
+      listarClasesAdmin(),
+      listarPenalizaciones(),
+    ])
+      .then(([den, us, insc, clases, pen]) => {
+        setDenuncias(den);
+        setUsuarios(us);
+        setInscripciones(insc);
+        setClasesAdmin(clases);
+        setPenalizaciones(pen);
+        setErrorCarga(false);
+      })
+      .catch(() => setErrorCarga(true));
+  }, [listarDenunciasAdmin, listarUsuariosAdmin, listarInscripcionesAdmin, listarClasesAdmin, listarPenalizaciones]);
 
   useEffect(() => {
-    listarDenunciasAdmin().then(setDenuncias).catch(() => {});
-    listarUsuariosAdmin().then(setUsuarios).catch(() => {});
-    listarInscripcionesAdmin().then(setInscripciones).catch(() => {});
-    listarClasesAdmin().then(setClasesAdmin).catch(() => {});
-  }, [listarDenunciasAdmin, listarUsuariosAdmin, listarInscripcionesAdmin, listarClasesAdmin]);
+    cargar();
+  }, [cargar]);
 
   // Los filtros se editan en un borrador y recién se aplican al presionar "Aplicar", que es
   // lo que pide el criterio 5. Antes los chips eran divs de texto fijo y el botón no tenía
@@ -97,13 +122,13 @@ export default function AdminReportes() {
   }, [categoriaId, tiposActividad, actividades]);
 
   const inscripcionesFiltradas = useMemo(() => {
-    const desde = periodoDias > 0 ? Date.now() - periodoDias * 24 * 60 * 60 * 1000 : null;
+    const desde = periodoDias > 0 ? ahora - periodoDias * 24 * 60 * 60 * 1000 : null;
     return inscripciones.filter((i) => {
       if (desde !== null && new Date(i.createdAt).getTime() < desde) return false;
       if (actividadIdsFiltradas && !actividadIdsFiltradas.has(i.actividadId)) return false;
       return true;
     });
-  }, [inscripciones, periodoDias, actividadIdsFiltradas]);
+  }, [inscripciones, periodoDias, actividadIdsFiltradas, ahora]);
 
   const pagos = useMemo(
     () => inscripcionesFiltradas.map((i) => i.pago).filter((p): p is NonNullable<InscripcionAdmin["pago"]> => p !== null),
@@ -112,11 +137,11 @@ export default function AdminReportes() {
 
   // --- Datos reales de la plataforma (page-level, siempre visibles) --------
   const globalKpis = useMemo(() => {
-    const totalReservas = inscripcionesFiltradas.length;
+    const totalInscripciones = inscripcionesFiltradas.length;
     const canceladas = inscripcionesFiltradas.filter((i) => i.estado === "Cancelada").length;
     const ingresos = pagos.filter((p) => p.estado === "Liberado" || p.estado === "Efectivo").reduce((sum, p) => sum + p.monto, 0);
-    const cancelPct = totalReservas > 0 ? (canceladas / totalReservas) * 100 : 0;
-    return { totalReservas, ingresos, cancelPct };
+    const cancelPct = totalInscripciones > 0 ? (canceladas / totalInscripciones) * 100 : 0;
+    return { totalInscripciones, ingresos, cancelPct };
   }, [inscripcionesFiltradas, pagos]);
 
   const weekBars = useMemo(() => {
@@ -140,21 +165,21 @@ export default function AdminReportes() {
     return categorias.map((cat, i) => {
       const tipoIds = tiposActividad.filter((t) => t.categoriaId === cat.id).map((t) => t.id);
       const actIds = actividades.filter((a) => tipoIds.includes(a.tipoActividadId)).map((a) => a.id);
-      const reservasCat = inscripcionesFiltradas.filter((insc) => actIds.includes(insc.actividadId));
+      const inscripcionesCat = inscripcionesFiltradas.filter((insc) => actIds.includes(insc.actividadId));
       // Mismo criterio que el KPI de arriba: solo plata efectivamente acreditada. Antes esta
       // columna sumaba TODOS los pagos, incluidos Cancelado y Retenido, así que la tabla no
       // cerraba con el KPI y convivían dos definiciones de "ingresos" en la misma pantalla.
-      const ingresosCat = reservasCat.reduce(
+      const ingresosCat = inscripcionesCat.reduce(
         (sum, insc) =>
           insc.pago && (insc.pago.estado === "Liberado" || insc.pago.estado === "Efectivo")
             ? sum + insc.pago.monto
             : sum,
         0,
       );
-      // Top instructor por RESERVAS de la categoría, no por cantidad de actividades
+      // Top instructor por INSCRIPCIONES de la categoría, no por cantidad de actividades
       // publicadas: antes ganaba quien más publicaba aunque no tuviera una sola inscripción.
       const instructorCounts = new Map<string, number>();
-      reservasCat.forEach((insc) => {
+      inscripcionesCat.forEach((insc) => {
         const act = actividades.find((a) => a.id === insc.actividadId);
         if (!act) return;
         instructorCounts.set(act.instructorId, (instructorCounts.get(act.instructorId) ?? 0) + 1);
@@ -170,7 +195,7 @@ export default function AdminReportes() {
       const topInstructor = topInstructorId ? usuarios.find((u) => u.id === topInstructorId) : undefined;
       return {
         cat: cat.nombre,
-        reservas: reservasCat.length,
+        inscripciones: inscripcionesCat.length,
         ingreso: ingresosCat,
         top: topInstructor ? `${topInstructor.nombre} ${topInstructor.apellido}` : "—",
         color: DONUT_COLORS[i % DONUT_COLORS.length],
@@ -184,19 +209,19 @@ export default function AdminReportes() {
       ["Período", periodoLabel],
       ["Alcance", categoriaLabel],
       [],
-      ["Total reservas", globalKpis.totalReservas],
+      ["Total inscripciones", globalKpis.totalInscripciones],
       ["Ingresos acreditados", globalKpis.ingresos],
       ["Cancelaciones (%)", globalKpis.cancelPct.toFixed(1)],
       [],
-      ["Categoría", "Reservas", "Ingresos", "Top instructor"],
-      ...categoriaStats.map((c) => [c.cat, c.reservas, c.ingreso, c.top]),
+      ["Categoría", "Inscripciones", "Ingresos", "Top instructor"],
+      ...categoriaStats.map((c) => [c.cat, c.inscripciones, c.ingreso, c.top]),
     ];
     descargarCsv(`activehub-reporte-${new Date().toISOString().slice(0, 10)}.csv`, filas);
   };
 
   const donut = useMemo(() => {
-    const total = Math.max(1, categoriaStats.reduce((sum, c) => sum + c.reservas, 0));
-    return categoriaStats.map((c) => ({ l: c.cat, p: `${Math.round((c.reservas / total) * 100)}%`, c: c.color }));
+    const total = Math.max(1, categoriaStats.reduce((sum, c) => sum + c.inscripciones, 0));
+    return categoriaStats.map((c) => ({ l: c.cat, p: `${Math.round((c.inscripciones / total) * 100)}%`, c: c.color }));
   }, [categoriaStats]);
 
   // --- Datos del reporte de detalle (modal), según pestaña seleccionada ---
@@ -206,10 +231,10 @@ export default function AdminReportes() {
         .map((a) => ({
           nombre: a.nombre,
           instructor: usuarios.find((u) => u.id === a.instructorId),
-          reservas: inscripciones.filter((insc) => insc.actividadId === a.id).length,
+          inscripciones: inscripciones.filter((insc) => insc.actividadId === a.id).length,
           rating: a.rating,
         }))
-        .sort((x, y) => y.reservas - x.reservas),
+        .sort((x, y) => y.inscripciones - x.inscripciones),
     [actividades, inscripciones, usuarios],
   );
 
@@ -224,7 +249,7 @@ export default function AdminReportes() {
     switch (reportTab) {
       case "desempeno":
         return [
-          { l: "Total de reservas", v: String(globalKpis.totalReservas) },
+          { l: "Total de inscripciones", v: String(globalKpis.totalInscripciones) },
           { l: "Ingresos totales", v: money(globalKpis.ingresos) },
           { l: "Tasa de cancelación", v: `${globalKpis.cancelPct.toFixed(1)}%` },
           { l: "Actividades publicadas", v: String(actividades.length) },
@@ -247,7 +272,7 @@ export default function AdminReportes() {
         const cuposOcupados = clasesAdmin.reduce((s, c) => s + c.cuposOcupados, 0);
         return [
           { l: "Actividades publicadas", v: String(actividades.length) },
-          { l: "Actividad más reservada", v: top ? top.nombre : "—" },
+          { l: "Actividad con más inscripciones", v: top ? top.nombre : "—" },
           { l: "Rating promedio", v: ratingProm.toFixed(1) },
           { l: "Ocupación de cupos", v: cuposTotales > 0 ? `${Math.round((cuposOcupados / cuposTotales) * 100)}%` : "0%" },
         ];
@@ -307,6 +332,15 @@ export default function AdminReportes() {
       </div>
 
       <div style={s("padding:24px 32px 50px;")}>
+        {errorCarga && (
+          <div style={s("margin-bottom:20px;")}>
+            <ErrorReintentar
+              mensaje="No pudimos cargar los datos del reporte. Lo que ves abajo puede estar incompleto."
+              onReintentar={cargar}
+              variant="banner"
+            />
+          </div>
+        )}
         <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:16px;padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;")}>
           <span style={s("font:700 12px Manrope,sans-serif;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;")}>Filtros</span>
           <select
@@ -361,8 +395,8 @@ export default function AdminReportes() {
 
         <div className="ah-grid-3" style={s("display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px;")}>
           <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:16px;padding:18px;")}>
-            <div style={s("font-size:12.5px;color:#7A8C9E;font-weight:600;margin-bottom:8px;")}>Total reservas</div>
-            <div style={s("font:700 26px Space Grotesk,sans-serif;color:#0E2A47;")}>{globalKpis.totalReservas.toLocaleString("es-AR")}</div>
+            <div style={s("font-size:12.5px;color:#7A8C9E;font-weight:600;margin-bottom:8px;")}>Total inscripciones</div>
+            <div style={s("font:700 26px Space Grotesk,sans-serif;color:#0E2A47;")}>{globalKpis.totalInscripciones.toLocaleString("es-AR")}</div>
           </div>
           <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:16px;padding:18px;")}>
             <div style={s("font-size:12.5px;color:#7A8C9E;font-weight:600;margin-bottom:8px;")}>Ingresos totales</div>
@@ -376,7 +410,7 @@ export default function AdminReportes() {
 
         <div className="ah-grid-side" style={s("display:grid;grid-template-columns:1.4fr 1fr;gap:18px;margin-bottom:20px;")}>
           <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:18px;padding:22px;")}>
-            <div style={s("font:700 16px Space Grotesk,sans-serif;margin-bottom:20px;")}>Reservas por semana</div>
+            <div style={s("font:700 16px Space Grotesk,sans-serif;margin-bottom:20px;")}>Inscripciones por semana</div>
             <div style={s("display:flex;align-items:flex-end;gap:12px;height:170px;")}>
               {weekBars.map((b) => (
                 <div key={b.label} style={s("flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;justify-content:flex-end;height:100%;")}>
@@ -414,14 +448,14 @@ export default function AdminReportes() {
                 )}
               >
                 <span>Categoría</span>
-                <span>Reservas</span>
+                <span>Inscripciones</span>
                 <span>Ingresos</span>
                 <span>Top instructor</span>
               </div>
               {categoriaStats.map((r) => (
                 <div key={r.cat} style={s("display:grid;grid-template-columns:1.5fr 1fr 1fr 1.3fr;padding:14px 22px;border-bottom:1px solid #F1F4F8;align-items:center;")}>
                   <span style={s("font:700 14px Manrope,sans-serif;color:#0E2A47;")}>{r.cat}</span>
-                  <span style={s("font-size:14px;color:#41566B;font-weight:600;")}>{r.reservas}</span>
+                  <span style={s("font-size:14px;color:#41566B;font-weight:600;")}>{r.inscripciones}</span>
                   <span style={s("font:700 14px Space Grotesk,sans-serif;color:#0E2A47;")}>{money(r.ingreso)}</span>
                   <span style={s("font-size:13px;color:#65788C;font-weight:600;")}>{r.top}</span>
                 </div>
@@ -498,7 +532,7 @@ export default function AdminReportes() {
                   </div>
                   <h1 style={s("font:700 28px Space Grotesk,sans-serif;margin:0;letter-spacing:-.6px;")}>{activeTab.title}</h1>
                   <p style={s("font:600 13.5px Manrope,sans-serif;color:#A9BDD2;margin:8px 0 0;")}>
-                    Reservas, ingresos y ocupación de cupos · {periodoLabel} · {categoriaLabel}
+                    Inscripciones, ingresos y ocupación de cupos · {periodoLabel} · {categoriaLabel}
                   </p>
                 </div>
               </div>
@@ -547,14 +581,14 @@ export default function AdminReportes() {
                       )}
                     >
                       <span>Categoría</span>
-                      <span>Reservas</span>
+                      <span>Inscripciones</span>
                       <span>Ingresos</span>
                       <span>Top instructor</span>
                     </div>
                     {categoriaStats.map((r) => (
                       <div key={r.cat} style={s("display:grid;grid-template-columns:1.5fr 1fr 1fr 1.3fr;padding:11px 16px;border-bottom:1px solid #F1F4F8;font-size:12.5px;color:#33485E;font-weight:600;")}>
                         <span style={s("font-weight:700;color:#0E2A47;")}>{r.cat}</span>
-                        <span>{r.reservas}</span>
+                        <span>{r.inscripciones}</span>
                         <span style={s("font-weight:700;color:#0E2A47;")}>{money(r.ingreso)}</span>
                         <span>{r.top}</span>
                       </div>
@@ -571,14 +605,14 @@ export default function AdminReportes() {
                     >
                       <span>Actividad</span>
                       <span>Instructor</span>
-                      <span>Reservas</span>
+                      <span>Inscripciones</span>
                       <span>Rating</span>
                     </div>
                     {actividadRanking.slice(0, 8).map((a) => (
                       <div key={a.nombre} style={s("display:grid;grid-template-columns:1.6fr 1.2fr 1fr 0.8fr;padding:11px 16px;border-bottom:1px solid #F1F4F8;font-size:12.5px;color:#33485E;font-weight:600;")}>
                         <span style={s("font-weight:700;color:#0E2A47;")}>{a.nombre}</span>
                         <span>{a.instructor ? `${a.instructor.nombre} ${a.instructor.apellido}` : "—"}</span>
-                        <span>{a.reservas}</span>
+                        <span>{a.inscripciones}</span>
                         <span>★ {a.rating.toFixed(1)}</span>
                       </div>
                     ))}

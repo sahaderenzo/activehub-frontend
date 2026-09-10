@@ -3,7 +3,7 @@ import type { ChangeEvent, DragEvent, FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { s } from "../../lib/style";
 import { ApiError, passwordStrength, useAuth } from "../../context/AuthContext";
-import { INTERESES } from "../../lib/mockData";
+import { useData } from "../../context/DataContext";
 import type { RolNombre } from "../../lib/types";
 
 type Rol = "ALUMNO" | "INSTRUCTOR";
@@ -13,6 +13,7 @@ interface FormState {
   apellido: string;
   email: string;
   telefono: string;
+  dni: string;
   password: string;
   fechaNacimiento: string;
   condicionSalud: string;
@@ -27,6 +28,7 @@ const EMPTY: FormState = {
   apellido: "",
   email: "",
   telefono: "",
+  dni: "",
   password: "",
   fechaNacimiento: "",
   condicionSalud: "",
@@ -49,6 +51,7 @@ function formatTamanio(bytes: number): string {
 
 export default function Registro() {
   const navigate = useNavigate();
+  const data = useData();
   const { registerAlumno, registerInstructor } = useAuth();
 
   const [rol, setRol] = useState<Rol>("ALUMNO");
@@ -108,6 +111,9 @@ export default function Registro() {
     if (!form.email.trim()) e.email = "Este campo es obligatorio.";
     else if (!EMAIL_RE.test(form.email)) e.email = "Ingresá un correo electrónico válido.";
     if (!form.telefono.trim()) e.telefono = "Este campo es obligatorio.";
+    // Opcional, pero si se carga tiene que ser un DNI válido: es la credencial
+    // alternativa de login y clave de unicidad de la cuenta junto al correo.
+    if (form.dni.trim() && !/^[0-9]{7,8}$/.test(form.dni.trim())) e.dni = "El DNI debe tener 7 u 8 dígitos.";
     if (!form.password || !passwordStrength(form.password).ok)
       e.password = "La contraseña necesita al menos 8 caracteres, una mayúscula y un número.";
     if (!confirmPassword) e.confirmPassword = "Confirmá tu contraseña.";
@@ -140,6 +146,7 @@ export default function Registro() {
           apellido: form.apellido,
           email: form.email,
           telefono: form.telefono,
+          dni: form.dni.trim() || undefined,
           password: form.password,
           fechaNacimiento: form.fechaNacimiento,
           intereses,
@@ -158,6 +165,7 @@ export default function Registro() {
               apellido: form.apellido,
               email: form.email,
               telefono: form.telefono,
+              dni: form.dni.trim() || undefined,
               password: form.password,
               fechaNacimiento: form.fechaNacimiento || undefined,
               especialidad: form.especialidad,
@@ -254,7 +262,7 @@ export default function Registro() {
               </span>
             </div>
             <div style={s("font:700 18px Manrope;margin-bottom:5px;")}>Soy Alumno</div>
-            <div style={s("font-size:13.5px;color:#65788C;line-height:1.5;")}>Quiero buscar, reservar e inscribirme a actividades.</div>
+            <div style={s("font-size:13.5px;color:#65788C;line-height:1.5;")}>Quiero buscar actividades e inscribirme a sus clases.</div>
           </div>
           <div
             onClick={() => setRol("INSTRUCTOR")}
@@ -345,6 +353,22 @@ export default function Registro() {
               </label>
               <input value={form.telefono} onChange={(e) => set("telefono", e.target.value)} placeholder="+54 261 ..." style={inputStyle("telefono")} />
               {fieldError("telefono")}
+            </div>
+            <div>
+              <label style={s("display:block;font:700 13px Manrope;color:#41566B;margin-bottom:7px;")}>DNI</label>
+              <input
+                value={form.dni}
+                onChange={(e) => set("dni", e.target.value.replace(/[^\d]/g, ""))}
+                placeholder="30123456"
+                maxLength={8}
+                inputMode="numeric"
+                style={inputStyle("dni")}
+              />
+              {fieldError("dni") ?? (
+                <span style={s("display:block;font-size:12px;color:#90A1B2;font-weight:600;margin-top:5px;")}>
+                  Opcional. Si lo cargás, también vas a poder iniciar sesión con él.
+                </span>
+              )}
             </div>
             <div>
               <label style={s("display:block;font:700 13px Manrope;color:#41566B;margin-bottom:7px;")}>
@@ -445,18 +469,25 @@ export default function Registro() {
                 Elegí los que más te gusten para recibir mejores sugerencias.
               </div>
               <div style={s("display:flex;flex-wrap:wrap;gap:9px;")}>
-                {INTERESES.map((name) => {
-                  const on = intereses.includes(name);
+                {/* Los intereses son tipos de actividad reales (V19): se eligen por id y
+                    cada chip muestra a qué categoría pertenece. */}
+                {data.tiposActividad.map((tipo) => {
+                  const on = intereses.includes(tipo.id);
+                  const categoria = data.getCategoria(tipo.categoriaId);
                   return (
                     <span
-                      key={name}
-                      onClick={() => toggleInteres(name)}
+                      key={tipo.id}
+                      onClick={() => toggleInteres(tipo.id)}
                       className="ah-btn"
+                      title={categoria?.nombre}
                       style={s(
-                        `cursor:pointer;padding:8px 15px;border-radius:999px;font:700 13.5px Manrope;border:1.5px solid ${on ? "#12B5A5" : "#E2E9F0"};background:${on ? "#E7F8F5" : "#fff"};color:${on ? "#0C8576" : "#65788C"};`,
+                        `cursor:pointer;padding:8px 15px;border-radius:999px;font:700 13.5px Manrope;border:1.5px solid ${on ? "#12B5A5" : "#E2E9F0"};background:${on ? "#E7F8F5" : "#fff"};color:${on ? "#0C8576" : "#65788C"};display:flex;align-items:center;gap:6px;`,
                       )}
                     >
-                      {name}
+                      {tipo.nombre}
+                      <span style={s(`font:600 10.5px Manrope;color:${on ? "#5FA79B" : "#9AAABA"};`)}>
+                        · {categoria?.nombre ?? ""}
+                      </span>
                     </span>
                   );
                 })}

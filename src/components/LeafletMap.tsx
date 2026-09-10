@@ -39,8 +39,12 @@ export default function LeafletMap({
   const [failed, setFailed] = useState(false);
 
   const hasCoords = lat !== undefined && lng !== undefined;
+  // El ref guarda la última posición conocida para que el efecto de creación no dependa de
+  // lat/lng. Se escribe en un efecto, no durante el render (react-hooks/refs).
   const posRef = useRef({ lat, lng });
-  posRef.current = { lat, lng };
+  useEffect(() => {
+    posRef.current = { lat, lng };
+  }, [lat, lng]);
 
   // Crea el mapa + marker una sola vez, apenas hay coordenadas por primera vez.
   // lat/lng quedan afuera de las deps a propósito: el efecto de abajo se encarga
@@ -57,6 +61,7 @@ export default function LeafletMap({
       markerRef.current = L.marker([initLat, initLng], { title }).addTo(map);
       mapRef.current = map;
     } catch {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- falló crear el mapa (sistema externo): hay que mostrar el fallback
       setFailed(true);
     }
     return () => {

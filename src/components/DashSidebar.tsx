@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { s } from "../lib/style";
+import { areasDisponibles, PERMISO_POR_ITEM } from "../lib/areas";
 import { useAuth } from "../context/AuthContext";
 import { useData } from "../context/DataContext";
 import NotificationBell from "./NotificationBell";
@@ -68,12 +69,6 @@ function instructorItems(color: (on: boolean) => string, activeKey: string): Nav
       "/instructor/resenas",
       '<path d="M11.5 3.5 13.8 8l5 .7-3.6 3.5.9 5L11.5 15l-4.5 2.4.9-5L4.3 8.7l5-.7z"/>',
     ],
-    [
-      "ayuda",
-      "Ayuda",
-      "/ayuda",
-      '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
-    ],
   ];
   return defs.map(([key, label, path, icon]) => ({
     key,
@@ -128,12 +123,6 @@ function adminItems(color: (on: boolean) => string, activeKey: string): NavDef[]
       "/admin/reportes",
       '<path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/>',
     ],
-    [
-      "ayuda",
-      "Soporte",
-      "/ayuda",
-      '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
-    ],
   ];
   return defs.map(([key, label, path, icon]) => ({
     key,
@@ -150,10 +139,19 @@ interface DashSidebarProps {
 
 export default function DashSidebar({ role, active }: DashSidebarProps) {
   const navigate = useNavigate();
-  const { currentUser, logout } = useAuth();
+  const { currentUser, logout, puede, permisos } = useAuth();
   const data = useData();
   const color = (on: boolean) => (on ? "#12B5A5" : "#9DB3C9");
-  const items = role === "admin" ? adminItems(color, active) : instructorItems(color, active);
+  const todos = role === "admin" ? adminItems(color, active) : instructorItems(color, active);
+  // El menú muestra solo lo que el rol puede hacer (RN-19). Vale para los dos paneles: el
+  // de instructor también se filtraba antes por nombre de rol, así que un rol nuevo con
+  // `clases.gestionar` veía ítems que el backend después le rechazaba con 403 — y al revés,
+  // un alumno con permisos de instructor no tenía cómo llegar acá.
+  const items = todos.filter((it) => !PERMISO_POR_ITEM[it.key] || puede(PERMISO_POR_ITEM[it.key]));
+  // Alguien puede tener permisos de más de un área (un instructor que además se inscribe,
+  // o un rol mixto creado en "Roles y permisos"): se le ofrece el cambio en vez de dejarlo
+  // encerrado en el panel al que entró.
+  const otrasAreas = areasDisponibles(permisos).filter((a) => a.area !== role);
 
   const avatarBg =
     role === "admin" ? "linear-gradient(140deg,#F5A623,#FF6A2B)" : "linear-gradient(140deg,#12B5A5,#0E2A47)";
@@ -234,6 +232,22 @@ export default function DashSidebar({ role, active }: DashSidebarProps) {
         })}
       </nav>
       <div style={s("padding:14px 12px;border-top:1px solid rgba(255,255,255,.08);")}>
+        {otrasAreas.map((a) => (
+          <div
+            key={a.area}
+            onClick={() => navigate(a.home)}
+            className="ah-btn"
+            style={s("display:flex;align-items:center;gap:12px;padding:11px 13px;border-radius:11px;cursor:pointer;font:700 14px Manrope,sans-serif;color:#9DB3C9;")}
+          >
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#9DB3C9" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <path d="m16 3 4 4-4 4" />
+              <path d="M20 7H4" />
+              <path d="m8 21-4-4 4-4" />
+              <path d="M4 17h16" />
+            </svg>
+            Ir a {a.label}
+          </div>
+        ))}
         <div
           onClick={handleLogout}
           className="ah-btn"

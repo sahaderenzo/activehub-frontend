@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
 import StatusBadge from "../../components/StatusBadge";
 import { s } from "../../lib/style";
+import { useAhora } from "../../lib/ahora";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import type { RosterClase } from "../../context/DataContext";
@@ -12,6 +13,7 @@ import { inscripcionStatusType } from "../../lib/status";
 import type { EstadoInscripcion } from "../../lib/types";
 
 export default function InstructorGestionClase() {
+  const ahora = useAhora();
   const { id } = useParams<{ id: string }>();
   const { currentUser } = useAuth();
   const data = useData();
@@ -61,7 +63,7 @@ export default function InstructorGestionClase() {
   const disp = disponibilidad(clase);
 
   const CUATRO_DIAS_MS = 4 * 24 * 60 * 60 * 1000;
-  const dentroDeVentanaDePago = new Date(clase.fechaHora).getTime() - Date.now() <= CUATRO_DIAS_MS;
+  const dentroDeVentanaDePago = new Date(clase.fechaHora).getTime() - ahora <= CUATRO_DIAS_MS;
 
   const alumnos = roster?.alumnos ?? [];
   const pagoAprobado = alumnos.filter((a) => a.estado === "Inscripto").length;
@@ -75,16 +77,6 @@ export default function InstructorGestionClase() {
       cargarRoster();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No pudimos confirmar el cobro.");
-    }
-  };
-
-  const toggleAsistencia = async (inscripcionId: string, presenteActual: boolean | null | undefined) => {
-    setError(null);
-    try {
-      await data.marcarAsistencia(inscripcionId, !presenteActual);
-      cargarRoster();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "No pudimos marcar la asistencia.");
     }
   };
 
@@ -250,16 +242,15 @@ export default function InstructorGestionClase() {
             <div style={s("font:700 16px Space Grotesk;")}>Alumnos inscriptos</div>
           </div>
           <div
-            className="ah-grid-5"
+            className="ah-grid-4"
             style={s(
-              "display:grid;grid-template-columns:1.6fr 1fr 1fr 130px 110px;padding:11px 22px;background:#F7FAFC;border-top:1px solid #EEF2F6;border-bottom:1px solid #EEF2F6;font:700 11.5px Manrope;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;",
+              "display:grid;grid-template-columns:1.6fr 1fr 1fr 150px;padding:11px 22px;background:#F7FAFC;border-top:1px solid #EEF2F6;border-bottom:1px solid #EEF2F6;font:700 11.5px Manrope;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;",
             )}
           >
             <span>Alumno</span>
             <span>Contacto</span>
             <span>Estado inscripción</span>
             <span>Pago efectivo</span>
-            <span>Asistencia</span>
           </div>
           {alumnos.length === 0 && (
             <div style={s("padding:26px 22px;color:#90A1B2;font-weight:600;font-size:13.5px;")}>
@@ -272,9 +263,9 @@ export default function InstructorGestionClase() {
             return (
               <div
                 key={a.inscripcionId}
-                className="ah-grid-5"
+                className="ah-grid-4"
                 style={s(
-                  "display:grid;grid-template-columns:1.6fr 1fr 1fr 130px 110px;padding:14px 22px;border-bottom:1px solid #F1F4F8;align-items:center;",
+                  "display:grid;grid-template-columns:1.6fr 1fr 1fr 150px;padding:14px 22px;border-bottom:1px solid #F1F4F8;align-items:center;",
                 )}
               >
                 <div style={s("display:flex;align-items:center;gap:11px;")}>
@@ -305,15 +296,6 @@ export default function InstructorGestionClase() {
                     </button>
                   )}
                 </div>
-                <label style={s("display:flex;align-items:center;gap:7px;cursor:pointer;font-size:12.5px;color:#41566B;font-weight:600;")}>
-                  <input
-                    type="checkbox"
-                    checked={!!a.presente}
-                    onChange={() => toggleAsistencia(a.inscripcionId, a.presente)}
-                    style={s("width:16px;height:16px;accent-color:#12B5A5;cursor:pointer;")}
-                  />
-                  Presente
-                </label>
               </div>
             );
           })}

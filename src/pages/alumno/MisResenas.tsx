@@ -84,15 +84,16 @@ export default function AlumnoMisResenas() {
   };
 
   const guardar = async () => {
-    if (!form || !form.comentario.trim()) return;
+    if (!form || !form.puntaje) return;
     setError(null);
     try {
+      // Editar es un PUT, no un borrar+crear: antes, si la creación fallaba después
+      // del borrado, la reseña original quedaba perdida sin nada que la reemplazara.
       if (form.editingId) {
-        // No hay mutador de edición: se elimina la reseña anterior y se crea
-        // una nueva (vuelve a quedar en moderación, ya que cambió el contenido).
-        await data.eliminarResenia(form.editingId);
+        await data.actualizarResenia(form.editingId, form.puntaje, form.comentario.trim());
+      } else {
+        await data.crearResenia(form.claseId, form.puntaje, form.comentario.trim());
       }
-      await data.crearResenia(form.claseId, form.puntaje, form.comentario.trim());
       setForm(null);
       cargar();
     } catch (err) {
@@ -101,6 +102,7 @@ export default function AlumnoMisResenas() {
   };
 
   const eliminar = async (id: string) => {
+    if (!window.confirm("¿Eliminar esta reseña? No se puede deshacer.")) return;
     setError(null);
     try {
       await data.eliminarResenia(id);
@@ -112,7 +114,7 @@ export default function AlumnoMisResenas() {
 
   return (
     <div className="ah-screen" style={s("min-height:100vh;background:#F4F7FA;")}>
-      <AlumnoNav active="misreservas" />
+      <AlumnoNav active="misclases" />
       <div style={s("max-width:920px;margin:0 auto;padding:30px 28px 60px;")}>
         <h1 style={s("font:700 30px Space Grotesk,sans-serif;letter-spacing:-.7px;margin:0 0 4px;")}>Mis reseñas</h1>
         <p style={s("font-size:14.5px;color:#7A8C9E;margin:0 0 24px;")}>
@@ -183,7 +185,9 @@ export default function AlumnoMisResenas() {
                   </div>
                   <Stars n={r.puntaje} />
                 </div>
-                <p style={s("font-size:14.5px;line-height:1.6;color:#54697E;margin:0 0 12px;")}>{r.comentario}</p>
+                <p style={s("font-size:14.5px;line-height:1.6;color:#54697E;margin:0 0 12px;")}>
+                  {r.comentario?.trim() ? r.comentario : <span style={s("color:#9AAABA;font-style:italic;")}>Sin comentario</span>}
+                </p>
                 <div style={s("display:flex;align-items:center;gap:9px;")}>
                   {r.enModeracion && (
                     <span style={s("font:700 11px Manrope,sans-serif;background:#FFF3E0;color:#B9741A;border:1px solid #F6E2C0;padding:4px 10px;border-radius:99px;")}>
@@ -192,7 +196,7 @@ export default function AlumnoMisResenas() {
                   )}
                   <button
                     className="ah-btn"
-                    onClick={() => abrirEdicion(r.id, r.claseId, r.actividadNombre, r.puntaje, r.comentario)}
+                    onClick={() => abrirEdicion(r.id, r.claseId, r.actividadNombre, r.puntaje, r.comentario ?? "")}
                     style={s("background:#fff;border:1px solid #E2E9F0;border-radius:9px;padding:7px 14px;font:700 12.5px Manrope,sans-serif;color:#41566B;cursor:pointer;")}
                   >
                     Editar
@@ -221,13 +225,18 @@ export default function AlumnoMisResenas() {
               {form.editingId ? "Editar reseña" : "Dejar reseña"}
             </div>
             <div style={s("font-size:13.5px;color:#7A8C9E;font-weight:600;margin-bottom:16px;")}>{form.actividad}</div>
+            {form.editingId && (
+              <div style={s("background:#FFF3E0;border:1px solid #F6E2C0;border-radius:10px;padding:9px 12px;font:600 12.5px Manrope,sans-serif;color:#B9741A;margin-bottom:14px;")}>
+                Al editarla vuelve a moderación hasta que un administrador la apruebe.
+              </div>
+            )}
             <div style={s("margin-bottom:16px;")}>
               <Stars n={form.puntaje} onPick={(v) => setForm({ ...form, puntaje: v })} />
             </div>
             <textarea
               value={form.comentario}
               onChange={(e) => setForm({ ...form, comentario: e.target.value })}
-              placeholder="Contanos cómo fue tu experiencia…"
+              placeholder="Tu comentario (opcional) — contanos cómo fue tu experiencia…"
               rows={4}
               style={s(
                 "width:100%;border:1px solid #E2E9F0;border-radius:12px;padding:12px 14px;font:500 14px Manrope,sans-serif;color:#0E2A47;resize:vertical;margin-bottom:18px;",
@@ -244,12 +253,11 @@ export default function AlumnoMisResenas() {
               <button
                 className="ah-btn"
                 onClick={guardar}
-                disabled={!form.comentario.trim()}
                 style={s(
-                  `flex:1;background:${form.comentario.trim() ? "#FF6A2B" : "#F1C7B4"};border:none;border-radius:11px;padding:12px;font:700 14px Manrope,sans-serif;color:#fff;cursor:pointer;`,
+                  "flex:1;background:#FF6A2B;border:none;border-radius:11px;padding:12px;font:700 14px Manrope,sans-serif;color:#fff;cursor:pointer;",
                 )}
               >
-                Publicar
+                {form.editingId ? "Guardar cambios" : "Publicar"}
               </button>
             </div>
           </div>

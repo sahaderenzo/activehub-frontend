@@ -1,19 +1,23 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import AlumnoNav from "../../components/AlumnoNav";
 import StatusBadge from "../../components/StatusBadge";
 import LeafletMap from "../../components/LeafletMap";
 import Avatar from "../../components/Avatar";
 import ActivityPhoto from "../../components/ActivityPhoto";
+import ErrorReintentar from "../../components/ErrorReintentar";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import type { MiInscripcion, ReseniaActividad } from "../../context/DataContext";
+import { BASE_URL } from "../../lib/api";
 import { diasHastaClase, disponibilidad, formatFecha, formatHora, tipoIngreso } from "../../lib/mockData";
 import { formatDistanciaKm, haversineKm, useGeolocation } from "../../lib/geo";
-import type { Actividad, Clase, NivelIntensidad } from "../../lib/types";
+import type { Actividad, Clase } from "../../lib/types";
 
-const BENEFICIOS_POR_NIVEL: Record<NivelIntensidad, string[]> = {
+// Keyed por NOMBRE de nivel, no por un tipo cerrado: desde E4Ad-HU05 el admin puede crear
+// niveles nuevos, y para esos no hay copy escrito — se usan los textos genéricos de abajo.
+const BENEFICIOS_POR_NIVEL: Record<string, string[]> = {
   "Física baja": [
     "Bajo impacto articular: apta si estás retomando la actividad física.",
     "Ayuda a reducir el estrés y mejorar la calidad del descanso.",
@@ -31,7 +35,7 @@ const BENEFICIOS_POR_NIVEL: Record<NivelIntensidad, string[]> = {
   ],
 };
 
-const PREVENCIONES_POR_NIVEL: Record<NivelIntensidad, string[]> = {
+const PREVENCIONES_POR_NIVEL: Record<string, string[]> = {
   "Física baja": [
     "Consultá a un profesional si tenés una lesión o cirugía reciente.",
     "Avisá al instructor si sentís mareos o molestias durante la sesión.",
@@ -46,6 +50,16 @@ const PREVENCIONES_POR_NIVEL: Record<NivelIntensidad, string[]> = {
     "Frená la actividad ante dolor agudo o falta de aire excesiva.",
   ],
 };
+
+const BENEFICIOS_GENERICOS = [
+  "Mejora el estado físico general y la sensación de bienestar.",
+  "Se practica en grupo, con acompañamiento del instructor.",
+];
+
+const PREVENCIONES_GENERICAS = [
+  "Hidratate antes, durante y después de la actividad.",
+  "Avisá al instructor si sentís alguna molestia durante la sesión.",
+];
 
 const FAQS = [
   {
@@ -84,17 +98,29 @@ export default function AlumnoDetalle() {
   const actividad = actividades.find((a) => a.id === id);
 
   const [selectedClaseId, setSelectedClaseId] = useState<string | null>(null);
+  /** Imagen de la galería que se está viendo. Null = portada. */
+  const [imagenActiva, setImagenActiva] = useState<string | null>(null);
   const [aiState, setAiState] = useState<AiState>("idle");
   const [aiActualizado, setAiActualizado] = useState(false);
   const [aiFecha, setAiFecha] = useState<string>("");
   const [misInscripciones, setMisInscripciones] = useState<MiInscripcion[]>([]);
   const [reviewsActividad, setReviewsActividad] = useState<ReseniaActividad[]>([]);
   const [misFavoritos, setMisFavoritos] = useState<string[]>([]);
+  const [errorDetalle, setErrorDetalle] = useState(false);
 
-  useEffect(() => {
-    if (id) cargarDetalleActividad(id).catch(() => {});
+  // Se distingue "no existe" de "no pudimos cargarla": con el backend caído la pantalla
+  // decía "Actividad no encontrada", que es una afirmación falsa y sin salida.
+  const cargarDetalle = useCallback(() => {
+    if (!id) return;
+    cargarDetalleActividad(id)
+      .then(() => setErrorDetalle(false))
+      .catch(() => setErrorDetalle(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  useEffect(() => {
+    cargarDetalle();
+  }, [cargarDetalle]);
 
   useEffect(() => {
     if (currentUser) listarMisFavoritos().then(setMisFavoritos).catch(() => {});
@@ -127,11 +153,20 @@ export default function AlumnoDetalle() {
       <div className="ah-screen" style={s("min-height:100vh;background:#F4F7FA;")}>
         <AlumnoNav active="explorar" />
         <div style={s("max-width:640px;margin:0 auto;padding:80px 28px;text-align:center;")}>
-          <h1 style={s("font:700 24px Space Grotesk,sans-serif;color:#0E2A47;")}>Actividad no encontrada</h1>
-          <p style={s("color:#65788C;margin:10px 0 20px;")}>La actividad que buscás no existe o fue eliminada.</p>
-          <Link to="/alumno/explorar" className="ah-link" style={s("color:#FF6A2B;font-weight:700;")}>
-            Volver a explorar
-          </Link>
+          {errorDetalle ? (
+            <ErrorReintentar
+              mensaje="No pudimos cargar esta actividad. Puede ser un problema de conexión."
+              onReintentar={cargarDetalle}
+            />
+          ) : (
+            <>
+              <h1 style={s("font:700 24px Space Grotesk,sans-serif;color:#0E2A47;")}>Actividad no encontrada</h1>
+              <p style={s("color:#65788C;margin:10px 0 20px;")}>La actividad que buscás no existe o fue eliminada.</p>
+              <Link to="/alumno/explorar" className="ah-link" style={s("color:#FF6A2B;font-weight:700;")}>
+                Volver a explorar
+              </Link>
+            </>
+          )}
         </div>
       </div>
     );
@@ -213,11 +248,44 @@ export default function AlumnoDetalle() {
                 >
                   FOTO · {actividad.nombre}
                 </div>
-                <ActivityPhoto actividadId={actividad.id} />
+                {/* Si el alumno eligió una imagen de la galería se muestra esa; si no, la portada. */}
+                {imagenActiva ? (
+                  <img
+                    src={`${BASE_URL}/api/fotos/actividad/imagen/${imagenActiva}`}
+                    alt={actividad.nombre}
+                    style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                ) : (
+                  <ActivityPhoto actividadId={actividad.id} />
+                )}
                 <div style={s("position:absolute;top:16px;left:16px;")}>
                   <StatusBadge type={selectedClase ? disponibilidad(selectedClase).type : "disponible"} />
                 </div>
               </div>
+
+              {/* Galería: sección 2 pide `imagenes[]`, hasta ahora solo se veía una foto. */}
+              {(actividad.imagenes?.length ?? 0) > 1 && (
+                <div style={s("display:flex;gap:8px;padding:10px;background:#fff;overflow-x:auto;")}>
+                  {actividad.imagenes!.map((imagenId) => (
+                    <button
+                      key={imagenId}
+                      className="ah-btn"
+                      onClick={() => setImagenActiva(imagenId)}
+                      style={s(
+                        `flex:none;width:78px;height:58px;border-radius:9px;overflow:hidden;padding:0;cursor:pointer;background:none;border:2px solid ${
+                          imagenActiva === imagenId ? "#12B5A5" : "transparent"
+                        };`,
+                      )}
+                    >
+                      <img
+                        src={`${BASE_URL}/api/fotos/actividad/imagen/${imagenId}`}
+                        alt=""
+                        style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                      />
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <span
@@ -251,6 +319,13 @@ export default function AlumnoDetalle() {
                   <path d="M12 7v5l3 2" />
                 </svg>
                 {actividad.nivelIntensidad}
+              </div>
+              <div style={s("display:flex;align-items:center;gap:7px;font-size:14.5px;font-weight:600;color:#41566B;")}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9AAABA" strokeWidth={2}>
+                  <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
+                  <circle cx="12" cy="12" r="5" />
+                </svg>
+                {actividad.duracionMin} min
               </div>
             </div>
 
@@ -312,7 +387,10 @@ export default function AlumnoDetalle() {
               </div>
 
               <div style={s("display:flex;flex-wrap:wrap;gap:7px;margin-bottom:16px;")}>
-                {(intereses.length ? intereses : ["Sin intereses registrados en tu perfil"]).map((c) => (
+                {(intereses.length
+                  ? intereses.map((i) => i.nombre)
+                  : ["Sin intereses registrados en tu perfil"]
+                ).map((c) => (
                   <span
                     key={c}
                     style={s(
@@ -404,7 +482,7 @@ export default function AlumnoDetalle() {
                         Beneficios para vos
                       </div>
                       <div style={s("display:flex;flex-direction:column;gap:11px;")}>
-                        {BENEFICIOS_POR_NIVEL[actividad.nivelIntensidad].map((b) => (
+                        {(BENEFICIOS_POR_NIVEL[actividad.nivelIntensidad] ?? BENEFICIOS_GENERICOS).map((b) => (
                           <div key={b} style={s("display:flex;align-items:flex-start;gap:9px;font-size:13.5px;color:#36506B;font-weight:600;line-height:1.45;")}>
                             <span style={s("width:7px;height:7px;border-radius:99px;background:#0FB8A9;flex:none;margin-top:6px;")} />
                             {b}
@@ -425,7 +503,7 @@ export default function AlumnoDetalle() {
                         Prevenciones a considerar
                       </div>
                       <div style={s("display:flex;flex-direction:column;gap:11px;")}>
-                        {PREVENCIONES_POR_NIVEL[actividad.nivelIntensidad].map((p) => (
+                        {(PREVENCIONES_POR_NIVEL[actividad.nivelIntensidad] ?? PREVENCIONES_GENERICAS).map((p) => (
                           <div key={p} style={s("display:flex;align-items:flex-start;gap:9px;font-size:13.5px;color:#36506B;font-weight:600;line-height:1.45;")}>
                             <span style={s("width:7px;height:7px;border-radius:99px;background:#E2A03B;flex:none;margin-top:6px;")} />
                             {p}
@@ -553,7 +631,7 @@ export default function AlumnoDetalle() {
                         ))}
                       </div>
                     </div>
-                    <p style={s("font-size:14.5px;line-height:1.6;color:#54697E;margin:0;")}>{rv.comentario}</p>
+                    <p style={s("font-size:14.5px;line-height:1.6;color:#54697E;margin:0;")}>{rv.comentario?.trim() ? rv.comentario : <span style={s("color:#9AAABA;font-style:italic;")}>Sin comentario</span>}</p>
                   </div>
                 );
               })}
@@ -646,7 +724,11 @@ function BookingPanel({
           <span style={s("font-size:14px;color:#90A1B2;font-weight:600;")}>/ clase</span>
         </div>
         <div style={s("font-size:13px;color:#7A8C9E;font-weight:600;margin-bottom:18px;")}>
-          {selectedClase ? `${formatFecha(selectedClase.fechaHora)} · ${formatHora(selectedClase.fechaHora)} hs` : "Sin fecha seleccionada"}
+          {selectedClase
+            ? `${formatFecha(selectedClase.fechaHora)} · ${formatHora(selectedClase.fechaHora)} a ${formatHora(
+                selectedClase.horaFin,
+              )} hs`
+            : "Sin fecha seleccionada"}
         </div>
 
         {selectedClase && (
@@ -684,7 +766,7 @@ function BookingPanel({
           <>
             <button
               className="ah-btn"
-              onClick={() => navigate(`/alumno/reserva/${selectedClase.id}`)}
+              onClick={() => navigate(`/alumno/preinscripcion/${selectedClase.id}`)}
               style={s(
                 "width:100%;background:#0FB8A9;color:#fff;border:none;border-radius:13px;padding:15px;font:700 16px Manrope,sans-serif;cursor:pointer;box-shadow:0 8px 18px rgba(15,184,169,.32);margin-bottom:10px;display:flex;align-items:center;justify-content:center;gap:9px;",
               )}

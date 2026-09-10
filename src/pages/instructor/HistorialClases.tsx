@@ -42,11 +42,12 @@ export default function InstructorHistorialClases() {
 
   const cargar = useCallback(() => {
     if (!aprobado) return;
-    setCargando(true);
-    setErrorCarga(false);
     data
       .listarMisClases()
-      .then(setMisClases)
+      .then((clases) => {
+        setMisClases(clases);
+        setErrorCarga(false);
+      })
       .catch(() => setErrorCarga(true))
       .finally(() => setCargando(false));
   }, [aprobado, data.listarMisClases]);
@@ -117,7 +118,7 @@ export default function InstructorHistorialClases() {
             </div>
             <button
               className="ah-btn"
-              onClick={cargar}
+              onClick={() => { setCargando(true); cargar(); }}
               style={s(
                 "background:#fff;border:1px solid #D6DEE7;border-radius:10px;padding:9px 16px;font:700 13px Manrope;color:#41566B;cursor:pointer;",
               )}

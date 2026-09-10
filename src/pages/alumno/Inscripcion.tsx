@@ -27,7 +27,7 @@ export default function AlumnoInscripcion() {
     // La inscripción con pago solo aplica a 4 días o menos de la clase; si
     // todavía faltan más de 4 días, lo correcto es preinscribirse primero.
     if (clase && tipoIngreso(clase) !== "inscripcion" && !confirmado) {
-      navigate(`/alumno/reserva/${clase.id}`, { replace: true });
+      navigate(`/alumno/preinscripcion/${clase.id}`, { replace: true });
     }
   }, [clase, confirmado, navigate]);
 
@@ -78,12 +78,12 @@ export default function AlumnoInscripcion() {
               </svg>
             </span>
             <h1 style={s("font:700 24px Space Grotesk,sans-serif;color:#0E2A47;margin:0 0 8px;")}>
-              {metodo === "Mercado Pago" ? "¡Inscripción confirmada!" : "¡Lugar reservado!"}
+              {metodo === "Mercado Pago" ? "¡Inscripción confirmada!" : "¡Inscripción registrada!"}
             </h1>
             <p style={s("font-size:14.5px;color:#65788C;margin:0 0 26px;max-width:420px;margin-inline:auto;")}>
               {metodo === "Mercado Pago"
                 ? `Tu pago fue aprobado y tu lugar en ${actividad.nombre} del ${formatFecha(clase.fechaHora)} quedó confirmado.`
-                : `Tu lugar en ${actividad.nombre} del ${formatFecha(clase.fechaHora)} quedó reservado con pago pendiente. Abonalo directamente al instructor.`}
+                : `Tu lugar en ${actividad.nombre} del ${formatFecha(clase.fechaHora)} quedó inscripto con pago pendiente. Abonalo directamente al instructor.`}
             </p>
             <button
               className="ah-btn"
@@ -233,7 +233,7 @@ export default function AlumnoInscripcion() {
                   <div style={s("font:700 15px Manrope,sans-serif;color:#0E2A47;")}>Pagar con MercadoPago</div>
                 </div>
                 <p style={s("font-size:13.5px;line-height:1.55;color:#65788C;margin:0 0 16px;")}>
-                  Vas a ser redirigido a la pasarela segura de MercadoPago para completar el pago. Tu lugar queda reservado mientras
+                  Vas a ser redirigido a la pasarela segura de MercadoPago para completar el pago. Tu lugar queda tomado mientras
                   tanto.
                 </p>
                 <button
@@ -252,7 +252,7 @@ export default function AlumnoInscripcion() {
                 <div style={s("font:700 15px Manrope,sans-serif;color:#0E2A47;margin-bottom:12px;")}>Instrucciones de pago en efectivo</div>
                 <div style={s("display:flex;flex-direction:column;gap:12px;margin-bottom:18px;")}>
                   <EfectivoStep n={1}>
-                    Tu lugar queda <strong>reservado con pago pendiente</strong> hasta el inicio de la clase.
+                    Tu inscripción queda <strong>con pago pendiente</strong> hasta el inicio de la clase.
                   </EfectivoStep>
                   <EfectivoStep n={2}>
                     Llegá <strong>10 minutos antes</strong> y aboná los ${actividad.precio.toLocaleString("es-AR")} directamente al

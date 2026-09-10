@@ -1,23 +1,20 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import AlumnoNav from "../../components/AlumnoNav";
 import StatusBadge from "../../components/StatusBadge";
 import Avatar from "../../components/Avatar";
+import ErrorReintentar from "../../components/ErrorReintentar";
 import ActivityPhoto from "../../components/ActivityPhoto";
 import { s } from "../../lib/style";
-import { useAuth } from "../../context/AuthContext";
+import { useAuth, passwordStrength } from "../../context/AuthContext";
+import { ApiError } from "../../lib/api";
 import { useData } from "../../context/DataContext";
-import type { MiDenuncia, MiResenia } from "../../context/DataContext";
-import { formatFecha, INTERESES } from "../../lib/mockData";
+import type { MiDenuncia, MiResenia, MiInscripcion } from "../../context/DataContext";
+import { formatFecha } from "../../lib/mockData";
 import { inscripcionStatusType } from "../../lib/status";
-import type { Actividad, Clase, Inscripcion } from "../../lib/types";
 
-interface HistorialItem {
-  inscripcion: Inscripcion;
-  clase: Clase;
-  actividad: Actividad;
-}
+
 
 const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 
@@ -32,24 +29,50 @@ function formatDDMMYYYY(iso?: string): string {
   return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export default function AlumnoPerfil() {
   const navigate = useNavigate();
-  const { currentUser, updateUsuario, logout } = useAuth();
+  const {
+    currentUser,
+    logout,
+    actualizarMiPerfil,
+    actualizarMisIntereses,
+    cambiarMiContrasenia,
+    darDeBajaMiCuenta,
+  } = useAuth();
   const data = useData();
-  const { inscripciones, clases, actividades } = data;
 
   const [misResenias, setMisResenias] = useState<MiResenia[]>([]);
   const [claseIdsInscriptoFinalizada, setClaseIdsInscriptoFinalizada] = useState<string[]>([]);
   const [misDenuncias, setMisDenuncias] = useState<MiDenuncia[]>([]);
-  useEffect(() => {
+  const [errorResumen, setErrorResumen] = useState(false);
+  const [misInscripciones, setMisInscripciones] = useState<MiInscripcion[]>([]);
+
+  // Los tres accesos rápidos muestran contadores; si la carga falla, decían "0 hechas ·
+  // 0 pendientes", que es información falsa, no un estado vacío.
+  const cargarResumen = useCallback(() => {
     if (!currentUser) return;
-    data.listarMisResenas().then(setMisResenias).catch(() => {});
-    data
-      .listarMisInscripciones("Inscripto")
-      .then((lista) => setClaseIdsInscriptoFinalizada(lista.filter((i) => i.claseEstado === "Finalizada").map((i) => i.claseId)))
-      .catch(() => {});
-    data.listarMisDenuncias().then(setMisDenuncias).catch(() => {});
+    // Sin filtro de estado: la misma consulta alimenta el historial (todas) y el contador de
+    // reseñas pendientes (solo las Inscripto ya finalizadas).
+    Promise.all([data.listarMisResenas(), data.listarMisInscripciones(), data.listarMisDenuncias()])
+      .then(([resenias, inscripcionesAlumno, denuncias]) => {
+        setMisResenias(resenias);
+        setMisInscripciones(inscripcionesAlumno);
+        setClaseIdsInscriptoFinalizada(
+          inscripcionesAlumno
+            .filter((i) => i.estado === "Inscripto" && i.claseEstado === "Finalizada")
+            .map((i) => i.claseId),
+        );
+        setMisDenuncias(denuncias);
+        setErrorResumen(false);
+      })
+      .catch(() => setErrorResumen(true));
   }, [currentUser, data.listarMisResenas, data.listarMisInscripciones, data.listarMisDenuncias]);
+
+  useEffect(() => {
+    cargarResumen();
+  }, [cargarResumen]);
 
   const [fotoVersion, setFotoVersion] = useState(0);
   const [fotoAmpliada, setFotoAmpliada] = useState(false);
@@ -57,8 +80,21 @@ export default function AlumnoPerfil() {
   const [editando, setEditando] = useState(false);
   const [nombre, setNombre] = useState(currentUser?.nombre ?? "");
   const [apellido, setApellido] = useState(currentUser?.apellido ?? "");
+  const [email, setEmail] = useState(currentUser?.email ?? "");
   const [telefono, setTelefono] = useState(currentUser?.telefono ?? "");
   const [fechaNacimiento, setFechaNacimiento] = useState(currentUser?.fechaNacimiento ?? "");
+  const [guardando, setGuardando] = useState(false);
+  const [errorPerfil, setErrorPerfil] = useState<string | null>(null);
+  const [errorIntereses, setErrorIntereses] = useState<string | null>(null);
+  const [okPerfil, setOkPerfil] = useState<string | null>(null);
+
+  // Cambio de contraseña (E3A-HU12 criterio 6).
+  const [mostrarPassword, setMostrarPassword] = useState(false);
+  const [passActual, setPassActual] = useState("");
+  const [passNueva, setPassNueva] = useState("");
+  const [passRepetir, setPassRepetir] = useState("");
+  const [errorPass, setErrorPass] = useState<string | null>(null);
+  const [okPass, setOkPass] = useState<string | null>(null);
   const [notifs, setNotifs] = useState([
     { label: "Nuevas clases disponibles", on: true },
     { label: "Recordatorios antes de la clase", on: true },
@@ -67,22 +103,29 @@ export default function AlumnoPerfil() {
   ]);
 
   const intereses = currentUser?.perfilAlumno?.intereses ?? [];
-  const disponiblesParaAgregar = INTERESES.filter((i) => !intereses.includes(i));
+  const idsElegidos = new Set(intereses.map((i) => i.tipoActividadId));
 
-  const historial = useMemo(() => {
-    if (!currentUser) return [] as HistorialItem[];
-    const rows: HistorialItem[] = [];
-    for (const i of inscripciones) {
-      if (i.alumnoId !== currentUser.id) continue;
-      const clase = clases.find((c) => c.id === i.claseId);
-      if (!clase) continue;
-      const actividad = actividades.find((a) => a.id === clase.actividadId);
-      if (!actividad) continue;
-      rows.push({ inscripcion: i, clase, actividad });
+  // El catálogo de intereses es la taxonomía real: los tipos de actividad agrupados por su
+  // categoría. Antes era una lista fija en el frontend, sin relación con nada.
+  const disponiblesPorCategoria = useMemo(() => {
+    const grupos = new Map<string, { categoria: string; tipos: { id: string; nombre: string }[] }>();
+    for (const tipo of data.tiposActividad) {
+      if (idsElegidos.has(tipo.id)) continue;
+      const categoria = data.getCategoria(tipo.categoriaId);
+      const clave = categoria?.id ?? "otros";
+      if (!grupos.has(clave)) grupos.set(clave, { categoria: categoria?.nombre ?? "Otros", tipos: [] });
+      grupos.get(clave)!.tipos.push({ id: tipo.id, nombre: tipo.nombre });
     }
-    rows.sort((a, b) => b.clase.fechaHora.localeCompare(a.clase.fechaHora));
-    return rows.slice(0, 4);
-  }, [inscripciones, clases, actividades, currentUser]);
+    return [...grupos.values()].sort((a, b) => a.categoria.localeCompare(b.categoria));
+  }, [data.tiposActividad, data.getCategoria, idsElegidos]);
+
+  // Las 4 últimas inscripciones del alumno, reales. Antes esto cruzaba el dataset mock
+  // (`data.inscripciones`) con la caché parcial `data.clases`, así que para una cuenta real
+  // el bloque estaba siempre vacío.
+  const historial = useMemo(
+    () => [...misInscripciones].sort((a, b) => b.claseFechaHora.localeCompare(a.claseFechaHora)).slice(0, 4),
+    [misInscripciones],
+  );
 
   const reseniasPendientes = useMemo(() => {
     const claseIdsReseñadas = new Set(misResenias.map((r) => r.claseId));
@@ -94,30 +137,84 @@ export default function AlumnoPerfil() {
 
   if (!currentUser) return null;
 
-  const guardarEdicion = () => {
-    updateUsuario(currentUser.id, { nombre, apellido, telefono, fechaNacimiento });
-    setEditando(false);
+  const guardarEdicion = async () => {
+    setErrorPerfil(null);
+    setOkPerfil(null);
+    if (!nombre.trim() || !apellido.trim()) return setErrorPerfil("Este campo es obligatorio.");
+    if (!EMAIL_RE.test(email)) return setErrorPerfil("Ingresá un correo electrónico válido.");
+    // @NotBlank en ActualizarMiPerfilRequest: vacío también es inválido.
+    if (!/^\+?[0-9 ]+$/.test(telefono)) return setErrorPerfil("El teléfono es obligatorio y debe contener solo números.");
+
+    setGuardando(true);
+    try {
+      await actualizarMiPerfil({
+        nombre: nombre.trim(),
+        apellido: apellido.trim(),
+        email: email.trim(),
+        telefono: telefono.trim(),
+        fechaNacimiento: fechaNacimiento || undefined,
+      });
+      setOkPerfil("Tus datos fueron actualizados correctamente.");
+      setEditando(false);
+    } catch (err) {
+      setErrorPerfil(err instanceof ApiError ? err.message : "No pudimos guardar los cambios. Intentá de nuevo.");
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const cambiarPassword = async () => {
+    setErrorPass(null);
+    setOkPass(null);
+    if (passNueva !== passRepetir) return setErrorPass("Las contraseñas nuevas no coinciden.");
+    if (!passwordStrength(passNueva).ok) {
+      return setErrorPass("La contraseña necesita al menos 8 caracteres, una mayúscula y un número.");
+    }
+    try {
+      await cambiarMiContrasenia(passActual, passNueva);
+      setOkPass("Contraseña actualizada correctamente.");
+      setPassActual("");
+      setPassNueva("");
+      setPassRepetir("");
+      setMostrarPassword(false);
+    } catch (err) {
+      setErrorPass(err instanceof ApiError ? err.message : "No pudimos cambiar la contraseña.");
+    }
+  };
+
+  const darDeBaja = async () => {
+    if (!window.confirm("¿Estás seguro? Esta acción desactivará tu cuenta.")) return;
+    try {
+      await darDeBajaMiCuenta();
+      navigate("/");
+    } catch (err) {
+      setErrorPerfil(err instanceof ApiError ? err.message : "No pudimos dar de baja tu cuenta.");
+    }
   };
 
   const cancelarEdicion = () => {
     setNombre(currentUser.nombre);
     setApellido(currentUser.apellido);
+    setEmail(currentUser.email);
     setTelefono(currentUser.telefono ?? "");
     setFechaNacimiento(currentUser.fechaNacimiento ?? "");
+    setErrorPerfil(null);
     setEditando(false);
   };
 
-  const quitarInteres = (i: string) => {
-    updateUsuario(currentUser.id, {
-      perfilAlumno: { usuarioId: currentUser.id, intereses: intereses.filter((x) => x !== i) },
-    });
+  // Ya no es el store mock: se guardan contra la API y sobreviven al recargar.
+  const guardarIntereses = async (siguientes: string[]) => {
+    setErrorIntereses(null);
+    try {
+      await actualizarMisIntereses(siguientes);
+    } catch (err) {
+      setErrorIntereses(err instanceof ApiError ? err.message : "No pudimos guardar tus intereses.");
+    }
   };
 
-  const agregarInteres = (i: string) => {
-    updateUsuario(currentUser.id, {
-      perfilAlumno: { usuarioId: currentUser.id, intereses: [...intereses, i] },
-    });
-  };
+  const quitarInteres = (tipoId: string) =>
+    guardarIntereses(intereses.filter((x) => x.tipoActividadId !== tipoId).map((x) => x.tipoActividadId));
+  const agregarInteres = (tipoId: string) => guardarIntereses([...idsElegidos, tipoId]);
 
   const cerrarSesion = () => {
     logout();
@@ -198,6 +295,16 @@ export default function AlumnoPerfil() {
           </div>
         </div>
 
+        {errorResumen && (
+          <div style={s("margin-bottom:16px;")}>
+            <ErrorReintentar
+              mensaje="No pudimos cargar tus reseñas, denuncias y clases. Los contadores de abajo pueden no ser exactos."
+              onReintentar={cargarResumen}
+              variant="banner"
+            />
+          </div>
+        )}
+
         <div className="ah-grid-3" style={s("display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px;")}>
           <QuickLink
             onClick={() => navigate("/alumno/mis-pagos")}
@@ -234,6 +341,7 @@ export default function AlumnoPerfil() {
           <div style={s("display:flex;flex-direction:column;gap:20px;")}>
             <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:18px;padding:24px;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
               <div style={s("font:700 16px Space Grotesk,sans-serif;margin-bottom:18px;")}>Datos personales</div>
+              {okPerfil && !editando && <Aviso tono="ok" texto={okPerfil} />}
               {!editando ? (
                 <div style={s("display:flex;flex-direction:column;gap:14px;")}>
                   <DataRow label="Nombre completo" value={`${currentUser.nombre} ${currentUser.apellido}`} />
@@ -242,18 +350,23 @@ export default function AlumnoPerfil() {
                   <div style={s("height:1px;background:#EEF2F6;")} />
                   <DataRow label="Fecha de nacimiento" value={formatDDMMYYYY(currentUser.fechaNacimiento)} />
                   <div style={s("height:1px;background:#EEF2F6;")} />
+                  <DataRow label="DNI" value={currentUser.dni || "No especificado"} />
+                  <div style={s("height:1px;background:#EEF2F6;")} />
                   <DataRow label="Email" value={currentUser.email} />
                 </div>
               ) : (
                 <div style={s("display:flex;flex-direction:column;gap:12px;")}>
                   <Field label="Nombre" value={nombre} onChange={setNombre} />
                   <Field label="Apellido" value={apellido} onChange={setApellido} />
+                  <Field label="Email" value={email} onChange={setEmail} type="email" />
                   <Field label="Teléfono" value={telefono} onChange={setTelefono} />
                   <Field label="Fecha de nacimiento" value={fechaNacimiento} onChange={setFechaNacimiento} type="date" />
+                  {errorPerfil && <Aviso tono="error" texto={errorPerfil} />}
                   <div style={s("display:flex;gap:10px;margin-top:6px;")}>
                     <button
                       className="ah-btn"
                       onClick={cancelarEdicion}
+                      disabled={guardando}
                       style={s("flex:1;background:#fff;border:1px solid #D6DEE7;border-radius:11px;padding:11px;font:700 13.5px Manrope,sans-serif;color:#41566B;cursor:pointer;")}
                     >
                       Cancelar
@@ -261,9 +374,12 @@ export default function AlumnoPerfil() {
                     <button
                       className="ah-btn"
                       onClick={guardarEdicion}
-                      style={s("flex:1;background:#FF6A2B;border:none;border-radius:11px;padding:11px;font:700 13.5px Manrope,sans-serif;color:#fff;cursor:pointer;")}
+                      disabled={guardando}
+                      style={s(
+                        `flex:1;background:${guardando ? "#F0B392" : "#FF6A2B"};border:none;border-radius:11px;padding:11px;font:700 13.5px Manrope,sans-serif;color:#fff;cursor:${guardando ? "wait" : "pointer"};`,
+                      )}
                     >
-                      Guardar cambios
+                      {guardando ? "Guardando…" : "Guardar cambios"}
                     </button>
                   </div>
                 </div>
@@ -273,24 +389,30 @@ export default function AlumnoPerfil() {
             <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:18px;padding:24px;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
               <div style={s("font:700 16px Space Grotesk,sans-serif;margin-bottom:6px;")}>Intereses deportivos</div>
               <p style={s("font-size:13px;color:#8194A8;margin:0 0 14px;")}>Usamos esto para tus recomendaciones.</p>
+              {errorIntereses && (
+                <div style={s("background:#FBEAEB;border:1px solid #F3D2D3;border-radius:10px;padding:9px 12px;font:600 12.5px Manrope,sans-serif;color:#BE3A3E;margin-bottom:12px;")}>
+                  {errorIntereses}
+                </div>
+              )}
               <div style={s("display:flex;flex-wrap:wrap;gap:9px;")}>
                 {intereses.map((i) => (
                   <span
-                    key={i}
-                    onClick={() => quitarInteres(i)}
+                    key={i.tipoActividadId}
+                    onClick={() => quitarInteres(i.tipoActividadId)}
                     className="ah-btn"
                     style={s(
                       "cursor:pointer;padding:8px 15px;border-radius:999px;font:700 13.5px Manrope,sans-serif;background:#E7F8F5;color:#0C8576;border:1px solid #CBEDE7;display:flex;align-items:center;gap:6px;",
                     )}
-                    title="Quitar interés"
+                    title={`Quitar "${i.nombre}" (${i.categoria})`}
                   >
-                    {i}
+                    {i.nombre}
+                    <span style={s("font:600 10.5px Manrope,sans-serif;color:#5FA79B;")}>· {i.categoria}</span>
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#0C8576" strokeWidth={3}>
                       <path d="M18 6 6 18M6 6l12 12" />
                     </svg>
                   </span>
                 ))}
-                {disponiblesParaAgregar.length > 0 && (
+                {disponiblesPorCategoria.length > 0 && (
                   <select
                     value=""
                     onChange={(e) => e.target.value && agregarInteres(e.target.value)}
@@ -299,10 +421,15 @@ export default function AlumnoPerfil() {
                     )}
                   >
                     <option value="">+ Agregar interés</option>
-                    {disponiblesParaAgregar.map((i) => (
-                      <option key={i} value={i}>
-                        {i}
-                      </option>
+                    {/* Agrupados por categoría: es la taxonomía real, no una lista suelta. */}
+                    {disponiblesPorCategoria.map((grupo) => (
+                      <optgroup key={grupo.categoria} label={grupo.categoria}>
+                        {grupo.tipos.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.nombre}
+                          </option>
+                        ))}
+                      </optgroup>
                     ))}
                   </select>
                 )}
@@ -317,16 +444,16 @@ export default function AlumnoPerfil() {
                 <p style={s("font-size:13.5px;color:#9AAABA;font-weight:600;margin:0;")}>Todavía no tenés clases registradas.</p>
               ) : (
                 <div style={s("display:flex;flex-direction:column;gap:13px;")}>
-                  {historial.map(({ inscripcion, clase, actividad }) => (
-                    <div key={inscripcion.id} style={s("display:flex;align-items:center;gap:12px;")}>
-                      <span style={s(`width:36px;height:36px;border-radius:10px;background:${actividad.photoTint};flex:none;position:relative;overflow:hidden;display:block;`)}>
-                        <ActivityPhoto actividadId={actividad.id} />
+                  {historial.map((i) => (
+                    <div key={i.id} style={s("display:flex;align-items:center;gap:12px;")}>
+                      <span style={s("width:36px;height:36px;border-radius:10px;background:#EEF4FB;flex:none;position:relative;overflow:hidden;display:block;")}>
+                        <ActivityPhoto actividadId={i.actividadId} />
                       </span>
                       <div style={s("flex:1;")}>
-                        <div style={s("font:700 14px Manrope,sans-serif;color:#0E2A47;")}>{actividad.nombre}</div>
-                        <div style={s("font-size:12.5px;color:#90A1B2;font-weight:600;")}>{formatFecha(clase.fechaHora)}</div>
+                        <div style={s("font:700 14px Manrope,sans-serif;color:#0E2A47;")}>{i.actividadNombre}</div>
+                        <div style={s("font-size:12.5px;color:#90A1B2;font-weight:600;")}>{formatFecha(i.claseFechaHora)}</div>
                       </div>
-                      <StatusBadge type={inscripcionStatusType(inscripcion.estado)} />
+                      <StatusBadge type={inscripcionStatusType(i.estado)} />
                     </div>
                   ))}
                 </div>
@@ -355,6 +482,74 @@ export default function AlumnoPerfil() {
                   </div>
                 ))}
               </div>
+            </div>
+
+            <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:18px;padding:24px;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
+              <div style={s("font:700 16px Space Grotesk,sans-serif;margin-bottom:6px;")}>Seguridad de la cuenta</div>
+              <p style={s("font-size:13px;color:#8194A8;margin:0 0 16px;")}>Cambiá tu contraseña o cerrá tu cuenta.</p>
+
+              {okPass && <Aviso tono="ok" texto={okPass} />}
+
+              {!mostrarPassword ? (
+                <button
+                  className="ah-btn"
+                  onClick={() => {
+                    setOkPass(null);
+                    setErrorPass(null);
+                    setMostrarPassword(true);
+                  }}
+                  style={s("width:100%;background:#fff;border:1px solid #D6DEE7;border-radius:11px;padding:11px;font:700 13.5px Manrope,sans-serif;color:#41566B;cursor:pointer;")}
+                >
+                  Cambiar contraseña
+                </button>
+              ) : (
+                <div style={s("display:flex;flex-direction:column;gap:12px;")}>
+                  <Field label="Contraseña actual" value={passActual} onChange={setPassActual} type="password" />
+                  <Field label="Contraseña nueva" value={passNueva} onChange={setPassNueva} type="password" />
+                  {passNueva.length > 0 && (
+                    <span style={s(`font-size:12.5px;font-weight:700;color:${passwordStrength(passNueva).color};`)}>
+                      {passwordStrength(passNueva).label}
+                    </span>
+                  )}
+                  <Field label="Repetir contraseña nueva" value={passRepetir} onChange={setPassRepetir} type="password" />
+                  {errorPass && <Aviso tono="error" texto={errorPass} />}
+                  <div style={s("display:flex;gap:10px;")}>
+                    <button
+                      className="ah-btn"
+                      onClick={() => {
+                        setMostrarPassword(false);
+                        setPassActual("");
+                        setPassNueva("");
+                        setPassRepetir("");
+                        setErrorPass(null);
+                      }}
+                      style={s("flex:1;background:#fff;border:1px solid #D6DEE7;border-radius:11px;padding:11px;font:700 13.5px Manrope,sans-serif;color:#41566B;cursor:pointer;")}
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      className="ah-btn"
+                      onClick={cambiarPassword}
+                      style={s("flex:1;background:#FF6A2B;border:none;border-radius:11px;padding:11px;font:700 13.5px Manrope,sans-serif;color:#fff;cursor:pointer;")}
+                    >
+                      Guardar contraseña
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div style={s("height:1px;background:#EEF2F6;margin:18px 0;")} />
+              <div style={s("font-size:13px;color:#8194A8;margin-bottom:10px;")}>
+                Al darte de baja perdés el acceso a la plataforma. Tus clases futuras quedan canceladas.
+              </div>
+              <button
+                className="ah-btn"
+                onClick={darDeBaja}
+                style={s("width:100%;background:#fff;border:1px solid #F3C6C7;border-radius:11px;padding:11px;font:700 13.5px Manrope,sans-serif;color:#BE3A3E;cursor:pointer;")}
+              >
+                Dar de baja mi cuenta
+              </button>
+              {errorPerfil && !editando && <Aviso tono="error" texto={errorPerfil} />}
             </div>
           </div>
         </div>
@@ -429,6 +624,18 @@ function QuickLink({
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#C2CCD6" strokeWidth={2}>
         <path d="m9 18 6-6-6-6" />
       </svg>
+    </div>
+  );
+}
+
+function Aviso({ tono, texto }: { tono: "ok" | "error"; texto: string }) {
+  const c =
+    tono === "ok"
+      ? "background:#E7F8F5;border:1px solid #CBEDE7;color:#0C8576;"
+      : "background:#FBEAEB;border:1px solid #F3C6C7;color:#BE3A3E;";
+  return (
+    <div style={s(`${c}border-radius:10px;padding:10px 12px;font:600 13px Manrope,sans-serif;margin:10px 0 0;`)} role="alert">
+      {texto}
     </div>
   );
 }

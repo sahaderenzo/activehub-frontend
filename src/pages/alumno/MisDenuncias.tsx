@@ -1,15 +1,26 @@
 import { useCallback, useEffect, useState } from "react";
 import AlumnoNav from "../../components/AlumnoNav";
 import StatusBadge from "../../components/StatusBadge";
+import ErrorReintentar from "../../components/ErrorReintentar";
 import { s } from "../../lib/style";
+import { useAhora } from "../../lib/ahora";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
-import type { MiDenuncia, MiInscripcion } from "../../context/DataContext";
+import type { MiDenuncia, MiInscripcion, ResolucionDenuncia } from "../../context/DataContext";
 import { ApiError } from "../../lib/api";
 import { formatFecha } from "../../lib/mockData";
 import { denunciaStatusType } from "../../lib/status";
 
+const ETIQUETA_RESOLUCION: Record<ResolucionDenuncia, string> = {
+  REINTEGRAR: "se te reintegró el pago",
+  SUSPENDER: "el instructor fue suspendido",
+  PENALIZAR: "se le aplicó una penalización al instructor",
+  DESESTIMAR: "se desestimó la denuncia",
+  OCULTAR_RESENIA: "la reseña fue ocultada",
+};
+
 export default function AlumnoMisDenuncias() {
+  const ahora = useAhora();
   const { currentUser } = useAuth();
   const { crearDenuncia, listarMisDenuncias, listarMisInscripciones } = useData();
   const [misDenuncias, setMisDenuncias] = useState<MiDenuncia[]>([]);
@@ -19,19 +30,25 @@ export default function AlumnoMisDenuncias() {
   const [claseId, setClaseId] = useState("");
   const [motivo, setMotivo] = useState("");
 
+  const [errorCarga, setErrorCarga] = useState(false);
+
+  // Las clases reportables alimentan el select de "Nueva denuncia": si no cargan, el
+  // formulario queda vacío sin decir por qué.
   const cargar = useCallback(() => {
-    listarMisDenuncias()
-      .then(setMisDenuncias)
-      .catch((err) => setError(err instanceof ApiError ? err.message : "No pudimos cargar tus denuncias."));
-  }, [listarMisDenuncias]);
+    if (!currentUser) return;
+    Promise.all([listarMisDenuncias(), listarMisInscripciones("Inscripto")])
+      .then(([denuncias, inscripcionesAlumno]) => {
+        setMisDenuncias(denuncias);
+        setClasesReportables(inscripcionesAlumno);
+        setError(null);
+        setErrorCarga(false);
+      })
+      .catch(() => setErrorCarga(true));
+  }, [currentUser, listarMisDenuncias, listarMisInscripciones]);
 
   useEffect(() => {
-    if (!currentUser) return;
     cargar();
-    listarMisInscripciones("Inscripto")
-      .then(setClasesReportables)
-      .catch(() => {});
-  }, [currentUser, cargar, listarMisInscripciones]);
+  }, [cargar]);
 
   const enviar = async () => {
     if (!currentUser || !claseId || !motivo.trim()) return;
@@ -49,7 +66,7 @@ export default function AlumnoMisDenuncias() {
 
   return (
     <div className="ah-screen" style={s("min-height:100vh;background:#F4F7FA;")}>
-      <AlumnoNav active="misreservas" />
+      <AlumnoNav active="misclases" />
       <div style={s("max-width:920px;margin:0 auto;padding:30px 28px 60px;")}>
         <div style={s("display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:24px;flex-wrap:wrap;")}>
           <div>
@@ -82,7 +99,9 @@ export default function AlumnoMisDenuncias() {
           </div>
         )}
 
-        {misDenuncias.length === 0 ? (
+        {errorCarga ? (
+          <ErrorReintentar mensaje="No pudimos cargar tus denuncias." onReintentar={cargar} />
+        ) : misDenuncias.length === 0 ? (
           <div style={s("background:#fff;border:1px dashed #D6DEE7;border-radius:16px;padding:40px 20px;text-align:center;color:#7A8C9E;font-weight:600;")}>
             No hiciste ninguna denuncia todavía.
           </div>
@@ -104,6 +123,24 @@ export default function AlumnoMisDenuncias() {
                   <StatusBadge type={denunciaStatusType(d.estado)} />
                 </div>
                 <p style={s("font-size:14px;line-height:1.55;color:#65788C;margin:0;padding-left:52px;")}>{d.motivo}</p>
+
+                {/* Antes la denuncia pasaba a "Resuelta" y el alumno nunca se enteraba de qué
+                    se había decidido (E3A-HU11 criterios 2 y 7). */}
+                {d.resolucion && (
+                  <div style={s("margin:12px 0 0 52px;background:#F4F7FA;border:1px solid #E2E9F0;border-radius:12px;padding:12px 14px;")}>
+                    <div style={s("display:flex;align-items:center;gap:7px;margin-bottom:5px;")}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0C8576" strokeWidth={2.6}>
+                        <path d="M20 6 9 17l-5-5" />
+                      </svg>
+                      <span style={s("font:700 12.5px Manrope,sans-serif;color:#0E2A47;")}>
+                        Resolución: {ETIQUETA_RESOLUCION[d.resolucion]}
+                      </span>
+                    </div>
+                    {d.detalle && (
+                      <p style={s("font-size:13.5px;line-height:1.55;color:#65788C;margin:0;font-weight:600;")}>{d.detalle}</p>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -128,7 +165,7 @@ export default function AlumnoMisDenuncias() {
               <option value="">Elegí una clase…</option>
               {clasesReportables
                 .filter((c) => {
-                  const horasDesdeInicio = (Date.now() - new Date(c.claseFechaHora).getTime()) / (1000 * 60 * 60);
+                  const horasDesdeInicio = (ahora - new Date(c.claseFechaHora).getTime()) / (1000 * 60 * 60);
                   const yaDenunciada = misDenuncias.some((d) => d.claseId === c.claseId);
                   return horasDesdeInicio >= 1 && !yaDenunciada;
                 })

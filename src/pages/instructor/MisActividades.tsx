@@ -1,18 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
 import ActivityPhoto from "../../components/ActivityPhoto";
+import ErrorReintentar from "../../components/ErrorReintentar";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import { ApiError } from "../../lib/api";
-import type { NivelIntensidad } from "../../lib/types";
-
-const NIVEL_COLORS: Record<NivelIntensidad, [bg: string, fg: string, bd: string]> = {
-  "Física baja": ["#E7F8F5", "#0C8576", "#CBEDE7"],
-  "Física media": ["#FFF3E0", "#B9741A", "#F6E2C0"],
-  "Física alta": ["#FBEAEB", "#BE3A3E", "#F3D2D3"],
-};
+import { nivelStyle } from "../../lib/nivelStyle";
 
 export default function InstructorMisActividades() {
   const { currentUser } = useAuth();
@@ -29,14 +24,21 @@ export default function InstructorMisActividades() {
     [data.actividades, currentUser],
   );
 
-  useEffect(() => {
-    misActividades.forEach((a) => {
-      data.cargarDetalleActividad(a.id).catch(() => {});
-    });
+  const [error, setError] = useState<string | null>(null);
+  const [errorCarga, setErrorCarga] = useState(false);
+
+  // El detalle de cada actividad es lo que trae sus clases: si falla, las tarjetas muestran
+  // "0 clases", que es indistinguible de una actividad realmente vacía.
+  const cargarDetalles = useCallback(() => {
+    Promise.all(misActividades.map((a) => data.cargarDetalleActividad(a.id)))
+      .then(() => setErrorCarga(false))
+      .catch(() => setErrorCarga(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, data.actividades.length]);
 
-  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    cargarDetalles();
+  }, [cargarDetalles]);
 
   const eliminar = async (id: string, nombre: string) => {
     if (window.confirm(`¿Eliminar la actividad "${nombre}"? Esta acción no se puede deshacer.`)) {
@@ -86,6 +88,15 @@ export default function InstructorMisActividades() {
             <span style={s("font-size:13px;line-height:1.4;color:#BE3A3E;font-weight:600;")}>{error}</span>
           </div>
         )}
+        {errorCarga && (
+          <div style={s("margin-bottom:18px;")}>
+            <ErrorReintentar
+              mensaje="No pudimos cargar las clases de tus actividades. Los contadores de abajo pueden estar incompletos."
+              onReintentar={cargarDetalles}
+              variant="banner"
+            />
+          </div>
+        )}
         {misActividades.length === 0 ? (
           <div
             style={s(
@@ -99,7 +110,7 @@ export default function InstructorMisActividades() {
             {misActividades.map((a) => {
               const tipo = data.getTipoActividad(a.tipoActividadId);
               const cat = tipo ? data.getCategoria(tipo.categoriaId) : undefined;
-              const [nivelBg, nivelFg, nivelBd] = NIVEL_COLORS[a.nivelIntensidad];
+              const [nivelBg, nivelFg, nivelBd] = nivelStyle(a.nivelIntensidad);
               const clasesCount = data.clases.filter((c) => c.actividadId === a.id).length;
               return (
                 <div

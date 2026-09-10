@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { s } from "../lib/style";
 import { fotoActividadUrl } from "../lib/photos";
 
@@ -13,7 +13,14 @@ interface ActivityPhotoProps {
  */
 export default function ActivityPhoto({ actividadId, version }: ActivityPhotoProps) {
   const [error, setError] = useState(false);
-  useEffect(() => setError(false), [actividadId, version]);
+  // Cambió la foto: se reintenta. Ajustar el estado durante el render (y no en un efecto)
+  // es el patrón de React para esto y evita pintar un frame con el error de la anterior.
+  const fotoActual = `${actividadId}:${version}`;
+  const [fotoPrevia, setFotoPrevia] = useState(fotoActual);
+  if (fotoPrevia !== fotoActual) {
+    setFotoPrevia(fotoActual);
+    setError(false);
+  }
 
   if (error) return null;
 

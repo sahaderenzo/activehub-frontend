@@ -5,7 +5,7 @@ import StatusBadge from "../../components/StatusBadge";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
-import type { AccionResolucion, DenunciaAdmin, InstructorAdmin, ReseniaPendiente, UsuarioAdmin } from "../../context/DataContext";
+import type { AccionResolucion, DenunciaAdmin, InstructorAdmin, ReseniaPendiente, UsuarioAdmin, RolAdmin } from "../../context/DataContext";
 import { ApiError } from "../../lib/api";
 import { denunciaStatusType } from "../../lib/status";
 import { formatFecha } from "../../lib/mockData";
@@ -38,6 +38,46 @@ function initials(nombre: string, apellido: string): string {
   return `${nombre.charAt(0)}${apellido.charAt(0)}`.toUpperCase();
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Espejo de `VentanaPenalizacion.MINIMO_DIAS_SUSPENSION` del backend. Si cambia allá, cambialo acá. */
+const MIN_DIAS_SUSPENSION = 15;
+
+interface SuspensionEnCurso {
+  denuncia: DenunciaAdmin;
+  dias: string;
+  monto: string;
+  detalle: string;
+}
+
+const ETIQUETA_ACCION: Record<AccionResolucion, string> = {
+  REINTEGRAR: "Reintegrar el pago",
+  SUSPENDER: "Suspender al instructor",
+  PENALIZAR: "Penalizar al instructor",
+  DESESTIMAR: "Desestimar",
+  OCULTAR_RESENIA: "Ocultar la reseña",
+};
+
+/**
+ * Qué se puede hacer según qué se denunció. Sobre una reseña no aplican las acciones que
+ * tocan el pago o al instructor: el backend las rechaza con 400, así que tampoco se ofrecen.
+ */
+const ACCIONES_POR_TIPO: Record<DenunciaAdmin["tipo"], AccionResolucion[]> = {
+  CLASE: ["REINTEGRAR", "SUSPENDER", "PENALIZAR", "DESESTIMAR"],
+  RESENIA: ["OCULTAR_RESENIA", "DESESTIMAR"],
+};
+
+interface EdicionUsuario {
+  id: string;
+  nombre: string;
+  apellido: string;
+  email: string;
+  telefono: string;
+  /** Rol elegido en el selector. Se guarda aparte porque tiene su propio endpoint y sus guardas. */
+  rolId: string;
+  rolIdOriginal: string;
+}
+
 export default function AdminGestion() {
   const navigate = useNavigate();
   const params = useParams<{ tab?: string }>();
@@ -62,6 +102,9 @@ export default function AdminGestion() {
     rechazarResenia: rechazarReseniaReal,
     listarUsuariosAdmin,
     actualizarEstadoUsuario,
+    actualizarUsuarioAdmin,
+    listarRolesPermisos,
+    asignarRolUsuario,
   } = useData();
   const [query, setQuery] = useState("");
   const [rolFiltro, setRolFiltro] = useState<RolNombre | "todos">("todos");
@@ -75,6 +118,15 @@ export default function AdminGestion() {
   const [usuarios, setUsuarios] = useState<UsuarioAdmin[]>([]);
   const [errorUsuarios, setErrorUsuarios] = useState<string | null>(null);
   const [errorActividades, setErrorActividades] = useState<string | null>(null);
+  const [edicion, setEdicion] = useState<EdicionUsuario | null>(null);
+  // Los roles asignables salen de la API: incluyen los que el admin creó en "Roles y permisos".
+  const [rolesAsignables, setRolesAsignables] = useState<RolAdmin[]>([]);
+  // Suspender ya no es un botón directo: pide plazo y monto (E4Ad-HU07).
+  const [suspension, setSuspension] = useState<SuspensionEnCurso | null>(null);
+  const [errorSuspension, setErrorSuspension] = useState<string | null>(null);
+  const [guardandoSuspension, setGuardandoSuspension] = useState(false);
+  const [guardandoEdicion, setGuardandoEdicion] = useState(false);
+  const [errorEdicion, setErrorEdicion] = useState<string | null>(null);
 
   const goTab = (t: Tab) => navigate(`/admin/gestion/${t}`);
 
@@ -115,6 +167,12 @@ export default function AdminGestion() {
     listarUsuariosAdmin()
       .then(setUsuarios)
       .catch((err) => setErrorUsuarios(err instanceof ApiError ? err.message : "No pudimos cargar los usuarios."));
+    // Los roles asignables van con el listado: el modal de edición los necesita para el
+    // selector, e incluyen los que el admin creó en "Roles y permisos". Si falla, el selector
+    // queda vacío y el resto de la edición sigue funcionando.
+    listarRolesPermisos()
+      .then((r) => setRolesAsignables(r.roles))
+      .catch(() => setRolesAsignables([]));
   };
 
   useEffect(() => {
@@ -132,6 +190,80 @@ export default function AdminGestion() {
       cargarUsuarios();
     } catch (err) {
       setErrorUsuarios(err instanceof ApiError ? err.message : "No pudimos actualizar el estado del usuario.");
+    }
+  };
+
+  // E4Ad-HU02 criterio 2: el admin puede corregir los datos de un usuario, no solo
+  // suspenderlo. PUT /api/admin/usuarios/{id}.
+  const abrirEdicion = (u: UsuarioAdmin) => {
+    setErrorEdicion(null);
+    // El listado trae el nombre del rol, no su id: se resuelve contra los roles cargados.
+    const rolActual = rolesAsignables.find((r) => r.nombre === u.rol);
+    setEdicion({
+      id: u.id,
+      nombre: u.nombre,
+      apellido: u.apellido,
+      email: u.email,
+      telefono: u.telefono ?? "",
+      rolId: rolActual?.id ?? "",
+      rolIdOriginal: rolActual?.id ?? "",
+    });
+  };
+
+  const guardarEdicion = async () => {
+    if (!edicion) return;
+    setErrorEdicion(null);
+    if (!edicion.nombre.trim() || !edicion.apellido.trim()) return setErrorEdicion("El nombre y el apellido son obligatorios.");
+    if (!EMAIL_RE.test(edicion.email)) return setErrorEdicion("Ingresá un correo electrónico válido.");
+    if (edicion.telefono && !/^\+?[0-9 ]+$/.test(edicion.telefono)) return setErrorEdicion("El teléfono debe contener solo números.");
+
+    setGuardandoEdicion(true);
+    try {
+      await actualizarUsuarioAdmin(edicion.id, {
+        nombre: edicion.nombre.trim(),
+        apellido: edicion.apellido.trim(),
+        email: edicion.email.trim(),
+        telefono: edicion.telefono.trim() || undefined,
+      });
+      // El rol va por su propio endpoint: tiene guardas propias (no podés cambiarte el tuyo
+      // ni dejar la plataforma sin administrador).
+      if (edicion.rolId && edicion.rolId !== edicion.rolIdOriginal) {
+        await asignarRolUsuario(edicion.id, edicion.rolId);
+      }
+      setEdicion(null);
+      cargarUsuarios();
+    } catch (err) {
+      setErrorEdicion(err instanceof ApiError ? err.message : "No pudimos guardar los cambios.");
+    } finally {
+      setGuardandoEdicion(false);
+    }
+  };
+
+  const confirmarSuspension = async () => {
+    if (!suspension) return;
+    const dias = Number(suspension.dias);
+    const monto = suspension.monto.trim() === "" ? 0 : Number(suspension.monto);
+
+    if (!Number.isInteger(dias) || dias < MIN_DIAS_SUSPENSION) {
+      return setErrorSuspension(`La suspensión no puede durar menos de ${MIN_DIAS_SUSPENSION} días.`);
+    }
+    if (!Number.isFinite(monto) || monto < 0) {
+      return setErrorSuspension("El monto no puede ser negativo. Dejalo en 0 si no querés aplicar multa.");
+    }
+
+    setErrorSuspension(null);
+    setGuardandoSuspension(true);
+    try {
+      await resolverDenuncia(suspension.denuncia.id, "SUSPENDER", suspension.detalle, {
+        montoMulta: monto,
+        diasSuspension: dias,
+      });
+      setSuspension(null);
+      cargarDenuncias();
+    } catch (err) {
+      setErrorSuspension(err instanceof ApiError ? err.message : "No pudimos aplicar la suspensión.");
+    } finally {
+      setGuardandoSuspension(false);
     }
   };
 
@@ -177,8 +309,14 @@ export default function AdminGestion() {
 
   const resolverReclamo = async (d: DenunciaAdmin, accion: AccionResolucion) => {
     setErrorDenuncias(null);
+    // El detalle es lo que ve el denunciante junto a la resolución (E3A-HU11 criterio 7).
+    const detalle = window.prompt(
+      `Vas a resolver este reclamo como "${ETIQUETA_ACCION[accion]}". Podés dejarle un detalle al denunciante (opcional):`,
+      "",
+    );
+    if (detalle === null) return;
     try {
-      await resolverDenuncia(d.id, accion);
+      await resolverDenuncia(d.id, accion, detalle);
       cargarDenuncias();
     } catch (err) {
       setErrorDenuncias(err instanceof ApiError ? err.message : "No pudimos resolver el reclamo.");
@@ -274,7 +412,7 @@ export default function AdminGestion() {
                 <div
                   className="ah-grid-5"
                   style={s(
-                    "display:grid;grid-template-columns:2fr 1fr 1fr 1.2fr 150px;padding:12px 22px;background:#F7FAFC;border-bottom:1px solid #EEF2F6;font:700 11.5px Manrope,sans-serif;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;",
+                    "display:grid;grid-template-columns:2fr 1fr 1fr 1.2fr 230px;padding:12px 22px;background:#F7FAFC;border-bottom:1px solid #EEF2F6;font:700 11.5px Manrope,sans-serif;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;",
                   )}
                 >
                   <span>Usuario</span>
@@ -290,7 +428,7 @@ export default function AdminGestion() {
                     <div
                       key={u.id}
                       className="ah-grid-5"
-                      style={s("display:grid;grid-template-columns:2fr 1fr 1fr 1.2fr 150px;padding:14px 22px;border-bottom:1px solid #F1F4F8;align-items:center;")}
+                      style={s("display:grid;grid-template-columns:2fr 1fr 1fr 1.2fr 230px;padding:14px 22px;border-bottom:1px solid #F1F4F8;align-items:center;")}
                     >
                       <div style={s("display:flex;align-items:center;gap:11px;")}>
                         <span
@@ -319,6 +457,13 @@ export default function AdminGestion() {
                           disabled={u.rol !== "INSTRUCTOR"}
                         >
                           Ver
+                        </button>
+                        <button
+                          className="ah-btn"
+                          onClick={() => abrirEdicion(u)}
+                          style={s("background:#F2F5F9;border:none;border-radius:8px;padding:7px 12px;font:700 12px Manrope,sans-serif;color:#41566B;cursor:pointer;")}
+                        >
+                          Editar
                         </button>
                         <button
                           className="ah-btn"
@@ -511,12 +656,13 @@ export default function AdminGestion() {
                   <span style={s("font-size:13px;color:#BE3A3E;font-weight:600;")}>{errorDenuncias}</span>
                 </div>
               )}
-              <div style={s("min-width:1020px;")}>
+              <div style={s("min-width:1080px;")}>
                 <div
                   style={s(
-                    "display:grid;grid-template-columns:1.1fr 1.1fr 1.1fr 1.6fr 1fr 1fr 130px;padding:12px 22px;background:#F7FAFC;border-bottom:1px solid #EEF2F6;font:700 11.5px Manrope,sans-serif;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;",
+                    "display:grid;grid-template-columns:90px 1.1fr 1.1fr 1.1fr 1.6fr .8fr 1fr 260px;padding:12px 22px;background:#F7FAFC;border-bottom:1px solid #EEF2F6;font:700 11.5px Manrope,sans-serif;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;",
                   )}
                 >
+                  <span>Tipo</span>
                   <span>Denunciante</span>
                   <span>Denunciado</span>
                   <span>Actividad</span>
@@ -526,28 +672,77 @@ export default function AdminGestion() {
                   <span>Acciones</span>
                 </div>
                 {denuncias.map((d) => {
+                  const sobreResenia = d.tipo === "RESENIA";
+                  // En una denuncia de reseña el "denunciado" es el alumno que la escribió,
+                  // no el instructor (que acá es justamente el denunciante).
+                  const denunciado = sobreResenia ? d.resenia?.autor : d.instructor;
+                  const resuelta = d.estado === "Resuelta";
                   return (
                     <div
                       key={d.id}
-                      style={s("display:grid;grid-template-columns:1.1fr 1.1fr 1.1fr 1.6fr 1fr 1fr 130px;padding:14px 22px;border-bottom:1px solid #F1F4F8;align-items:center;")}
+                      style={s("display:grid;grid-template-columns:90px 1.1fr 1.1fr 1.1fr 1.6fr .8fr 1fr 260px;padding:14px 22px;border-bottom:1px solid #F1F4F8;align-items:center;")}
                     >
-                      <span style={s("font-size:13.5px;color:#41566B;font-weight:600;")}>{d.alumno.nombre} {d.alumno.apellido}</span>
-                      <span style={s("font-size:13.5px;color:#41566B;font-weight:600;")}>{d.instructor.nombre} {d.instructor.apellido}</span>
+                      <span
+                        style={s(
+                          `font:700 10.5px Manrope,sans-serif;letter-spacing:.4px;padding:4px 9px;border-radius:99px;width:fit-content;${
+                            sobreResenia
+                              ? "background:#EFEAFB;color:#6A3FC4;"
+                              : "background:#EAF1FE;color:#2D5BC8;"
+                          }`,
+                        )}
+                      >
+                        {sobreResenia ? "RESEÑA" : "CLASE"}
+                      </span>
+                      <span style={s("font-size:13.5px;color:#41566B;font-weight:600;")}>
+                        {d.denunciante.nombre} {d.denunciante.apellido}
+                      </span>
+                      <span style={s("font-size:13.5px;color:#41566B;font-weight:600;")}>
+                        {denunciado ? `${denunciado.nombre} ${denunciado.apellido}` : "—"}
+                      </span>
                       <span style={s("font-size:13px;color:#65788C;font-weight:600;")}>{d.actividadNombre}</span>
-                      <span style={s("font-size:13px;color:#65788C;font-weight:600;")}>{d.motivo}</span>
-                      <span style={s("font:700 14px Space Grotesk,sans-serif;color:#0E2A47;")}>{d.pago ? `$${d.pago.monto.toLocaleString("es-AR")}` : "—"}</span>
+                      <div style={s("min-width:0;")}>
+                        <div style={s("font-size:13px;color:#65788C;font-weight:600;")}>{d.motivo}</div>
+                        {d.resenia && (
+                          <div style={s("margin-top:5px;font-size:12px;color:#90A1B2;font-weight:600;font-style:italic;")}>
+                            “{d.resenia.comentario}” · {d.resenia.puntaje}★
+                          </div>
+                        )}
+                        {resuelta && d.resolucion && (
+                          <div style={s("margin-top:5px;font-size:12px;color:#0C8576;font-weight:700;")}>
+                            {ETIQUETA_ACCION[d.resolucion]}
+                            {d.detalle ? ` · ${d.detalle}` : ""}
+                          </div>
+                        )}
+                      </div>
+                      <span style={s("font:700 14px Space Grotesk,sans-serif;color:#0E2A47;")}>
+                        {d.pago ? `$${d.pago.monto.toLocaleString("es-AR")}` : "—"}
+                      </span>
                       <StatusBadge type={denunciaStatusType(d.estado)} />
-                      <div style={s("display:flex;gap:7px;")}>
-                        <button
-                          className="ah-btn"
-                          disabled={d.estado === "Resuelta"}
-                          onClick={() => resolverReclamo(d, "REINTEGRAR")}
-                          style={s(
-                            `background:#E7F8F5;border:none;border-radius:8px;padding:7px 12px;font:700 12px Manrope,sans-serif;color:#0C8576;cursor:pointer;${d.estado === "Resuelta" ? "opacity:.5;cursor:not-allowed;" : ""}`,
-                          )}
-                        >
-                          Reintegrar
-                        </button>
+                      <div style={s("display:flex;gap:7px;flex-wrap:wrap;")}>
+                        {resuelta ? (
+                          <span style={s("font-size:12.5px;color:#90A1B2;font-weight:600;")}>Caso cerrado</span>
+                        ) : (
+                          // Antes el único botón era "Reintegrar": las otras tres acciones que
+                          // el backend soporta no tenían forma de dispararse desde la UI.
+                          ACCIONES_POR_TIPO[d.tipo].map((accion) => (
+                            <button
+                              key={accion}
+                              className="ah-btn"
+                              onClick={() => resolverReclamo(d, accion)}
+                              style={s(
+                                `border:none;border-radius:8px;padding:7px 11px;font:700 11.5px Manrope,sans-serif;cursor:pointer;${
+                                  accion === "DESESTIMAR"
+                                    ? "background:#EEF2F6;color:#65788C;"
+                                    : accion === "REINTEGRAR"
+                                      ? "background:#E7F8F5;color:#0C8576;"
+                                      : "background:#FBEAEB;color:#BE3A3E;"
+                                }`,
+                              )}
+                            >
+                              {ETIQUETA_ACCION[accion]}
+                            </button>
+                          ))
+                        )}
                       </div>
                     </div>
                   );
@@ -594,7 +789,7 @@ export default function AdminGestion() {
                       </svg>
                       {r.puntaje}
                     </span>
-                    <span style={s("font-size:13px;color:#65788C;font-weight:600;")}>{r.comentario}</span>
+                    <span style={s("font-size:13px;color:#65788C;font-weight:600;")}>{r.comentario?.trim() ? r.comentario : "— sin comentario —"}</span>
                     <span style={s("font-size:13px;color:#65788C;font-weight:600;")}>{formatFecha(r.createdAt)}</span>
                     <div style={s("display:flex;gap:7px;")}>
                       <button
@@ -622,6 +817,192 @@ export default function AdminGestion() {
           )}
         </div>
       </div>
+
+      {/* Suspender al instructor: plazo obligatorio (mínimo 15 días) y multa opcional.
+          Genera una Penalización de Suspensión temporal y, si el monto es mayor a 0, otra
+          Económica; las dos quedan atadas a esta denuncia. */}
+      {suspension && (
+        <div
+          onClick={() => !guardandoSuspension && setSuspension(null)}
+          style={s("position:fixed;inset:0;background:rgba(14,42,71,.45);display:flex;align-items:center;justify-content:center;z-index:60;padding:20px;")}
+        >
+          <div onClick={(e) => e.stopPropagation()} style={s("background:#fff;border-radius:18px;padding:26px;max-width:460px;width:100%;")}>
+            <div style={s("font:700 18px Space Grotesk,sans-serif;color:#0E2A47;margin-bottom:4px;")}>
+              Suspender al instructor
+            </div>
+            <div style={s("font-size:13.5px;color:#7A8C9E;font-weight:600;margin-bottom:18px;")}>
+              {suspension.denuncia.instructor
+                ? `${suspension.denuncia.instructor.nombre} ${suspension.denuncia.instructor.apellido}`
+                : "Instructor de la clase denunciada"}
+              {" · "}la suspensión se levanta sola al vencer.
+            </div>
+
+            <div style={s("display:flex;flex-direction:column;gap:12px;")}>
+              <label style={s("display:flex;flex-direction:column;gap:6px;")}>
+                <span style={s("font:700 12.5px Manrope,sans-serif;color:#41566B;")}>
+                  Días de suspensión (mínimo {MIN_DIAS_SUSPENSION})
+                </span>
+                <input
+                  type="number"
+                  min={MIN_DIAS_SUSPENSION}
+                  step={1}
+                  value={suspension.dias}
+                  onChange={(e) => setSuspension({ ...suspension, dias: e.target.value })}
+                  style={s("border:1px solid #E2E9F0;border-radius:10px;padding:11px 12px;font:600 14px Manrope,sans-serif;color:#0E2A47;")}
+                />
+              </label>
+
+              <label style={s("display:flex;flex-direction:column;gap:6px;")}>
+                <span style={s("font:700 12.5px Manrope,sans-serif;color:#41566B;")}>Multa (puede ser 0)</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={100}
+                  value={suspension.monto}
+                  onChange={(e) => setSuspension({ ...suspension, monto: e.target.value })}
+                  style={s("border:1px solid #E2E9F0;border-radius:10px;padding:11px 12px;font:600 14px Manrope,sans-serif;color:#0E2A47;")}
+                />
+                <span style={s("font-size:11.5px;color:#9AAABA;font-weight:600;")}>
+                  En 0 no se aplica penalización económica, solo la suspensión.
+                </span>
+              </label>
+
+              <label style={s("display:flex;flex-direction:column;gap:6px;")}>
+                <span style={s("font:700 12.5px Manrope,sans-serif;color:#41566B;")}>Detalle para el denunciante (opcional)</span>
+                <textarea
+                  rows={3}
+                  value={suspension.detalle}
+                  onChange={(e) => setSuspension({ ...suspension, detalle: e.target.value })}
+                  style={s("border:1px solid #E2E9F0;border-radius:10px;padding:11px 12px;font:600 13.5px Manrope,sans-serif;color:#0E2A47;resize:vertical;")}
+                />
+              </label>
+            </div>
+
+            {errorSuspension && (
+              <div
+                style={s("margin-top:12px;background:#FBEAEB;border:1px solid #F3C6C7;color:#BE3A3E;border-radius:10px;padding:10px 13px;font:600 13px Manrope,sans-serif;")}
+                role="alert"
+              >
+                {errorSuspension}
+              </div>
+            )}
+
+            <div style={s("display:flex;gap:10px;margin-top:18px;")}>
+              <button
+                className="ah-btn"
+                onClick={() => setSuspension(null)}
+                disabled={guardandoSuspension}
+                style={s("flex:1;background:#fff;border:1px solid #D6DEE7;border-radius:11px;padding:12px;font:700 14px Manrope,sans-serif;color:#41566B;cursor:pointer;")}
+              >
+                Cancelar
+              </button>
+              <button
+                className="ah-btn"
+                onClick={confirmarSuspension}
+                disabled={guardandoSuspension}
+                style={s(
+                  `flex:1;background:${guardandoSuspension ? "#D89A9C" : "#BE3A3E"};border:none;border-radius:11px;padding:12px;font:700 14px Manrope,sans-serif;color:#fff;cursor:${guardandoSuspension ? "wait" : "pointer"};`,
+                )}
+              >
+                {guardandoSuspension ? "Aplicando…" : "Suspender"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {edicion && (
+        <div
+          onClick={() => !guardandoEdicion && setEdicion(null)}
+          style={s("position:fixed;inset:0;background:rgba(14,42,71,.45);display:flex;align-items:center;justify-content:center;z-index:60;padding:20px;")}
+        >
+          <div onClick={(e) => e.stopPropagation()} style={s("background:#fff;border-radius:18px;padding:26px;max-width:440px;width:100%;")}>
+            <div style={s("font:700 18px Space Grotesk,sans-serif;color:#0E2A47;margin-bottom:4px;")}>Editar usuario</div>
+            <div style={s("font-size:13.5px;color:#7A8C9E;font-weight:600;margin-bottom:18px;")}>
+              Los cambios quedan registrados en la auditoría.
+            </div>
+            <div style={s("display:flex;flex-direction:column;gap:12px;")}>
+              <CampoModal label="Nombre" value={edicion.nombre} onChange={(v) => setEdicion({ ...edicion, nombre: v })} />
+              <CampoModal label="Apellido" value={edicion.apellido} onChange={(v) => setEdicion({ ...edicion, apellido: v })} />
+              <CampoModal label="Email" value={edicion.email} onChange={(v) => setEdicion({ ...edicion, email: v })} type="email" />
+              <CampoModal label="Teléfono" value={edicion.telefono} onChange={(v) => setEdicion({ ...edicion, telefono: v })} />
+              <label style={s("display:flex;flex-direction:column;gap:6px;")}>
+                <span style={s("font:700 12.5px Manrope,sans-serif;color:#41566B;")}>Rol</span>
+                <select
+                  value={edicion.rolId}
+                  onChange={(e) => setEdicion({ ...edicion, rolId: e.target.value })}
+                  style={s(
+                    "border:1px solid #E2E9F0;border-radius:10px;padding:11px 12px;font:600 14px Manrope,sans-serif;color:#0E2A47;background:#fff;",
+                  )}
+                >
+                  {rolesAsignables.length === 0 && <option value="">Sin roles disponibles</option>}
+                  {rolesAsignables.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.nombre}
+                      {r.sistema ? "" : " (creado por vos)"}
+                    </option>
+                  ))}
+                </select>
+                <span style={s("font-size:11.5px;color:#9AAABA;font-weight:600;")}>
+                  El rol define qué puede hacer: se configura en "Roles y permisos".
+                </span>
+              </label>
+            </div>
+            {errorEdicion && (
+              <div
+                style={s("margin-top:12px;background:#FBEAEB;border:1px solid #F3C6C7;color:#BE3A3E;border-radius:10px;padding:10px 13px;font:600 13px Manrope,sans-serif;")}
+                role="alert"
+              >
+                {errorEdicion}
+              </div>
+            )}
+            <div style={s("display:flex;gap:10px;margin-top:18px;")}>
+              <button
+                className="ah-btn"
+                onClick={() => setEdicion(null)}
+                disabled={guardandoEdicion}
+                style={s("flex:1;background:#fff;border:1px solid #D6DEE7;border-radius:11px;padding:12px;font:700 14px Manrope,sans-serif;color:#41566B;cursor:pointer;")}
+              >
+                Cancelar
+              </button>
+              <button
+                className="ah-btn"
+                onClick={guardarEdicion}
+                disabled={guardandoEdicion}
+                style={s(
+                  `flex:1;background:${guardandoEdicion ? "#8FA9C4" : "#0E2A47"};border:none;border-radius:11px;padding:12px;font:700 14px Manrope,sans-serif;color:#fff;cursor:${guardandoEdicion ? "wait" : "pointer"};`,
+                )}
+              >
+                {guardandoEdicion ? "Guardando…" : "Guardar cambios"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </DashLayout>
+  );
+}
+
+function CampoModal({
+  label,
+  value,
+  onChange,
+  type = "text",
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  type?: string;
+}) {
+  return (
+    <label style={s("display:flex;flex-direction:column;gap:6px;")}>
+      <span style={s("font:700 11.5px Manrope,sans-serif;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;")}>{label}</span>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={s("border:1px solid #E2E9F0;border-radius:10px;padding:10px 12px;font:600 14px Manrope,sans-serif;color:#0E2A47;")}
+      />
+    </label>
   );
 }

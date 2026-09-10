@@ -53,7 +53,11 @@ export default function InstructorActividadDetalle() {
   const [editingClaseId, setEditingClaseId] = useState<string | null>(null);
   const [fechaStr, setFechaStr] = useState("");
   const [horaStr, setHoraStr] = useState("");
+  const [horaFinStr, setHoraFinStr] = useState("");
   const [cuposStr, setCuposStr] = useState("");
+  // E2I-HU06 criterio 6: "Repetir cada semana" crea la AgendaClases de la recurrencia.
+  const [repetir, setRepetir] = useState(false);
+  const [repetirHasta, setRepetirHasta] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   if (!currentUser || !aprobado) return null;
@@ -65,11 +69,23 @@ export default function InstructorActividadDetalle() {
     .getClasesDeActividad(actividad.id)
     .sort((a, b) => new Date(a.fechaHora).getTime() - new Date(b.fechaHora).getTime());
 
+  /** Hora fin por defecto: inicio + la duración que tiene cargada la actividad. */
+  const finSugerido = (hora: string) => {
+    if (!hora) return "";
+    const [h, m] = hora.split(":").map(Number);
+    const total = h * 60 + m + actividad.duracionMin;
+    return `${String(Math.floor(total / 60) % 24).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+  };
+
   const openCrear = () => {
     setEditingClaseId(null);
     setFechaStr("");
     setHoraStr("");
-    setCuposStr(String(actividad.cuposMax));
+    setHoraFinStr("");
+    setCuposStr("");
+    setRepetir(false);
+    setRepetirHasta("");
+    setError(null);
     setFormOpen(true);
   };
 
@@ -80,21 +96,51 @@ export default function InstructorActividadDetalle() {
     setEditingClaseId(claseId);
     setFechaStr(toDateInputLocal(d));
     setHoraStr(toTimeInputLocal(d));
+    setHoraFinStr(toTimeInputLocal(new Date(c.horaFin)));
     setCuposStr(String(c.cuposMax));
+    setRepetir(false);
+    setRepetirHasta("");
+    setError(null);
     setFormOpen(true);
   };
 
   const submitClase = async (e: FormEvent) => {
     e.preventDefault();
-    if (!fechaStr || !horaStr) return;
+    if (!fechaStr || !horaStr || !horaFinStr) return;
     setError(null);
-    const dt = new Date(`${fechaStr}T${horaStr}:00`);
-    const cupos = Number(cuposStr) || actividad.cuposMax;
+
+    const inicio = new Date(`${fechaStr}T${horaStr}:00`);
+    // Si el fin es "menor" que el inicio se asume que cruza la medianoche.
+    const fin = new Date(`${fechaStr}T${horaFinStr}:00`);
+    if (fin <= inicio) fin.setDate(fin.getDate() + 1);
+
+    // El cupo ya no cae a un valor de la actividad: es obligatorio y propio de la clase.
+    const cupos = Number(cuposStr);
+    if (!Number.isInteger(cupos) || cupos <= 0) {
+      setError("El cupo debe ser un número entero mayor a 0");
+      return;
+    }
+    // eslint-disable-next-line react-hooks/purity -- corre al enviar el formulario, no en el render
+    if (!editingClaseId && inicio.getTime() <= Date.now()) {
+      setError("La fecha y hora deben ser futuras");
+      return;
+    }
+
     try {
       if (editingClaseId) {
-        await data.actualizarClase(editingClaseId, actividad.id, { fechaHora: dt.toISOString(), cuposMax: cupos });
+        await data.actualizarClase(editingClaseId, actividad.id, {
+          fechaHora: inicio.toISOString(),
+          horaFin: fin.toISOString(),
+          cuposMax: cupos,
+        });
       } else {
-        await data.crearClase(actividad.id, { fechaHora: dt.toISOString(), cuposMax: cupos });
+        await data.crearClase(actividad.id, {
+          fechaHora: inicio.toISOString(),
+          horaFin: fin.toISOString(),
+          cuposMax: cupos,
+          repetirSemanalmente: repetir,
+          repetirHasta: repetir && repetirHasta ? repetirHasta : undefined,
+        });
       }
       setFormOpen(false);
     } catch (err) {
@@ -116,13 +162,13 @@ export default function InstructorActividadDetalle() {
   };
 
   const eliminarActividad = async () => {
-    if (window.confirm(`¿Eliminar la actividad "${actividad.nombre}" y todas sus clases? Esta acción no se puede deshacer.`)) {
+    if (window.confirm(`¿Eliminar la actividad "${actividad.nombre}"? Esta acción no se puede deshacer.`)) {
       try {
         // NO borrar las clases una por una antes: `eliminarClase` es una baja lógica pelada
-        // y dejaba las clases invisibles (@SQLRestriction), con lo cual la cascada de
-        // `eliminarActividad` — que cancela inscripciones, reintegra los pagos Retenido y
-        // notifica a los alumnos — encontraba la lista vacía y no reintegraba nada.
-        // El backend ya hace todo el trabajo en una sola transacción.
+        // y dejaba las clases invisibles (@SQLRestriction). El backend decide todo en una
+        // transacción: si alguna clase vigente tiene inscriptos rechaza con 409
+        // ACTIVIDAD_CON_INSCRIPTOS y no borra nada (E2I-HU06 criterio 7); si están vacías,
+        // las cancela y da de baja la actividad.
         await data.eliminarActividad(actividad.id);
         navigate("/instructor/actividades");
       } catch (err) {
@@ -250,29 +296,66 @@ export default function InstructorActividadDetalle() {
               />
             </div>
             <div>
-              <label style={s("display:block;font:700 12px Manrope;color:#41566B;margin-bottom:6px;")}>Hora</label>
+              <label style={s("display:block;font:700 12px Manrope;color:#41566B;margin-bottom:6px;")}>Hora inicio</label>
               <input
                 type="time"
                 required
                 value={horaStr}
-                onChange={(e) => setHoraStr(e.target.value)}
+                onChange={(e) => {
+                  setHoraStr(e.target.value);
+                  // Se propone el fin según la duración de la actividad; se puede cambiar.
+                  if (!horaFinStr) setHoraFinStr(finSugerido(e.target.value));
+                }}
                 style={s("border:1px solid #D9E1EA;border-radius:9px;padding:9px 12px;font:600 13.5px Manrope;color:#0E2A47;outline:none;")}
               />
             </div>
             <div>
-              <label style={s("display:block;font:700 12px Manrope;color:#41566B;margin-bottom:6px;")}>Cupos máximos</label>
+              <label style={s("display:block;font:700 12px Manrope;color:#41566B;margin-bottom:6px;")}>Hora fin</label>
               <input
+                type="time"
+                required
+                value={horaFinStr}
+                onChange={(e) => setHoraFinStr(e.target.value)}
+                style={s("border:1px solid #D9E1EA;border-radius:9px;padding:9px 12px;font:600 13.5px Manrope;color:#0E2A47;outline:none;")}
+              />
+            </div>
+            <div>
+              <label style={s("display:block;font:700 12px Manrope;color:#41566B;margin-bottom:6px;")}>Cupo máximo</label>
+              <input
+                required
                 value={cuposStr}
                 onChange={(e) => setCuposStr(e.target.value.replace(/[^\d]/g, ""))}
+                placeholder="Ej. 15"
                 style={s("width:100px;border:1px solid #D9E1EA;border-radius:9px;padding:9px 12px;font:600 13.5px Manrope;color:#0E2A47;outline:none;")}
               />
             </div>
+
+            {!editingClaseId && (
+              <div style={s("display:flex;flex-direction:column;gap:6px;")}>
+                <label style={s("display:flex;align-items:center;gap:8px;font:700 12.5px Manrope;color:#41566B;cursor:pointer;")}>
+                  <input type="checkbox" checked={repetir} onChange={(e) => setRepetir(e.target.checked)} />
+                  Repetir cada semana
+                </label>
+                {repetir && (
+                  <label style={s("display:flex;align-items:center;gap:8px;font:600 12px Manrope;color:#7A8C9E;")}>
+                    Hasta
+                    <input
+                      type="date"
+                      value={repetirHasta}
+                      onChange={(e) => setRepetirHasta(e.target.value)}
+                      style={s("border:1px solid #D9E1EA;border-radius:9px;padding:7px 10px;font:600 12.5px Manrope;color:#0E2A47;outline:none;")}
+                    />
+                  </label>
+                )}
+              </div>
+            )}
+
             <button
               type="submit"
               className="ah-btn"
               style={s("background:#0FB8A9;color:#fff;border:none;border-radius:9px;padding:10px 18px;font:700 13.5px Manrope;cursor:pointer;")}
             >
-              {editingClaseId ? "Guardar cambios" : "Crear clase"}
+              {editingClaseId ? "Guardar cambios" : repetir ? "Generar clases" : "Crear clase"}
             </button>
             <button
               type="button"
@@ -282,6 +365,14 @@ export default function InstructorActividadDetalle() {
             >
               Cancelar
             </button>
+
+            {repetir && !editingClaseId && (
+              <div style={s("flex-basis:100%;background:#EAF1FE;border:1px solid #D5E2FB;border-radius:11px;padding:11px 14px;font:600 12.5px Manrope;color:#2D5BC8;line-height:1.5;")}>
+                Se va a crear la clase del {fechaStr || "día elegido"} y una agenda semanal para ese mismo día y
+                horario. Cada clase siguiente se genera automáticamente <strong>una semana antes</strong> de
+                dictarse, así podés darla de baja con anticipación.
+              </div>
+            )}
           </form>
         )}
 

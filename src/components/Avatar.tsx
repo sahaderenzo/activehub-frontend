@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { s } from "../lib/style";
 import { fotoPerfilUrl } from "../lib/photos";
@@ -34,7 +34,13 @@ export default function Avatar({
   const [uploading, setUploading] = useState(false);
   const [failed, setFailed] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  useEffect(() => setError(false), [usuarioId, version]);
+  // Ajuste durante el render (patrón de React para "resetear estado cuando cambia una prop").
+  const [fotoPrevia, setFotoPrevia] = useState(`${usuarioId}:${version}`);
+  const fotoActual = `${usuarioId}:${version}`;
+  if (fotoPrevia !== fotoActual) {
+    setFotoPrevia(fotoActual);
+    setError(false);
+  }
 
   const inicial = nombre.charAt(0).toUpperCase() || "?";
   const fs = fontSize ?? Math.round(size * 0.4);

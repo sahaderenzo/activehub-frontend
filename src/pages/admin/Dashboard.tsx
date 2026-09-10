@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
 import { s } from "../../lib/style";
+import ErrorReintentar from "../../components/ErrorReintentar";
 import { useData } from "../../context/DataContext";
 import type { InscripcionAdmin, UsuarioAdmin } from "../../context/DataContext";
 
@@ -51,14 +52,31 @@ export default function AdminDashboard() {
   const [reclamosPendientes, setReclamosPendientes] = useState(0);
   const [inscripciones, setInscripciones] = useState<InscripcionAdmin[]>([]);
 
-  useEffect(() => {
-    listarUsuariosAdmin().then(setUsuarios).catch(() => {});
-    listarInstructores("PENDIENTE").then((lista) => setInstructoresPendientes(lista.length)).catch(() => {});
-    listarDenunciasAdmin()
-      .then((lista) => setReclamosPendientes(lista.filter((d) => d.estado === "Pendiente").length))
-      .catch(() => {});
-    listarInscripcionesAdmin().then(setInscripciones).catch(() => {});
+  const [errorCarga, setErrorCarga] = useState(false);
+
+  // Promise.all: si cualquiera de las cuatro consultas falla, el dashboard muestra el estado
+  // de error con "Reintentar" en vez de KPIs en cero — que se veían idénticos a una
+  // plataforma sin datos.
+  const cargar = useCallback(() => {
+    Promise.all([
+      listarUsuariosAdmin(),
+      listarInstructores("PENDIENTE"),
+      listarDenunciasAdmin(),
+      listarInscripcionesAdmin(),
+    ])
+      .then(([us, pendientes, denuncias, insc]) => {
+        setUsuarios(us);
+        setInstructoresPendientes(pendientes.length);
+        setReclamosPendientes(denuncias.filter((d) => d.estado === "Pendiente").length);
+        setInscripciones(insc);
+        setErrorCarga(false);
+      })
+      .catch(() => setErrorCarga(true));
   }, [listarUsuariosAdmin, listarInstructores, listarDenunciasAdmin, listarInscripcionesAdmin]);
+
+  useEffect(() => {
+    cargar();
+  }, [cargar]);
 
   const stats = useMemo(() => {
     const activos = usuarios.filter((u) => u.estado === "ACTIVO").length;
@@ -201,6 +219,15 @@ export default function AdminDashboard() {
       </div>
 
       <div style={s("padding:26px 32px 50px;")}>
+        {errorCarga && (
+          <div style={s("margin-bottom:20px;")}>
+            <ErrorReintentar
+              mensaje="No pudimos cargar los datos del panel. Los números de abajo pueden estar incompletos."
+              onReintentar={cargar}
+              variant="banner"
+            />
+          </div>
+        )}
         <div className="ah-grid-4" style={s("display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-bottom:24px;")}>
           {kpis.map((k) => (
             <div
@@ -228,11 +255,11 @@ export default function AdminDashboard() {
         <div className="ah-grid-side" style={s("display:grid;grid-template-columns:1.6fr 1fr;gap:18px;margin-bottom:24px;")}>
           <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:18px;padding:22px;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
             <div style={s("display:flex;align-items:center;justify-content:space-between;margin-bottom:22px;")}>
-              <div style={s("font:700 16px Space Grotesk,sans-serif;")}>Reservas por mes</div>
+              <div style={s("font:700 16px Space Grotesk,sans-serif;")}>Inscripciones por mes</div>
               <div style={s("display:flex;gap:14px;")}>
                 <span style={s("display:flex;align-items:center;gap:6px;font-size:12.5px;color:#65788C;font-weight:600;")}>
                   <span style={s("width:10px;height:10px;border-radius:3px;background:#12B5A5;")} />
-                  Reservas
+                  Inscripciones
                 </span>
               </div>
             </div>
@@ -246,7 +273,7 @@ export default function AdminDashboard() {
             </div>
           </div>
           <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:18px;padding:22px;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
-            <div style={s("font:700 16px Space Grotesk,sans-serif;margin-bottom:20px;")}>Reservas por categoría</div>
+            <div style={s("font:700 16px Space Grotesk,sans-serif;margin-bottom:20px;")}>Inscripciones por categoría</div>
             <div style={s("display:flex;flex-direction:column;gap:13px;")}>
               {donut.map((d) => (
                 <div key={d.l}>

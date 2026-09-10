@@ -124,7 +124,11 @@ export default function AdminAuditoria() {
                   `display:grid;grid-template-columns:1.3fr 1.6fr 1.4fr 130px;padding:14px 22px;border-bottom:1px solid #F1F4F8;align-items:center;cursor:pointer;transition:background .14s;${selectedId === d.id ? "background:#F7FAFC;" : ""}`,
                 )}
               >
-                <span style={s("font-size:13.5px;color:#41566B;font-weight:600;")}>{d.alumno.nombre} {d.alumno.apellido}</span>
+                {/* `denunciante` y no `alumno`: en una denuncia de reseña la hace el
+                    instructor y `alumno` viene nulo. */}
+                <span style={s("font-size:13.5px;color:#41566B;font-weight:600;")}>
+                  {d.denunciante.nombre} {d.denunciante.apellido}
+                </span>
                 <span style={s("font-size:13px;color:#65788C;font-weight:600;")}>{d.motivo}</span>
                 <span style={s("font-size:13px;color:#65788C;font-weight:600;")}>{d.instructor.nombre} {d.instructor.apellido}</span>
                 <StatusBadge type={denunciaStatusType(d.estado)} />

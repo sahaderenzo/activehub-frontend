@@ -2,11 +2,98 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AlumnoNav from "../../components/AlumnoNav";
 import ActivityCard from "../../components/ActivityCard";
+import ErrorReintentar from "../../components/ErrorReintentar";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import { haversineKm, useGeolocation } from "../../lib/geo";
 import type { Actividad, Categoria, TipoActividad } from "../../lib/types";
+
+/** Criterio 5: menos de esto no dispara la búsqueda. */
+const MIN_BUSQUEDA = 2;
+
+/** Lo que un filtro rápido le manda a Explorar (mismo contrato que su `ExplorarNavState`). */
+interface FiltroRapido {
+  categoriaId?: string;
+  tipoActividadId?: string;
+  nivel?: string;
+  maxPrecio?: number;
+  radio?: string;
+  fecha?: string;
+  franja?: string;
+}
+
+function hoyLocal(desplazamientoDias = 0): string {
+  const d = new Date();
+  d.setDate(d.getDate() + desplazamientoDias);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+interface OpcionesFiltro {
+  categorias: Categoria[];
+  tiposActividad: TipoActividad[];
+  /** Nombres de nivel presentes en el catálogo. */
+  niveles: string[];
+  precios: number[];
+}
+
+/**
+ * Los 7 filtros rápidos del criterio 1. Cada opción es una intención que viaja a Explorar
+ * por `location.state`; ninguno filtra acá, así que el alumno siempre termina en la pantalla
+ * que sí sabe mostrar y limpiar filtros.
+ */
+const FILTROS_RAPIDOS: {
+  key: string;
+  label: string;
+  opciones: (data: OpcionesFiltro) => { label: string; filtro: FiltroRapido }[];
+}[] = [
+  {
+    key: "categoria",
+    label: "Categoría",
+    opciones: ({ categorias }) => categorias.map((c) => ({ label: c.nombre, filtro: { categoriaId: c.id } })),
+  },
+  {
+    key: "tipo",
+    label: "Tipo",
+    opciones: ({ tiposActividad }) =>
+      tiposActividad.map((t) => ({
+        label: t.nombre,
+        // La categoría viaja junto al tipo: Explorar solo muestra los tipos de las
+        // categorías marcadas, si no el chip quedaría filtrando sin verse.
+        filtro: { categoriaId: t.categoriaId, tipoActividadId: t.id },
+      })),
+  },
+  {
+    key: "nivel",
+    label: "Nivel",
+    opciones: ({ niveles }) => niveles.map((n) => ({ label: n, filtro: { nivel: n } })),
+  },
+  {
+    key: "ubicacion",
+    label: "Ubicación",
+    opciones: () => ["5 km", "10 km", "25 km"].map((r) => ({ label: "A menos de " + r, filtro: { radio: r } })),
+  },
+  {
+    key: "fecha",
+    label: "Fecha",
+    opciones: () => [
+      { label: "Hoy", filtro: { fecha: hoyLocal() } },
+      { label: "Mañana", filtro: { fecha: hoyLocal(1) } },
+      { label: "Pasado mañana", filtro: { fecha: hoyLocal(2) } },
+    ],
+  },
+  {
+    key: "horario",
+    label: "Horario",
+    opciones: () => ["Mañana", "Tarde", "Noche"].map((f) => ({ label: f, filtro: { franja: f } })),
+  },
+  {
+    key: "precio",
+    label: "Precio",
+    opciones: ({ precios }) =>
+      precios.map((p) => ({ label: "Hasta $" + p.toLocaleString("es-AR"), filtro: { maxPrecio: p } })),
+  },
+];
 
 function disponibilidadDe(a: Actividad): { label: string; type: "disponible" | "ultimos" | "sincupos" } {
   const p = a.proximaClase;
@@ -53,8 +140,21 @@ function cardProps(
 export default function AlumnoHome() {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const { actividades, getTipoActividad, getCategoria, instructorNombre } = useData();
+  const {
+    actividades,
+    tiposActividad,
+    categorias,
+    getTipoActividad,
+    getCategoria,
+    instructorNombre,
+    errorCatalogo,
+    refrescarCatalogo,
+  } = useData();
   const [search, setSearch] = useState("");
+  // Filtro rápido desplegado (criterio 1) y foco del buscador, que abre los
+  // resultados debajo del campo (criterios 4 a 6).
+  const [filtroAbierto, setFiltroAbierto] = useState<string | null>(null);
+  const [buscadorEnFoco, setBuscadorEnFoco] = useState(false);
   const geolocation = useGeolocation();
 
   // Igual que en el detalle de actividad: entrar a Home ya es una decisión
@@ -66,22 +166,61 @@ export default function AlumnoHome() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const irAExplorar = (extra?: { categoriaId?: string; radio?: string }) => {
+  const irAExplorar = (extra?: FiltroRapido) => {
     navigate("/alumno/explorar", { state: { search, ...extra } });
   };
   const goCalendario = () => navigate("/alumno/calendario");
 
+  // Criterios 4 a 6: los resultados se despliegan debajo del buscador, no se navega
+  // a ciegas. Con menos de 2 caracteres ni siquiera se busca.
+  const termino = search.trim();
+  const sugerencias = useMemo(() => {
+    if (termino.length < MIN_BUSQUEDA) return [];
+    const q = termino.toLowerCase();
+    return actividades
+      .filter((a) => {
+        const tipo = getTipoActividad(a.tipoActividadId);
+        const instructor = instructorNombre[a.instructorId] ?? "";
+        return (
+          a.nombre.toLowerCase().includes(q) ||
+          (tipo?.nombre ?? "").toLowerCase().includes(q) ||
+          a.ubicacion.toLowerCase().includes(q) ||
+          instructor.toLowerCase().includes(q)
+        );
+      })
+      .slice(0, 6);
+  }, [actividades, termino, getTipoActividad, instructorNombre]);
+
+  const nivelesDisponibles = useMemo(
+    () => [...new Set(actividades.map((a) => a.nivelIntensidad))],
+    [actividades],
+  );
+
+  const preciosSugeridos = useMemo(() => {
+    if (actividades.length === 0) return [];
+    const max = Math.max(...actividades.map((a) => a.precio));
+    // Tres cortes sobre el precio real del catálogo: un tope fijo queda viejo apenas
+    // aparece una actividad más cara.
+    return [0.25, 0.5, 0.75].map((f) => Math.ceil((max * f) / 500) * 500).filter((v, i, arr) => v > 0 && arr.indexOf(v) === i);
+  }, [actividades]);
+
+  /** Un filtro rápido no filtra acá: manda a Explorar con la intención ya elegida. */
+  const aplicarFiltro = (extra: FiltroRapido) => {
+    setFiltroAbierto(null);
+    irAExplorar(extra);
+  };
+
   const intereses = currentUser?.perfilAlumno?.intereses ?? [];
 
+  // Desde V19 un interés ES un tipo de actividad, así que el cruce es por id y no por
+  // coincidencia de texto contra el nombre: eso metía falsos positivos y, al revés, se
+  // perdía las actividades cuyo nombre no repetía la palabra del interés.
   const recomendado = useMemo(() => {
-    const matched = actividades.filter((a) => {
-      const tipo = getTipoActividad(a.tipoActividadId);
-      const hay = `${a.nombre} ${tipo?.nombre ?? ""}`.toLowerCase();
-      return intereses.some((i) => hay.includes(i.toLowerCase()));
-    });
+    const tiposElegidos = new Set(intereses.map((i) => i.tipoActividadId));
+    const matched = actividades.filter((a) => tiposElegidos.has(a.tipoActividadId));
     const rest = actividades.filter((a) => !matched.includes(a));
     return [...matched, ...rest].slice(0, 3);
-  }, [actividades, intereses, getTipoActividad]);
+  }, [actividades, intereses]);
 
   // Real: ordenada por distancia calculada con la ubicación del alumno, no
   // "lo que haya sobrado" de recomendado como antes. Sin permiso de ubicación,
@@ -137,9 +276,10 @@ export default function AlumnoHome() {
               ¡Hola, {currentUser?.nombre ?? "Alumno"}! 👋
             </h1>
             <p style={s("font-size:15.5px;color:#9DB3C9;margin:0 0 24px;")}>¿Qué actividad querés hacer hoy?</p>
+            <div style={s("position:relative;max-width:760px;")}>
             <div
               style={s(
-                "background:#fff;border-radius:16px;padding:8px;display:flex;align-items:center;gap:6px;max-width:760px;box-shadow:0 14px 30px rgba(0,0,0,.18);",
+                "background:#fff;border-radius:16px;padding:8px;display:flex;align-items:center;gap:6px;box-shadow:0 14px 30px rgba(0,0,0,.18);",
               )}
             >
               <div style={s("flex:1.4;display:flex;align-items:center;gap:10px;padding:9px 14px;")}>
@@ -150,6 +290,10 @@ export default function AlumnoHome() {
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
+                  onFocus={() => setBuscadorEnFoco(true)}
+                  // El blur va con delay: sin él, el click sobre un resultado cierra el
+                  // panel antes de que el handler llegue a ejecutarse.
+                  onBlur={() => window.setTimeout(() => setBuscadorEnFoco(false), 150)}
                   placeholder="Meditación, running, trekking…"
                   style={s("border:none;outline:none;font:600 14.5px Manrope,sans-serif;color:#0E2A47;width:100%;")}
                   onKeyDown={(e) => {
@@ -185,25 +329,157 @@ export default function AlumnoHome() {
                 Buscar
               </button>
             </div>
+
+            {/* Criterios 4 a 6: los resultados caen debajo del buscador. */}
+            {buscadorEnFoco && termino.length > 0 && (
+              <div
+                style={s(
+                  "position:absolute;top:calc(100% + 8px);left:0;right:0;background:#fff;border-radius:14px;box-shadow:0 18px 40px rgba(0,0,0,.22);overflow:hidden;z-index:20;",
+                )}
+              >
+                {termino.length < MIN_BUSQUEDA ? (
+                  <div style={s("padding:14px 18px;font:600 13.5px Manrope,sans-serif;color:#7A8C9E;")}>
+                    Ingresá al menos 2 caracteres
+                  </div>
+                ) : sugerencias.length === 0 ? (
+                  <div style={s("padding:14px 18px;font:600 13.5px Manrope,sans-serif;color:#7A8C9E;")}>
+                    No se encontraron actividades con esos criterios
+                  </div>
+                ) : (
+                  sugerencias.map((a) => {
+                    const tipo = getTipoActividad(a.tipoActividadId);
+                    const cat = tipo ? getCategoria(tipo.categoriaId) : undefined;
+                    return (
+                      <div
+                        key={a.id}
+                        className="ah-btn"
+                        // onMouseDown y no onClick: el blur del input dispara antes que el click.
+                        onMouseDown={() => navigate(`/alumno/actividad/${a.id}`)}
+                        style={s(
+                          "padding:12px 18px;display:flex;align-items:center;justify-content:space-between;gap:14px;cursor:pointer;border-bottom:1px solid #F1F4F8;",
+                        )}
+                      >
+                        <span style={s("font:700 14px Manrope,sans-serif;color:#0E2A47;")}>{a.nombre}</span>
+                        <span style={s("font:600 12.5px Manrope,sans-serif;color:#7A8C9E;")}>
+                          {cat?.nombre ?? tipo?.nombre ?? ""}
+                        </span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
+            </div>
           </div>
         </div>
+
+        {/* Criterio 1: fila de filtros rápidos. Cada uno abre su desplegable y lleva a
+            Explorar con ese filtro ya aplicado — el Home no filtra por su cuenta. */}
+        <div style={s("display:flex;flex-wrap:wrap;gap:9px;margin-bottom:26px;")}>
+          {FILTROS_RAPIDOS.map((f) => {
+            const abierto = filtroAbierto === f.key;
+            const opciones = f.opciones({
+              categorias,
+              tiposActividad,
+              niveles: nivelesDisponibles,
+              precios: preciosSugeridos,
+            });
+            return (
+              <div key={f.key} style={s("position:relative;")}>
+                <button
+                  className="ah-btn"
+                  onClick={() => setFiltroAbierto(abierto ? null : f.key)}
+                  style={s(
+                    "background:#fff;border:1px solid " +
+                      (abierto ? "#12B5A5" : "#E7EDF3") +
+                      ";border-radius:11px;padding:9px 14px;font:700 13px Manrope,sans-serif;color:#41566B;cursor:pointer;display:flex;align-items:center;gap:7px;",
+                  )}
+                >
+                  {f.label}
+                  <span style={s("font-size:11px;color:#9AAABA;")}>∨</span>
+                </button>
+                {abierto && (
+                  <div
+                    style={s(
+                      "position:absolute;top:calc(100% + 6px);left:0;min-width:196px;background:#fff;border:1px solid #E7EDF3;border-radius:12px;box-shadow:0 14px 30px rgba(14,42,71,.14);z-index:15;overflow:hidden;",
+                    )}
+                  >
+                    {opciones.length === 0 ? (
+                      <div style={s("padding:11px 14px;font:600 13px Manrope,sans-serif;color:#9AAABA;")}>
+                        Sin opciones
+                      </div>
+                    ) : (
+                      opciones.map((o) => (
+                        <div
+                          key={o.label}
+                          className="ah-btn"
+                          onClick={() => aplicarFiltro(o.filtro)}
+                          style={s(
+                            "padding:10px 14px;font:600 13px Manrope,sans-serif;color:#41566B;cursor:pointer;border-bottom:1px solid #F1F4F8;",
+                          )}
+                        >
+                          {o.label}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {errorCatalogo && (
+          <div style={s("margin-bottom:26px;")}>
+            <ErrorReintentar
+              variant="bloque"
+              mensaje="No se pudo cargar el inicio"
+              onReintentar={() => {
+                refrescarCatalogo();
+              }}
+            />
+          </div>
+        )}
 
         <div style={s("display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;")}>
           <div>
             <h2 style={s("font:700 23px Space Grotesk,sans-serif;letter-spacing:-.4px;margin:0;")}>Recomendado para vos</h2>
             <p style={s("font-size:14px;color:#7A8C9E;margin:4px 0 0;")}>
-              {intereses.length > 0 ? `En base a tus intereses: ${intereses.join(", ")}` : "Descubrí actividades pensadas para vos"}
+              {intereses.length > 0
+                ? `En base a tus intereses: ${intereses.map((i) => i.nombre).join(", ")}`
+                : "Descubrí actividades pensadas para vos"}
             </p>
           </div>
           <span className="ah-link" onClick={() => irAExplorar()} style={s("font-weight:700;color:#FF6A2B;cursor:pointer;font-size:14.5px;")}>
             Ver más →
           </span>
         </div>
-        <div className="ah-grid-3" style={s("display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-bottom:42px;")}>
-          {recomendado.map((a) => (
-            <ActivityCard key={a.id} {...cardProps(a, getTipoActividad, getCategoria, instructorNombre, geolocation.coords)} />
-          ))}
-        </div>
+        {recomendado.length === 0 ? (
+          <div
+            style={s(
+              "background:#fff;border:1px dashed #D6DEE7;border-radius:16px;padding:32px 20px;text-align:center;margin-bottom:42px;",
+            )}
+          >
+            <div style={s("color:#7A8C9E;font-weight:600;font-size:13.5px;margin-bottom:14px;")}>
+              Todavía no tenemos recomendaciones para vos. ¡Explorá todas las actividades!
+            </div>
+            <button
+              className="ah-btn"
+              onClick={() => irAExplorar()}
+              style={s(
+                "background:#FF6A2B;color:#fff;border:none;border-radius:11px;padding:11px 20px;font:700 13.5px Manrope,sans-serif;cursor:pointer;",
+              )}
+            >
+              Explorar actividades
+            </button>
+          </div>
+        ) : (
+          <div className="ah-grid-3" style={s("display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-bottom:42px;")}>
+            {recomendado.map((a) => (
+              <ActivityCard key={a.id} {...cardProps(a, getTipoActividad, getCategoria, instructorNombre, geolocation.coords)} />
+            ))}
+          </div>
+        )}
 
         <div style={s("display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;")}>
           <div>
