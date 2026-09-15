@@ -3,9 +3,18 @@ import { useNavigate, useParams } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
 import StatusBadge from "../../components/StatusBadge";
 import { s } from "../../lib/style";
+import Modal from "../../components/Modal";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
-import type { AccionResolucion, DenunciaAdmin, InstructorAdmin, ReseniaPendiente, UsuarioAdmin, RolAdmin } from "../../context/DataContext";
+import type {
+  AccionResolucion,
+  DenunciaAdmin,
+  InstructorAdmin,
+  ReseniaPendiente,
+  ReseniaPublicada,
+  UsuarioAdmin,
+  RolAdmin,
+} from "../../context/DataContext";
 import { ApiError } from "../../lib/api";
 import { denunciaStatusType } from "../../lib/status";
 import { formatFecha } from "../../lib/mockData";
@@ -13,12 +22,19 @@ import type { RolNombre } from "../../lib/types";
 
 type Tab = "usuarios" | "instructores" | "actividades" | "reclamos" | "resenas";
 
-const TABS: { key: Tab; label: string }[] = [
-  { key: "usuarios", label: "Usuarios" },
-  { key: "instructores", label: "Instructores" },
-  { key: "actividades", label: "Actividades" },
-  { key: "reclamos", label: "Reclamos" },
-  { key: "resenas", label: "Reseñas" },
+/**
+ * Cada pestaña es un módulo distinto, con su propio permiso — el mismo que exige el
+ * `@PreAuthorize` del endpoint que consulta. La pantalla se abre con **cualquiera** de los
+ * cuatro (ver `permisosDePantalla("gestionadmin")` en lib/areas.ts) y acá se decide qué
+ * pestañas se ven: alguien con sólo `denuncias.resolver` entra directo a Reclamos y no ve
+ * las otras cuatro, en vez de quedarse afuera de la pantalla entera.
+ */
+const TABS: { key: Tab; label: string; requiere: string }[] = [
+  { key: "usuarios", label: "Usuarios", requiere: "usuarios.gestionar" },
+  { key: "instructores", label: "Instructores", requiere: "instructores.validar" },
+  { key: "actividades", label: "Actividades", requiere: "actividades.moderar" },
+  { key: "reclamos", label: "Reclamos", requiere: "denuncias.resolver" },
+  { key: "resenas", label: "Reseñas", requiere: "denuncias.resolver" },
 ];
 
 const AVATAR_PALETTE: [string, string][] = [
@@ -50,12 +66,34 @@ interface SuspensionEnCurso {
   detalle: string;
 }
 
+/**
+ * Las cuatro resoluciones son <b>excluyentes</b>: se elige una y el caso se cierra. Cada una
+ * lleva su descripción porque el nombre solo no alcanza para decidir — "Penalizar" y
+ * "Suspender" suenan parecido y hacen cosas muy distintas, y "Reintegrar" alcanza a una sola
+ * persona, no a toda la clase.
+ *
+ * <p>Las descripciones dicen lo que el backend <i>hace</i> ({@code ResolverDenunciaService}),
+ * no lo que uno esperaría que hiciera. Si cambia el comportamiento allá, cambian acá.
+ */
 const ETIQUETA_ACCION: Record<AccionResolucion, string> = {
   REINTEGRAR: "Reintegrar el pago",
   SUSPENDER: "Suspender al instructor",
-  PENALIZAR: "Penalizar al instructor",
+  PENALIZAR: "Aplicar penalización económica",
   DESESTIMAR: "Desestimar",
   OCULTAR_RESENIA: "Ocultar la reseña",
+};
+
+const DESCRIPCION_ACCION: Record<AccionResolucion, string> = {
+  REINTEGRAR:
+    "Cancela la inscripción de quien denunció y le devuelve su pago. Alcanza sólo a esa persona: el resto de los inscriptos a la clase no se toca.",
+  SUSPENDER:
+    "Inhabilita al instructor por la cantidad de días que elijas (mínimo 15) y, si cargás un monto, además le aplica una multa. Cancela las clases que tuviera en ese período y reintegra a todos sus inscriptos. Puede seguir iniciando sesión, pero no publicar ni gestionar nada.",
+  PENALIZAR:
+    "Le aplica una multa al instructor y suma una penalización a su historial. No lo inhabilita, no cancela clases y no devuelve ningún pago.",
+  DESESTIMAR:
+    "Cierra el caso sin ninguna consecuencia: no se toca el pago, ni la inscripción, ni el instructor. Se le avisa al denunciante igual.",
+  OCULTAR_RESENIA:
+    "Saca la reseña del listado público y la descuenta del promedio de la actividad. No se borra: queda registrada.",
 };
 
 /**
@@ -81,11 +119,14 @@ interface EdicionUsuario {
 export default function AdminGestion() {
   const navigate = useNavigate();
   const params = useParams<{ tab?: string }>();
-  const tab: Tab = (["usuarios", "instructores", "actividades", "reclamos", "resenas"] as const).includes(params.tab as Tab)
-    ? (params.tab as Tab)
-    : "usuarios";
+  const { currentUser, puede } = useAuth();
 
-  const { currentUser } = useAuth();
+  const tabsVisibles = TABS.filter((t) => puede(t.requiere));
+  const pedida = TABS.find((t) => t.key === params.tab);
+  // Si la URL pide una pestaña que sus permisos no habilitan (un link viejo, o la tarjeta del
+  // Dashboard de alguien que perdió el permiso), cae en la primera que sí puede ver en vez de
+  // mostrar una tabla que la API le va a rechazar.
+  const tab: Tab = pedida && puede(pedida.requiere) ? pedida.key : tabsVisibles[0]?.key ?? "usuarios";
   const {
     actividades,
     eliminarActividad,
@@ -98,6 +139,8 @@ export default function AdminGestion() {
     aprobarInstructor: aprobarInstructorReal,
     rechazarInstructor: rechazarInstructorReal,
     listarResenasPendientes,
+    listarResenasPublicadas,
+    ocultarResenia,
     aprobarResenia: aprobarReseniaReal,
     rechazarResenia: rechazarReseniaReal,
     listarUsuariosAdmin,
@@ -121,6 +164,15 @@ export default function AdminGestion() {
   const [edicion, setEdicion] = useState<EdicionUsuario | null>(null);
   // Los roles asignables salen de la API: incluyen los que el admin creó en "Roles y permisos".
   const [rolesAsignables, setRolesAsignables] = useState<RolAdmin[]>([]);
+  /** Panel que explica qué hace cada resolución. Cerrado por defecto: se consulta una vez. */
+  const [ayudaResoluciones, setAyudaResoluciones] = useState(false);
+  /**
+   * Sub-pestaña de Reseñas. "Pendientes" es la cola de moderación de siempre; "Publicadas" es
+   * lo que este tramo agrega: una reseña impropia que se filtró en la moderación quedaba fuera
+   * del alcance del admin — el único camino para bajarla era que el instructor la denunciara.
+   */
+  const [tabResenas, setTabResenas] = useState<"pendientes" | "publicadas">("pendientes");
+  const [resenasPublicadas, setResenasPublicadas] = useState<ReseniaPublicada[]>([]);
   // Suspender ya no es un botón directo: pide plazo y monto (E4Ad-HU07).
   const [suspension, setSuspension] = useState<SuspensionEnCurso | null>(null);
   const [errorSuspension, setErrorSuspension] = useState<string | null>(null);
@@ -155,6 +207,36 @@ export default function AdminGestion() {
     listarResenasPendientes()
       .then(setResenas)
       .catch((err) => setErrorResenas(err instanceof ApiError ? err.message : "No pudimos cargar las reseñas."));
+    listarResenasPublicadas()
+      .then(setResenasPublicadas)
+      .catch((err) =>
+        setErrorResenas(err instanceof ApiError ? err.message : "No pudimos cargar las reseñas publicadas."),
+      );
+  };
+
+  /**
+   * Ocultar pide motivo y es sobre una reseña YA publicada. No la borra: la fila queda con su
+   * autor y su texto, porque si el contenido llega a ser algo en lo que deba intervenir la
+   * justicia, esa es justamente la evidencia. Lo que cambia es que deja de verse en el detalle
+   * público y de contar en el promedio.
+   */
+  const ocultarResenaPublicada = async (r: ReseniaPublicada) => {
+    const motivo = window.prompt(
+      `¿Por qué ocultás la reseña de ${r.alumno.nombre} ${r.alumno.apellido}?\n\n` +
+        "La reseña no se borra: queda registrada con su autor y su texto, y el motivo va a la auditoría.",
+    );
+    if (motivo === null) return;
+    if (!motivo.trim()) {
+      setErrorResenas("El motivo es obligatorio para ocultar una reseña.");
+      return;
+    }
+    setErrorResenas(null);
+    try {
+      await ocultarResenia(r.id, motivo.trim());
+      cargarResenas();
+    } catch (err) {
+      setErrorResenas(err instanceof ApiError ? err.message : "No pudimos ocultar la reseña.");
+    }
   };
 
   const cargarDenuncias = () => {
@@ -332,7 +414,7 @@ export default function AdminGestion() {
 
       <div style={s("padding:24px 32px 50px;")}>
         <div style={s("display:flex;gap:4px;border-bottom:1px solid #E2E9F0;margin-bottom:22px;flex-wrap:wrap;")}>
-          {TABS.map((t) => (
+          {tabsVisibles.map((t) => (
             <span
               key={t.key}
               onClick={() => goTab(t.key)}
@@ -651,6 +733,65 @@ export default function AdminGestion() {
 
           {tab === "reclamos" && (
             <div style={s("overflow-x:auto;")}>
+              {/*
+                Las cuatro resoluciones son excluyentes y no se distinguen por el nombre:
+                "Suspender" y "Aplicar penalización económica" suenan parecido y hacen cosas muy
+                distintas, y "Reintegrar" alcanza sólo a quien denunció. El panel lo explica una
+                vez para toda la tabla, en vez de repetir el texto en cada fila; cada botón
+                además lleva la misma descripción en su `title`.
+              */}
+              <div style={s("padding:14px 22px;border-bottom:1px solid #EEF2F6;")}>
+                <button
+                  className="ah-btn"
+                  onClick={() => setAyudaResoluciones((v) => !v)}
+                  style={s(
+                    "background:#F4F7FA;border:1px solid #E2E9F0;border-radius:10px;padding:8px 13px;font:700 12.5px Manrope,sans-serif;color:#41566B;cursor:pointer;display:flex;align-items:center;gap:7px;",
+                  )}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#41566B" strokeWidth={2.2}>
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.7" />
+                    <path d="M12 17h.01" />
+                  </svg>
+                  ¿Qué hace cada resolución?
+                </button>
+                {ayudaResoluciones && (
+                  <div
+                    style={s(
+                      "margin-top:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;",
+                    )}
+                  >
+                    {(Object.keys(DESCRIPCION_ACCION) as AccionResolucion[]).map((accion) => (
+                      <div
+                        key={accion}
+                        style={s(
+                          "background:#F9FBFD;border:1px solid #EAF0F6;border-radius:12px;padding:12px 14px;",
+                        )}
+                      >
+                        <div style={s("font:700 13px Manrope,sans-serif;color:#0E2A47;margin-bottom:4px;")}>
+                          {ETIQUETA_ACCION[accion]}
+                        </div>
+                        <div style={s("font-size:12.5px;color:#65788C;font-weight:600;line-height:1.5;")}>
+                          {DESCRIPCION_ACCION[accion]}
+                        </div>
+                      </div>
+                    ))}
+                    <div
+                      style={s(
+                        "background:#FFF9EF;border:1px solid #F6E2C0;border-radius:12px;padding:12px 14px;",
+                      )}
+                    >
+                      <div style={s("font:700 13px Manrope,sans-serif;color:#8A5A12;margin-bottom:4px;")}>
+                        Se elige una sola
+                      </div>
+                      <div style={s("font-size:12.5px;color:#8A5A12;font-weight:600;line-height:1.5;")}>
+                        Las resoluciones son excluyentes: al aplicar una, el caso queda cerrado y no
+                        se puede volver atrás.
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
               {errorDenuncias && (
                 <div style={s("padding:13px 22px;background:#FBEAEB;border-bottom:1px solid #F3D2D3;")}>
                   <span style={s("font-size:13px;color:#BE3A3E;font-weight:600;")}>{errorDenuncias}</span>
@@ -729,6 +870,7 @@ export default function AdminGestion() {
                               key={accion}
                               className="ah-btn"
                               onClick={() => resolverReclamo(d, accion)}
+                              title={DESCRIPCION_ACCION[accion]}
                               style={s(
                                 `border:none;border-radius:8px;padding:7px 11px;font:700 11.5px Manrope,sans-serif;cursor:pointer;${
                                   accion === "DESESTIMAR"
@@ -762,9 +904,36 @@ export default function AdminGestion() {
                     <span style={s("font-size:13px;color:#BE3A3E;font-weight:600;")}>{errorResenas}</span>
                   </div>
                 )}
+                <div style={s("display:flex;gap:4px;padding:14px 22px 0;")}>
+                  {([
+                    { key: "pendientes", label: "Pendientes de moderación", n: resenas.length },
+                    { key: "publicadas", label: "Publicadas", n: resenasPublicadas.length },
+                  ] as const).map((t) => {
+                    const on = tabResenas === t.key;
+                    return (
+                      <span
+                        key={t.key}
+                        onClick={() => setTabResenas(t.key)}
+                        className="ah-btn"
+                        style={s(
+                          `display:flex;align-items:center;gap:7px;padding:10px 15px;cursor:pointer;font:700 13.5px Manrope,sans-serif;color:${on ? "#0E2A47" : "#90A1B2"};border-bottom:2.5px solid ${on ? "#FF6A2B" : "transparent"};`,
+                        )}
+                      >
+                        {t.label}
+                        <span
+                          style={s(
+                            `font:700 11px Manrope,sans-serif;background:${on ? "#FFE4D5" : "#EEF1F4"};color:${on ? "#FF6A2B" : "#7A8C9E"};border-radius:99px;padding:2px 8px;`,
+                          )}
+                        >
+                          {t.n}
+                        </span>
+                      </span>
+                    );
+                  })}
+                </div>
                 <div
                   style={s(
-                    "display:grid;grid-template-columns:1.2fr 1.2fr 80px 2fr 1fr 170px;padding:12px 22px;background:#F7FAFC;border-bottom:1px solid #EEF2F6;font:700 11.5px Manrope,sans-serif;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;",
+                    "display:grid;grid-template-columns:1.2fr 1.2fr 80px 2fr 1fr 170px;padding:12px 22px;background:#F7FAFC;border-bottom:1px solid #EEF2F6;border-top:1px solid #EEF2F6;font:700 11.5px Manrope,sans-serif;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;",
                   )}
                 >
                   <span>Alumno</span>
@@ -774,7 +943,8 @@ export default function AdminGestion() {
                   <span>Fecha</span>
                   <span>Acciones</span>
                 </div>
-                {resenas.map((r) => (
+                {tabResenas === "pendientes" &&
+                  resenas.map((r) => (
                   <div
                     key={r.id}
                     style={s("display:grid;grid-template-columns:1.2fr 1.2fr 80px 2fr 1fr 170px;padding:14px 22px;border-bottom:1px solid #F1F4F8;align-items:center;")}
@@ -809,7 +979,63 @@ export default function AdminGestion() {
                     </div>
                   </div>
                 ))}
-                {resenas.length === 0 && (
+                {tabResenas === "publicadas" &&
+                  resenasPublicadas.map((r) => (
+                    <div
+                      key={r.id}
+                      style={s(
+                        `display:grid;grid-template-columns:1.2fr 1.2fr 80px 2fr 1fr 170px;padding:14px 22px;border-bottom:1px solid #F1F4F8;align-items:center;background:${r.oculta ? "#FAFBFC" : "#fff"};`,
+                      )}
+                    >
+                      <span style={s("font:700 13.5px Manrope,sans-serif;color:#0E2A47;")}>
+                        {r.alumno.nombre} {r.alumno.apellido}
+                      </span>
+                      <span style={s("font-size:13px;color:#65788C;font-weight:600;")}>{r.actividadNombre}</span>
+                      <span style={s("display:flex;align-items:center;gap:4px;font:700 13.5px Space Grotesk,sans-serif;color:#0E2A47;")}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="#FFC53D" stroke="none">
+                          <path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14l-5-4.87 6.91-1.01L12 2z" />
+                        </svg>
+                        {r.puntaje}
+                      </span>
+                      <span
+                        style={s(
+                          `font-size:13px;font-weight:600;color:${r.oculta ? "#A6B3C0" : "#65788C"};${r.oculta ? "text-decoration:line-through;" : ""}`,
+                        )}
+                      >
+                        {r.comentario?.trim() ? r.comentario : "— sin comentario —"}
+                      </span>
+                      <span style={s("font-size:13px;color:#65788C;font-weight:600;")}>{formatFecha(r.createdAt)}</span>
+                      <div style={s("display:flex;gap:7px;align-items:center;")}>
+                        {r.oculta ? (
+                          <span
+                            title="La reseña sigue registrada con su autor y su texto; sólo dejó de verse en público y de contar en el promedio."
+                            style={s(
+                              "background:#EEF2F6;border-radius:8px;padding:7px 12px;font:700 12px Manrope,sans-serif;color:#65788C;",
+                            )}
+                          >
+                            Oculta
+                          </span>
+                        ) : (
+                          <button
+                            className="ah-btn"
+                            onClick={() => ocultarResenaPublicada(r)}
+                            title="Sácala del listado público y del promedio. No se borra: queda registrada con su autor."
+                            style={s(
+                              "background:#FBEAEB;border:none;border-radius:8px;padding:7px 12px;font:700 12px Manrope,sans-serif;color:#BE3A3E;cursor:pointer;",
+                            )}
+                          >
+                            Ocultar
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                {tabResenas === "publicadas" && resenasPublicadas.length === 0 && (
+                  <div style={s("padding:40px 22px;text-align:center;color:#90A1B2;font:600 13.5px Manrope,sans-serif;")}>
+                    Todavía no hay reseñas publicadas.
+                  </div>
+                )}
+                {tabResenas === "pendientes" && resenas.length === 0 && (
                   <div style={s("padding:40px 22px;text-align:center;color:#90A1B2;font:600 13.5px Manrope,sans-serif;")}>No hay reseñas pendientes de moderación.</div>
                 )}
               </div>
@@ -822,11 +1048,8 @@ export default function AdminGestion() {
           Genera una Penalización de Suspensión temporal y, si el monto es mayor a 0, otra
           Económica; las dos quedan atadas a esta denuncia. */}
       {suspension && (
-        <div
-          onClick={() => !guardandoSuspension && setSuspension(null)}
-          style={s("position:fixed;inset:0;background:rgba(14,42,71,.45);display:flex;align-items:center;justify-content:center;z-index:60;padding:20px;")}
-        >
-          <div onClick={(e) => e.stopPropagation()} style={s("background:#fff;border-radius:18px;padding:26px;max-width:460px;width:100%;")}>
+        <Modal onClose={() => !guardandoSuspension && setSuspension(null)} zIndex={60}>
+          <div style={s("background:#fff;border-radius:18px;padding:26px;max-width:460px;width:100%;")}>
             <div style={s("font:700 18px Space Grotesk,sans-serif;color:#0E2A47;margin-bottom:4px;")}>
               Suspender al instructor
             </div>
@@ -835,6 +1058,15 @@ export default function AdminGestion() {
                 ? `${suspension.denuncia.instructor.nombre} ${suspension.denuncia.instructor.apellido}`
                 : "Instructor de la clase denunciada"}
               {" · "}la suspensión se levanta sola al vencer.
+            </div>
+
+            {/* La misma descripción que la leyenda de la tabla: es donde se confirma. */}
+            <div
+              style={s(
+                "background:#FFF9EF;border:1px solid #F6E2C0;border-radius:11px;padding:11px 14px;margin-bottom:16px;font:600 12.5px Manrope,sans-serif;color:#8A5A12;line-height:1.5;",
+              )}
+            >
+              {DESCRIPCION_ACCION.SUSPENDER}
             </div>
 
             <div style={s("display:flex;flex-direction:column;gap:12px;")}>
@@ -908,15 +1140,12 @@ export default function AdminGestion() {
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
       {edicion && (
-        <div
-          onClick={() => !guardandoEdicion && setEdicion(null)}
-          style={s("position:fixed;inset:0;background:rgba(14,42,71,.45);display:flex;align-items:center;justify-content:center;z-index:60;padding:20px;")}
-        >
-          <div onClick={(e) => e.stopPropagation()} style={s("background:#fff;border-radius:18px;padding:26px;max-width:440px;width:100%;")}>
+        <Modal onClose={() => !guardandoEdicion && setEdicion(null)} zIndex={60}>
+          <div style={s("background:#fff;border-radius:18px;padding:26px;max-width:440px;width:100%;")}>
             <div style={s("font:700 18px Space Grotesk,sans-serif;color:#0E2A47;margin-bottom:4px;")}>Editar usuario</div>
             <div style={s("font-size:13.5px;color:#7A8C9E;font-weight:600;margin-bottom:18px;")}>
               Los cambios quedan registrados en la auditoría.
@@ -977,7 +1206,7 @@ export default function AdminGestion() {
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </DashLayout>
   );

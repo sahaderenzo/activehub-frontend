@@ -4,7 +4,9 @@ import DashLayout from "../../components/DashLayout";
 import StatusBadge from "../../components/StatusBadge";
 import ErrorReintentar from "../../components/ErrorReintentar";
 import { s } from "../../lib/style";
+import GraficoBarras from "../../components/GraficoBarras";
 import { useAuth } from "../../context/AuthContext";
+import { siPuede } from "../../lib/cargaParcial";
 import { useData } from "../../context/DataContext";
 import type { InscripcionMiClase, MiClaseInstructor, ReseniaInstructor } from "../../context/DataContext";
 import { formatFecha, formatHora, disponibilidad } from "../../lib/mockData";
@@ -13,7 +15,7 @@ import { claseStatusType } from "../../lib/status";
 const WEEKDAY_LETTERS = ["D", "L", "M", "M", "J", "V", "S"];
 
 export default function InstructorPanel() {
-  const { currentUser } = useAuth();
+  const { currentUser, puede } = useAuth();
   const data = useData();
   const navigate = useNavigate();
 
@@ -37,7 +39,14 @@ export default function InstructorPanel() {
     if (!aprobado) return;
     // Las reseñas entran acá y no en su propio effect: alimentan una de las alertas, así que
     // si fallan el panel también está incompleto y tiene que ofrecer "Reintentar".
-    Promise.all([data.listarMisClases(), data.listarInscripcionesMisClases(), data.listarResenasInstructor()])
+    // Cada consulta detrás de su permiso: las clases y sus inscripciones son
+    // `clases.gestionar` y las reseñas recibidas `resenias.responder`. Un instructor puede
+    // tener uno sin el otro, y ahí el Promise.all se caía entero (ver lib/cargaParcial.ts).
+    Promise.all([
+      siPuede(puede("clases.gestionar"), data.listarMisClases, []),
+      siPuede(puede("clases.gestionar"), data.listarInscripcionesMisClases, []),
+      siPuede(puede("resenias.responder"), data.listarResenasInstructor, []),
+    ])
       .then(([clases, inscs, resenias]) => {
         setMisClases(clases);
         setInscripciones(inscs);
@@ -46,13 +55,13 @@ export default function InstructorPanel() {
       })
       .catch(() => setErrorCarga(true))
       .finally(() => setCargando(false));
-  }, [aprobado, data.listarMisClases, data.listarInscripcionesMisClases, data.listarResenasInstructor]);
+  }, [aprobado, puede, data.listarMisClases, data.listarInscripcionesMisClases, data.listarResenasInstructor]);
 
   useEffect(() => {
     cargar();
   }, [cargar]);
 
-  const { bars, weekDays, deltaLabel } = useMemo(() => {
+  const { bars, deltaLabel } = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const days = Array.from({ length: 7 }, (_, i) => {
@@ -67,9 +76,14 @@ export default function InstructorPanel() {
           insc.estado !== "Cancelada" && new Date(insc.createdAt).toDateString() === d.toDateString(),
       ).length;
     const counts = days.map(countFor);
-    const max = Math.max(1, ...counts);
-    const bars = counts.map((c) => `${Math.max(8, Math.round((c / max) * 100))}%`);
-    const weekDays = days.map((d) => WEEKDAY_LETTERS[d.getDay()]);
+    // El gráfico se arma con el componente compartido: eje Y, valores y fecha real en cada
+    // barra. Antes eran siete divs de altura porcentual sin ninguna cantidad de referencia, y
+    // la etiqueta era una sola letra ("M"), que no distingue martes de miércoles.
+    const bars = days.map((d, i) => ({
+      label: WEEKDAY_LETTERS[d.getDay()],
+      valor: counts[i],
+      detalle: d.toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "short" }),
+    }));
 
     const prevDays = Array.from({ length: 7 }, (_, i) => {
       const d = new Date(today);
@@ -81,7 +95,7 @@ export default function InstructorPanel() {
     const delta = prevSum === 0 ? (lastSum > 0 ? 100 : 0) : Math.round(((lastSum - prevSum) / prevSum) * 100);
     const deltaLabel = `${delta >= 0 ? "+" : ""}${delta}%`;
 
-    return { bars, weekDays, deltaLabel };
+    return { bars, deltaLabel };
   }, [inscripciones]);
 
   const alertas = useMemo(() => {
@@ -188,25 +202,7 @@ export default function InstructorPanel() {
                 {deltaLabel}
               </span>
             </div>
-            <div style={s("display:flex;align-items:flex-end;gap:14px;height:160px;")}>
-              {bars.map((h, i) => (
-                <div
-                  key={i}
-                  style={s(
-                    "flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;justify-content:flex-end;height:100%;",
-                  )}
-                >
-                  <div style={s(`width:100%;border-radius:8px 8px 4px 4px;background:linear-gradient(180deg,#12B5A5,#0FB8A9);height:${h};`)} />
-                </div>
-              ))}
-            </div>
-            <div style={s("display:flex;gap:14px;margin-top:10px;")}>
-              {weekDays.map((w, i) => (
-                <div key={i} style={s("flex:1;text-align:center;font-size:11.5px;color:#90A1B2;font-weight:600;")}>
-                  {w}
-                </div>
-              ))}
-            </div>
+            <GraficoBarras barras={bars} alto={160} unidad="inscripciones" />
           </div>
           <div
             style={s(

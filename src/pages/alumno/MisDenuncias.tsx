@@ -3,8 +3,10 @@ import AlumnoNav from "../../components/AlumnoNav";
 import StatusBadge from "../../components/StatusBadge";
 import ErrorReintentar from "../../components/ErrorReintentar";
 import { s } from "../../lib/style";
+import Modal from "../../components/Modal";
 import { useAhora } from "../../lib/ahora";
 import { useAuth } from "../../context/AuthContext";
+import { siPuede } from "../../lib/cargaParcial";
 import { useData } from "../../context/DataContext";
 import type { MiDenuncia, MiInscripcion, ResolucionDenuncia } from "../../context/DataContext";
 import { ApiError } from "../../lib/api";
@@ -21,7 +23,7 @@ const ETIQUETA_RESOLUCION: Record<ResolucionDenuncia, string> = {
 
 export default function AlumnoMisDenuncias() {
   const ahora = useAhora();
-  const { currentUser } = useAuth();
+  const { currentUser, puede } = useAuth();
   const { crearDenuncia, listarMisDenuncias, listarMisInscripciones } = useData();
   const [misDenuncias, setMisDenuncias] = useState<MiDenuncia[]>([]);
   const [clasesReportables, setClasesReportables] = useState<MiInscripcion[]>([]);
@@ -34,9 +36,17 @@ export default function AlumnoMisDenuncias() {
 
   // Las clases reportables alimentan el select de "Nueva denuncia": si no cargan, el
   // formulario queda vacío sin decir por qué.
+  //
+  // Son de módulos distintos: el listado es `denuncias.crear` (el permiso de esta pantalla)
+  // y las inscripciones `inscripciones.gestionar`. Sin ese segundo permiso el historial de
+  // denuncias se sigue viendo y lo que no se puede es abrir una nueva — que es exactamente
+  // lo que corresponde (ver lib/cargaParcial.ts).
   const cargar = useCallback(() => {
     if (!currentUser) return;
-    Promise.all([listarMisDenuncias(), listarMisInscripciones("Inscripto")])
+    Promise.all([
+      listarMisDenuncias(),
+      siPuede(puede("inscripciones.gestionar"), () => listarMisInscripciones("Inscripto"), []),
+    ])
       .then(([denuncias, inscripcionesAlumno]) => {
         setMisDenuncias(denuncias);
         setClasesReportables(inscripcionesAlumno);
@@ -44,7 +54,7 @@ export default function AlumnoMisDenuncias() {
         setErrorCarga(false);
       })
       .catch(() => setErrorCarga(true));
-  }, [currentUser, listarMisDenuncias, listarMisInscripciones]);
+  }, [currentUser, puede, listarMisDenuncias, listarMisInscripciones]);
 
   useEffect(() => {
     cargar();
@@ -148,11 +158,8 @@ export default function AlumnoMisDenuncias() {
       </div>
 
       {showForm && (
-        <div
-          onClick={() => setShowForm(false)}
-          style={s("position:fixed;inset:0;background:rgba(14,42,71,.45);display:flex;align-items:center;justify-content:center;z-index:60;padding:20px;")}
-        >
-          <div onClick={(e) => e.stopPropagation()} style={s("background:#fff;border-radius:18px;padding:26px;max-width:460px;width:100%;")}>
+        <Modal onClose={() => setShowForm(false)} zIndex={60}>
+          <div style={s("background:#fff;border-radius:18px;padding:26px;max-width:460px;width:100%;")}>
             <div style={s("font:700 18px Space Grotesk,sans-serif;color:#0E2A47;margin-bottom:16px;")}>Nueva denuncia</div>
             <label style={s("display:block;font:700 12.5px Manrope,sans-serif;color:#41566B;margin-bottom:7px;")}>Clase</label>
             <select
@@ -205,7 +212,7 @@ export default function AlumnoMisDenuncias() {
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

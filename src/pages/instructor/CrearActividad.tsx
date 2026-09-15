@@ -26,7 +26,10 @@ const DEFAULT_TINTS = [
   "linear-gradient(135deg,#1B3A5C,#FF8A4C)",
 ];
 
-const STEPS = ["Información general", "Ubicación", "Imágenes", "Revisar"];
+// Acá vivía STEPS, la pasarela de 4 pasos del encabezado. Se sacó: NO es un asistente, es un
+// formulario de una sola página con todos los campos visibles a la vez. Los números marcaban
+// un avance que nunca avanzaba (el paso 1 quedaba encendido siempre) y prometían un flujo por
+// etapas que no existe. Las secciones del formulario ya tienen su propio título.
 
 export default function InstructorCrearActividad() {
   const { id } = useParams<{ id: string }>();
@@ -300,23 +303,6 @@ export default function InstructorCrearActividad() {
           Completá los datos para publicar tu clase. Podés guardarla como borrador.
         </p>
 
-        <div style={s("display:flex;align-items:center;gap:6px;margin-bottom:28px;")}>
-          {STEPS.map((label, i) => (
-            <div key={label} style={s("display:flex;align-items:center;gap:9px;")}>
-              <span
-                style={s(
-                  `width:28px;height:28px;border-radius:99px;background:${i === 0 ? "#12B5A5" : "#E2E9F0"};color:${
-                    i === 0 ? "#fff" : "#90A1B2"
-                  };display:flex;align-items:center;justify-content:center;font:700 13px Space Grotesk;`,
-                )}
-              >
-                {i + 1}
-              </span>
-              <span style={s(`font:700 13px Manrope;color:${i === 0 ? "#0E2A47" : "#90A1B2"};`)}>{label}</span>
-              {i < STEPS.length - 1 && <div style={s("flex:1;height:2px;background:#E2E9F0;width:24px;")} />}
-            </div>
-          ))}
-        </div>
 
         <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:18px;padding:26px 28px;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
           <div style={s("font:700 16px Space Grotesk;margin-bottom:18px;")}>Información general</div>

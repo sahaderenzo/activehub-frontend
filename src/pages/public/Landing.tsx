@@ -139,7 +139,7 @@ export default function Landing() {
           <h1 className="ah-hero-title" style={s("font:700 56px/1.05 Space Grotesk,sans-serif;letter-spacing:-1.5px;margin:0 0 18px;")}>
             Encontrá e inscribite
             <br />
-            actividades <span style={s("color:#FF6A2B;")}>cerca tuyo</span>
+            en actividades <span style={s("color:#FF6A2B;")}>cerca tuyo</span>
           </h1>
           <p style={s("font-size:18px;line-height:1.6;color:#54697E;max-width:480px;margin:0 0 30px;")}>
             Buscá clases deportivas y recreativas, mirá horarios y cupos disponibles, e inscribite en pocos pasos.
@@ -210,23 +210,31 @@ export default function Landing() {
         </div>
 
         <div style={s("position:relative;")}>
+          {/*
+            La foto del hero vive en `public/`, no en `src/assets`: es un archivo fijo del sitio,
+            no un módulo que necesite pasar por el bundler, y así se referencia con una ruta
+            absoluta estable. El rayado diagonal queda de fondo por si la imagen tarda o falla.
+
+            El gradiente teal/naranja sigue encima de la foto a propósito: unifica el hero con el
+            resto de la marca y, sobre todo, mantiene el contraste para las tarjetas flotantes
+            blancas que van apoyadas sobre esta caja.
+          */}
           <div
             style={s(
               "position:relative;height:460px;border-radius:24px;overflow:hidden;background:repeating-linear-gradient(135deg,#1B3A5C 0 22px,#173250 22px 44px);box-shadow:0 30px 60px rgba(14,42,71,.22);",
             )}
           >
+            <img
+              src="/hero-entrenando.jpg"
+              alt="Persona entrenando con banda elástica en un gimnasio"
+              loading="eager"
+              style={s("position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;")}
+            />
             <div
               style={s(
                 "position:absolute;inset:0;background:linear-gradient(160deg,rgba(18,181,165,.30),rgba(255,106,43,.16));",
               )}
             />
-            <div
-              style={s(
-                "position:absolute;left:0;right:0;bottom:0;top:0;display:flex;align-items:center;justify-content:center;color:#BFD3E6;font:600 13px ui-monospace,Menlo,monospace;letter-spacing:.5px;",
-              )}
-            >
-              FOTO · personas entrenando
-            </div>
           </div>
           <div
             style={s(

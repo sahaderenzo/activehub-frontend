@@ -2,11 +2,28 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
 import { s } from "../../lib/style";
+import GraficoBarras from "../../components/GraficoBarras";
+import { useAhora } from "../../lib/ahora";
+import { descargarCsv } from "../../lib/exportCsv";
+import { exportarPdf } from "../../lib/exportPdf";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import type { InscripcionMiClase, MiClaseInstructor } from "../../context/DataContext";
 
 const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+
+/**
+ * Mismos rangos que Dashboard y Reportes del admin: el instructor tiene derecho al mismo
+ * control. El encabezado decía "Últimos 12 meses" y era un div de texto fijo — los KPIs, en
+ * cambio, se calculaban sobre TODO el histórico, así que además mentía.
+ */
+const PERIODOS: { dias: number; label: string }[] = [
+  { dias: 7, label: "Últimos 7 días" },
+  { dias: 30, label: "Últimos 30 días" },
+  { dias: 90, label: "Últimos 90 días" },
+  { dias: 365, label: "Último año" },
+  { dias: 0, label: "Todo el histórico" },
+];
 const PALETTE = ["#12B5A5", "#3A6FF0", "#F5A623", "#7A52D9", "#FF6A2B", "#0FB8A9"];
 
 /**
@@ -45,13 +62,22 @@ export default function InstructorMetricas() {
     cargar();
   }, [cargar]);
 
+  const ahora = useAhora();
+  const [periodoDias, setPeriodoDias] = useState(365);
+  const periodoLabel = PERIODOS.find((p) => p.dias === periodoDias)?.label ?? "Todo el histórico";
+
   const stats = useMemo(() => {
     if (!currentUser) return null;
     // Todo sale de los endpoints del instructor: `misClases` e `inscripciones` ya vienen
     // acotados a este instructor por el backend. Antes esto se derivaba de la caché
     // parcial `data.clases` y del dataset mock `data.inscripciones`/`data.pagos`, cuyos
     // ids ni siquiera podían cruzarse con los reales, así que todo daba cero.
-    const misInscripciones = inscripciones.filter((i) => i.estado !== "Cancelada");
+    // El período recorta un FLUJO (las inscripciones que entraron en la ventana). La
+    // ocupación de cupos se calcula sobre las clases del mismo tramo, más abajo.
+    const desde = periodoDias > 0 ? ahora - periodoDias * 24 * 60 * 60 * 1000 : null;
+    const misInscripciones = inscripciones.filter(
+      (i) => i.estado !== "Cancelada" && (desde === null || new Date(i.createdAt).getTime() >= desde),
+    );
 
     // Nombres de actividad únicos a partir de las clases propias.
     const nombrePorActividad = new Map<string, string>();
@@ -82,20 +108,48 @@ export default function InstructorMetricas() {
         )
       : 0;
 
-    const now = new Date();
-    const months = Array.from({ length: 12 }, (_, i) => new Date(now.getFullYear(), now.getMonth() - (11 - i), 1));
-    const monthCounts = months.map(
-      (m) =>
-        misInscripciones.filter((i) => {
-          const d = new Date(i.createdAt);
-          return d.getFullYear() === m.getFullYear() && d.getMonth() === m.getMonth();
-        }).length,
-    );
-    const maxMonth = Math.max(1, ...monthCounts);
-    const monthBars = months.map((m, i) => ({
-      m: MESES[m.getMonth()],
-      h: `${Math.max(6, Math.round((monthCounts[i] / maxMonth) * 100))}%`,
-    }));
+    // La granularidad sale del período, igual que en Reportes del admin: 7 días → un tramo
+    // por día, 30 → por semana, el resto → por mes. Doce barras mensuales para "últimos 7
+    // días" serían once barras vacías.
+    const now = new Date(ahora);
+    const dia = 24 * 60 * 60 * 1000;
+    const entre = (a: Date, b: Date) =>
+      misInscripciones.filter((i) => {
+        const d = new Date(i.createdAt);
+        return d >= a && d < b;
+      }).length;
+
+    let monthBars: { label: string; valor: number; detalle: string }[];
+    if (periodoDias === 7) {
+      monthBars = Array.from({ length: 7 }, (_, i) => {
+        const desdeD = new Date(now.getTime() - (6 - i) * dia);
+        desdeD.setHours(0, 0, 0, 0);
+        const hastaD = new Date(desdeD.getTime() + dia);
+        return {
+          label: desdeD.toLocaleDateString("es-AR", { weekday: "short" }),
+          valor: entre(desdeD, hastaD),
+          detalle: desdeD.toLocaleDateString("es-AR", { day: "numeric", month: "short" }),
+        };
+      });
+    } else if (periodoDias === 30) {
+      monthBars = Array.from({ length: 5 }, (_, i) => {
+        const hastaD = new Date(now.getTime() - (4 - i) * 7 * dia);
+        const desdeD = new Date(hastaD.getTime() - 7 * dia);
+        const fmt = (d: Date) => d.toLocaleDateString("es-AR", { day: "numeric", month: "short" });
+        return { label: fmt(desdeD), valor: entre(desdeD, hastaD), detalle: fmt(desdeD) + " al " + fmt(hastaD) };
+      });
+    } else {
+      const meses = periodoDias === 90 ? 3 : 12;
+      monthBars = Array.from({ length: meses }, (_, i) => {
+        const m = new Date(now.getFullYear(), now.getMonth() - (meses - 1 - i), 1);
+        const siguiente = new Date(now.getFullYear(), now.getMonth() - (meses - 1 - i) + 1, 1);
+        return {
+          label: MESES[m.getMonth()],
+          valor: entre(m, siguiente),
+          detalle: m.toLocaleDateString("es-AR", { month: "long", year: "numeric" }),
+        };
+      });
+    }
 
     const porActividad = misActividades
       .map((a, i) => {
@@ -107,6 +161,8 @@ export default function InstructorMetricas() {
     const inscripcionesPorActividad = porActividad.map((d) => ({
       l: d.l,
       c: d.c,
+      // Se conserva el conteo ademas del porcentaje: la exportacion necesita el numero, no "18%".
+      count: d.count,
       p: `${totalInscripciones ? Math.round((d.count / totalInscripciones) * 100) : 0}%`,
     }));
 
@@ -127,7 +183,80 @@ export default function InstructorMetricas() {
       inscripcionesPorActividad,
       ocupacionPorActividad,
     };
-  }, [currentUser, misClases, inscripciones]);
+  }, [currentUser, misClases, inscripciones, periodoDias, ahora]);
+
+  /**
+   * Las dos exportaciones salen de `stats`, o sea exactamente de lo que se ve en pantalla.
+   * Antes la pantalla no tenia ninguna: la unica forma de sacar los numeros era copiarlos a
+   * mano. El CSV y el PDF usan los helpers compartidos (`lib/exportCsv`, `lib/exportPdf`), los
+   * mismos que Reportes y Trazabilidad del admin.
+   */
+  const nombreInstructor = [currentUser?.nombre, currentUser?.apellido].filter(Boolean).join(' ');
+  const emision = new Date().toLocaleString('es-AR');
+
+  const filasExport = (): (string | number)[][] => {
+    if (!stats) return [];
+    return [
+      ['Métricas del instructor', nombreInstructor],
+      ['Emitido', emision],
+      ['Período', periodoLabel],
+      [],
+      ['Alumnos distintos', stats.totalAlumnos],
+      ['Ingresos acreditados', stats.ingresosAcreditados],
+      ['Ingresos pendientes de acreditar', stats.ingresosPendientes],
+      ['Ocupación promedio (%)', stats.ocupacionProm],
+      [],
+      ['Actividad', 'Inscripciones', 'Ocupación'],
+      ...stats.inscripcionesPorActividad.map((d, i) => [
+        d.l,
+        d.count,
+        stats.ocupacionPorActividad[i]?.p ?? '—',
+      ]),
+      [],
+      ['Mes', 'Inscripciones'],
+      ...stats.monthBars.map((b) => [b.detalle, b.valor]),
+    ];
+  };
+
+  const exportarCsv = () => {
+    descargarCsv('activehub-metricas-' + new Date().toISOString().slice(0, 10) + '.csv', filasExport());
+  };
+
+  const exportarPdfMetricas = () => {
+    if (!stats) return;
+    const filas = stats.inscripcionesPorActividad.map((d, i) => ({
+      actividad: d.l,
+      inscripciones: String(d.count),
+      ocupacion: stats.ocupacionPorActividad[i]?.p ?? '—',
+    }));
+    const ok = exportarPdf({
+      titulo: 'Métricas del instructor',
+      subtitulo: nombreInstructor,
+      meta: [
+        { etiqueta: 'Emitido', valor: emision },
+        { etiqueta: 'Período', valor: periodoLabel },
+        { etiqueta: 'Alumnos distintos', valor: String(stats.totalAlumnos) },
+        { etiqueta: 'Ingresos acreditados', valor: '$' + stats.ingresosAcreditados.toLocaleString('es-AR') },
+        { etiqueta: 'Pendiente de acreditar', valor: '$' + stats.ingresosPendientes.toLocaleString('es-AR') },
+        { etiqueta: 'Ocupación promedio', valor: stats.ocupacionProm + '%' },
+      ],
+      grafico: {
+        titulo: periodoDias === 7 ? 'Inscripciones por día' : periodoDias === 30 ? 'Inscripciones por semana' : 'Inscripciones por mes',
+        barras: stats.monthBars.map((b) => ({ label: b.label, valor: b.valor })),
+        unidad: 'inscripciones',
+      },
+      columnas: [
+        { encabezado: 'Actividad', ancho: '50%', valor: (f: (typeof filas)[number]) => f.actividad },
+        { encabezado: 'Inscripciones', ancho: '25%', valor: (f: (typeof filas)[number]) => f.inscripciones },
+        { encabezado: 'Ocupación', ancho: '25%', valor: (f: (typeof filas)[number]) => f.ocupacion },
+      ],
+      filas,
+      pie: 'Documento generado por ActiveHub a partir de tus clases e inscripciones. Uso interno.',
+    });
+    if (!ok) {
+      window.alert('El navegador bloqueó la ventana de exportación. Habilitá las ventanas emergentes para este sitio.');
+    }
+  };
 
   if (!currentUser || !aprobado || !stats) return null;
 
@@ -180,16 +309,59 @@ export default function InstructorMetricas() {
           <h1 style={s("font:700 22px Space Grotesk;margin:0;")}>Métricas del instructor</h1>
           <p style={s("font-size:13.5px;color:#7A8C9E;margin:3px 0 0;")}>Desempeño de tus actividades</p>
         </div>
-        <div
-          style={s(
-            "margin-left:auto;display:flex;align-items:center;gap:8px;background:#F2F5F9;border:1px solid #E7EDF3;border-radius:11px;padding:10px 14px;font:700 13.5px Manrope;color:#41566B;",
-          )}
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#41566B" strokeWidth={2}>
-            <rect x="3" y="4" width="18" height="18" rx="2" />
-            <path d="M16 2v4M8 2v4M3 10h18" />
-          </svg>
-          Últimos 12 meses
+        <div style={s("margin-left:auto;display:flex;align-items:center;gap:9px;flex-wrap:wrap;")}>
+          <div
+            style={s(
+              "display:flex;align-items:center;gap:8px;background:#F2F5F9;border:1px solid #E7EDF3;border-radius:11px;padding:4px 12px 4px 14px;",
+            )}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#41566B" strokeWidth={2}>
+              <rect x="3" y="4" width="18" height="18" rx="2" />
+              <path d="M16 2v4M8 2v4M3 10h18" />
+            </svg>
+            <select
+              aria-label="Período de las métricas"
+              value={periodoDias}
+              onChange={(e) => setPeriodoDias(Number(e.target.value))}
+              style={s(
+                "border:none;outline:none;background:transparent;font:700 13.5px Manrope;color:#41566B;cursor:pointer;padding:7px 2px;",
+              )}
+            >
+              {PERIODOS.map((p) => (
+                <option key={p.dias} value={p.dias}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            className="ah-btn"
+            onClick={exportarPdfMetricas}
+            title="Abre la vista de impresión: el destino por defecto es Guardar como PDF"
+            style={s(
+              "background:#fff;border:1px solid #E2E9F0;border-radius:10px;padding:10px 15px;font:700 13px Manrope;color:#41566B;cursor:pointer;display:flex;align-items:center;gap:7px;",
+            )}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#BE3A3E" strokeWidth={2}>
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <path d="M14 2v6h6" />
+            </svg>
+            PDF
+          </button>
+          <button
+            className="ah-btn"
+            onClick={exportarCsv}
+            title="Descarga un CSV que se abre en Excel"
+            style={s(
+              "background:#fff;border:1px solid #E2E9F0;border-radius:10px;padding:10px 15px;font:700 13px Manrope;color:#41566B;cursor:pointer;display:flex;align-items:center;gap:7px;",
+            )}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0C8576" strokeWidth={2}>
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <path d="M14 2v6h6" />
+            </svg>
+            Excel / CSV
+          </button>
         </div>
       </div>
       <div style={s("padding:26px 32px 50px;")}>
@@ -235,15 +407,13 @@ export default function InstructorMetricas() {
 
         <div className="ah-grid-side" style={s("display:grid;grid-template-columns:1.6fr 1fr;gap:18px;margin-bottom:24px;")}>
           <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:18px;padding:22px;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
-            <div style={s("font:700 16px Space Grotesk;margin-bottom:22px;")}>Inscripciones por mes</div>
-            <div style={s("display:flex;align-items:flex-end;gap:9px;height:170px;")}>
-              {stats.monthBars.map((b, i) => (
-                <div key={i} style={s("flex:1;display:flex;flex-direction:column;align-items:center;gap:7px;justify-content:flex-end;height:100%;")}>
-                  <div style={s(`width:100%;border-radius:6px 6px 3px 3px;background:linear-gradient(180deg,#12B5A5,#0FB8A9);height:${b.h};`)} />
-                  <span style={s("font-size:10.5px;color:#90A1B2;font-weight:700;")}>{b.m}</span>
-                </div>
-              ))}
+            <div style={s("margin-bottom:18px;")}>
+              <div style={s("font:700 16px Space Grotesk;")}>
+                {periodoDias === 7 ? "Inscripciones por día" : periodoDias === 30 ? "Inscripciones por semana" : "Inscripciones por mes"}
+              </div>
+              <div style={s("font-size:12px;color:#90A1B2;font-weight:600;margin-top:2px;")}>{periodoLabel}</div>
             </div>
+            <GraficoBarras barras={stats.monthBars} alto={170} unidad="inscripciones" />
           </div>
           <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:18px;padding:22px;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
             <div style={s("font:700 16px Space Grotesk;margin-bottom:20px;")}>Inscripciones por actividad</div>

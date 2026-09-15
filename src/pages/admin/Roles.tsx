@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import DashLayout from "../../components/DashLayout";
 import ErrorReintentar from "../../components/ErrorReintentar";
 import { s } from "../../lib/style";
-import { useData, type PermisoAdmin, type RolAdmin } from "../../context/DataContext";
+import { useData, type PermisoAdmin, type RolAdmin, type UsuarioAdmin } from "../../context/DataContext";
+import { useAuth } from "../../context/AuthContext";
 import { ApiError } from "../../lib/api";
 
 /**
@@ -40,6 +41,24 @@ const ETIQUETAS: Record<string, string> = {
 /** El rol del sistema al que no se le pueden sacar los permisos críticos. */
 const ROL_ADMIN = "ADMIN";
 
+/**
+ * Las dos mitades de E4Ad-HU08, que son preguntas distintas y estaban mezcladas en una sola
+ * pantalla:
+ *
+ * <ul>
+ *   <li><b>Roles y permisos</b> — "qué puede hacer este ROL". Se edita el rol y el cambio
+ *       alcanza a todos los que lo tengan.</li>
+ *   <li><b>Roles de los usuarios</b> — "qué rol tiene esta PERSONA". Se cambia una cuenta y no
+ *       se toca ningún permiso.</li>
+ * </ul>
+ *
+ * <p>Lo segundo existía sólo escondido en el modal de edición de `admin/Gestion.tsx`, que es
+ * la pantalla de datos personales: para cambiarle el rol a alguien había que entrar a editar
+ * su nombre y su teléfono. Sigue estando ahí (no se sacó, es el flujo de "editar usuario"),
+ * pero ahora también vive donde uno lo busca.
+ */
+type Seccion = "permisos" | "usuarios";
+
 function Switch({ on, disabled }: { on: boolean; disabled: boolean }) {
   const fondo = disabled ? (on ? "#CBE7E3" : "#E7EDF3") : on ? "#0FB8A9" : "#D6DEE7";
   return (
@@ -59,6 +78,13 @@ function Switch({ on, disabled }: { on: boolean; disabled: boolean }) {
 
 export default function AdminRoles() {
   const data = useData();
+  const { currentUser, puede } = useAuth();
+
+  const [seccion, setSeccion] = useState<Seccion>("permisos");
+  const [usuarios, setUsuarios] = useState<UsuarioAdmin[]>([]);
+  const [usuarioSeleccionado, setUsuarioSeleccionado] = useState("");
+  const [rolElegido, setRolElegido] = useState("");
+  const [guardandoRol, setGuardandoRol] = useState(false);
 
   const [roles, setRoles] = useState<RolAdmin[]>([]);
   const [permisos, setPermisos] = useState<PermisoAdmin[]>([]);
@@ -87,9 +113,28 @@ export default function AdminRoles() {
       .catch(() => setErrorCarga(true));
   }, [data]);
 
+  /**
+   * El listado de usuarios es de otro módulo (`usuarios.gestionar`): quien tenga sólo
+   * `roles.configurar` configura permisos pero no ve la lista de personas. En ese caso la
+   * sección no se ofrece, en vez de mostrar un selector vacío o romper la pantalla.
+   */
+  const puedeVerUsuarios = puede("usuarios.gestionar");
+
+  const cargarUsuarios = useCallback(() => {
+    if (!puedeVerUsuarios) return Promise.resolve();
+    return data
+      .listarUsuariosAdmin()
+      .then(setUsuarios)
+      .catch(() => setError("No pudimos cargar el listado de usuarios."));
+  }, [data, puedeVerUsuarios]);
+
   useEffect(() => {
     cargar();
   }, [cargar]);
+
+  useEffect(() => {
+    cargarUsuarios();
+  }, [cargarUsuarios]);
 
   const cambio = useCallback(
     (rol: RolAdmin) => {
@@ -180,15 +225,75 @@ export default function AdminRoles() {
     }
   };
 
+  const usuario = usuarios.find((u) => u.id === usuarioSeleccionado) ?? null;
+  const rolActualDelUsuario = usuario ? roles.find((r) => r.nombre === usuario.rol) ?? null : null;
+
+  const asignarRol = async () => {
+    if (!usuario || !rolElegido) return;
+    setError(null);
+    setOk(null);
+    setGuardandoRol(true);
+    try {
+      await data.asignarRolUsuario(usuario.id, rolElegido);
+      await Promise.all([cargarUsuarios(), cargar()]);
+      const nombreRol = roles.find((r) => r.id === rolElegido)?.nombre ?? "";
+      setOk(`${usuario.nombre} ${usuario.apellido} ahora tiene el rol ${ETIQUETAS[nombreRol] ?? nombreRol}.`);
+      window.setTimeout(() => setOk(null), 4000);
+    } catch (err) {
+      // El backend tiene dos guardas propias acá: no podés cambiarte el rol a vos mismo y no
+      // se puede dejar la plataforma sin su último ADMIN. Los dos mensajes llegan como ApiError.
+      setError(err instanceof ApiError ? err.message : "No pudimos cambiar el rol. Intentá de nuevo.");
+    } finally {
+      setGuardandoRol(false);
+    }
+  };
+
+  const esUnoMismo = !!usuario && usuario.id === currentUser?.id;
+  const puedeAsignar = !!usuario && !!rolElegido && rolElegido !== rolActualDelUsuario?.id && !esUnoMismo && !guardandoRol;
+
   const puedeGuardar = rolesCambiados.length > 0 && !guardando;
 
   return (
     <DashLayout role="admin" active="roles">
-      <div style={s("background:#fff;border-bottom:1px solid #E7EDF3;padding:18px 32px;")}>
+      <div style={s("background:#fff;border-bottom:1px solid #E7EDF3;padding:18px 32px 0;")}>
         <h1 style={s("font:700 22px Space Grotesk,sans-serif;margin:0;")}>Roles y permisos</h1>
-        <p style={s("font-size:13.5px;color:#7A8C9E;margin:3px 0 0;")}>
-          Elegí un rol y configurá qué puede hacer. Los permisos se ajustan sin tocar código.
+        <p style={s("font-size:13.5px;color:#7A8C9E;margin:3px 0 14px;")}>
+          {seccion === "permisos"
+            ? "Elegí un rol y configurá qué puede hacer. El cambio alcanza a todos los usuarios que tengan ese rol."
+            : "Elegí un usuario y cambiale el rol. Acá no se tocan permisos: sólo qué rol tiene esa persona."}
         </p>
+        {/*
+          Dos preguntas distintas, dos secciones: "qué puede hacer este ROL" y "qué rol tiene
+          esta PERSONA". Antes lo segundo sólo existía dentro del modal de edición de usuario
+          de Gestión, o sea que para cambiar un rol había que entrar a editar el nombre y el
+          teléfono de alguien.
+        */}
+        <div style={s("display:flex;gap:4px;")}>
+          {([
+            { key: "permisos", label: "Roles y permisos" },
+            { key: "usuarios", label: "Roles de los usuarios" },
+          ] as const)
+            .filter((t) => t.key === "permisos" || puedeVerUsuarios)
+            .map((t) => {
+              const on = seccion === t.key;
+              return (
+                <span
+                  key={t.key}
+                  onClick={() => {
+                    setSeccion(t.key);
+                    setError(null);
+                    setOk(null);
+                  }}
+                  className="ah-btn"
+                  style={s(
+                    `padding:11px 16px;cursor:pointer;font:700 14px Manrope,sans-serif;color:${on ? "#0E2A47" : "#90A1B2"};border-bottom:2.5px solid ${on ? "#FF6A2B" : "transparent"};margin-bottom:-1px;`,
+                  )}
+                >
+                  {t.label}
+                </span>
+              );
+            })}
+        </div>
       </div>
 
       <div style={s("padding:20px 32px 0;")}>
@@ -205,7 +310,104 @@ export default function AdminRoles() {
         )}
       </div>
 
-      {!errorCarga && (
+      {!errorCarga && seccion === "usuarios" && (
+        <div style={s("padding:6px 32px 50px;max-width:680px;")}>
+          <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:18px;padding:22px;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
+            <label
+              htmlFor="usuario-rol"
+              style={s("display:block;font:700 12px Manrope,sans-serif;color:#90A1B2;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;")}
+            >
+              Usuario
+            </label>
+            <select
+              id="usuario-rol"
+              value={usuarioSeleccionado}
+              onChange={(e) => {
+                setUsuarioSeleccionado(e.target.value);
+                const elegido = usuarios.find((u) => u.id === e.target.value);
+                // Se precarga el rol actual: el selector de abajo arranca mostrando lo que la
+                // persona tiene hoy, no un valor vacío.
+                setRolElegido(roles.find((r) => r.nombre === elegido?.rol)?.id ?? "");
+                setError(null);
+                setOk(null);
+              }}
+              style={s("width:100%;border:1.5px solid #E2E9F0;border-radius:11px;padding:11px 13px;font:700 14.5px Manrope,sans-serif;color:#0E2A47;background:#fff;cursor:pointer;margin-bottom:18px;")}
+            >
+              <option value="">Elegí un usuario…</option>
+              {usuarios.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.nombre} {u.apellido} · {u.email}
+                </option>
+              ))}
+            </select>
+
+            {usuario && (
+              <>
+                <div style={s("display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#F6F9FC;border:1px solid #EAF0F6;border-radius:12px;padding:13px 15px;margin-bottom:18px;")}>
+                  <span style={s("font:700 12.5px Manrope,sans-serif;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;")}>
+                    Rol actual
+                  </span>
+                  <span style={s("font:700 14px Space Grotesk,sans-serif;color:#0E2A47;")}>
+                    {ETIQUETAS[usuario.rol] ?? usuario.rol}
+                  </span>
+                  {rolActualDelUsuario && (
+                    <span style={s("font:700 12px Manrope,sans-serif;color:#90A1B2;")}>
+                      {rolActualDelUsuario.permisos.length} permisos
+                    </span>
+                  )}
+                </div>
+
+                <label
+                  htmlFor="rol-nuevo"
+                  style={s("display:block;font:700 12px Manrope,sans-serif;color:#90A1B2;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;")}
+                >
+                  Rol nuevo
+                </label>
+                <select
+                  id="rol-nuevo"
+                  value={rolElegido}
+                  onChange={(e) => setRolElegido(e.target.value)}
+                  disabled={esUnoMismo}
+                  style={s(`width:100%;border:1.5px solid #E2E9F0;border-radius:11px;padding:11px 13px;font:700 14.5px Manrope,sans-serif;color:#0E2A47;background:${esUnoMismo ? "#F4F7FA" : "#fff"};cursor:${esUnoMismo ? "not-allowed" : "pointer"};margin-bottom:14px;`)}
+                >
+                  {roles.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {ETIQUETAS[r.nombre] ?? r.nombre}
+                      {r.sistema ? "" : " (rol nuevo)"}
+                    </option>
+                  ))}
+                </select>
+
+                {esUnoMismo && (
+                  <div style={s("background:#FFF9EF;border:1px solid #F6E2C0;border-radius:11px;padding:11px 14px;font:600 12.5px Manrope,sans-serif;color:#8A5A12;margin-bottom:14px;line-height:1.5;")}>
+                    No podés cambiarte el rol a vos mismo: si te quitaras la administración, no
+                    habría forma de volver a esta pantalla. Pedíselo a otro administrador.
+                  </div>
+                )}
+
+                <button
+                  className="ah-btn"
+                  onClick={asignarRol}
+                  disabled={!puedeAsignar}
+                  style={s(
+                    `background:${puedeAsignar ? "#0FB8A9" : "#BFE4E0"};color:#fff;border:none;border-radius:11px;padding:11px 18px;font:700 13.5px Manrope,sans-serif;cursor:${puedeAsignar ? "pointer" : "default"};`,
+                  )}
+                >
+                  {guardandoRol ? "Guardando…" : "Asignar rol"}
+                </button>
+              </>
+            )}
+
+            {!usuario && (
+              <div style={s("color:#90A1B2;font-weight:600;font-size:13.5px;")}>
+                Elegí un usuario para ver y cambiar su rol.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {!errorCarga && seccion === "permisos" && (
         <div style={s("padding:6px 32px 50px;max-width:920px;")}>
           {/* Selector de rol + su ficha. Reemplaza a la columna fija de tarjetas. */}
           <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:18px;padding:18px 22px;box-shadow:0 1px 2px rgba(14,42,71,.04);margin-bottom:18px;")}>

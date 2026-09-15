@@ -5,9 +5,17 @@ import { useData } from "../../context/DataContext";
 import type { AuditoriaEntry } from "../../context/DataContext";
 import { ApiError } from "../../lib/api";
 import { formatFecha, formatHora } from "../../lib/mockData";
+import { exportarPdf } from "../../lib/exportPdf";
 import type { RolNombre } from "../../lib/types";
 
 type RolFiltro = RolNombre | "SISTEMA" | "TODOS";
+
+/**
+ * Eventos por página. La auditoría es de sólo-append y crece para siempre: con unos miles
+ * de filas, renderizarlas todas de una hace que la pantalla tarde en pintar y que exportar
+ * genere un PDF de cientos de hojas que nadie va a leer.
+ */
+const POR_PAGINA = 15;
 
 const ROL_STYLE: Record<RolNombre | "SISTEMA", [string, string]> = {
   ALUMNO: ["#EAF1FE", "#2D5BC8"],
@@ -57,6 +65,7 @@ export default function AdminTrazabilidad() {
   const [rolFiltro, setRolFiltro] = useState<RolFiltro>("TODOS");
   const [accFiltro, setAccFiltro] = useState<string>("TODAS");
   const [rolOpen, setRolOpen] = useState(false);
+  const [pagina, setPagina] = useState(1);
   const [accOpen, setAccOpen] = useState(false);
 
   useEffect(() => {
@@ -93,6 +102,15 @@ export default function AdminTrazabilidad() {
     });
   }, [entries, query, rolFiltro, accFiltro]);
 
+  const totalPaginas = Math.max(1, Math.ceil(filtered.length / POR_PAGINA));
+  // Si un filtro deja menos páginas que la actual, se vuelve a la primera en vez de mostrar
+  // una página vacía.
+  const paginaActual = Math.min(pagina, totalPaginas);
+  const visibles = useMemo(
+    () => filtered.slice((paginaActual - 1) * POR_PAGINA, paginaActual * POR_PAGINA),
+    [filtered, paginaActual],
+  );
+
   const kpis = useMemo(() => {
     const now = new Date();
     const hoy = auditLog.filter((e) => sameDay(new Date(e.createdAt), now)).length;
@@ -108,6 +126,7 @@ export default function AdminTrazabilidad() {
     setQuery("");
     setRolFiltro("TODOS");
     setAccFiltro("TODAS");
+    setPagina(1);
   };
 
   const rolOptions: { key: RolFiltro; label: string }[] = [
@@ -124,6 +143,58 @@ export default function AdminTrazabilidad() {
   const accBtnLabel = accFiltro === "TODAS" ? "Todas las acciones" : accFiltro;
   const accActive = accFiltro !== "TODAS";
 
+  /**
+   * El botón "Exportar" no tenía `onClick`: era decorativo, y su `title` decía "no disponible
+   * en este demo". Ahora exporta a PDF lo **filtrado**, no la tabla entera — un registro de
+   * auditoría que exporta algo distinto de lo que se está mirando no sirve como respaldo.
+   */
+  const exportar = (alcance: "pagina" | "todo") => {
+    const filas = alcance === "pagina" ? visibles : filtered;
+
+    // Exportar todo puede ser mucho: se avisa cuántos son y se pide confirmación antes de
+    // generar un documento que puede tardar.
+    if (alcance === "todo" && filas.length > POR_PAGINA) {
+      const seguir = window.confirm(
+        `Vas a exportar ${filas.length} eventos (${totalPaginas} páginas de la tabla).\n\n` +
+          "Con muchos registros el documento puede tardar unos segundos en abrirse.\n\n" +
+          "¿Querés continuar?",
+      );
+      if (!seguir) return;
+    }
+
+    const ok = exportarPdf({
+      titulo: "Registro de auditoría y trazabilidad",
+      subtitulo: "Listado inalterable de las operaciones del sistema",
+      meta: [
+        { etiqueta: "Emitido", valor: new Date().toLocaleString("es-AR") },
+        {
+          etiqueta: "Alcance",
+          valor:
+            alcance === "pagina"
+              ? `Página ${paginaActual} de ${totalPaginas} · ${filas.length} eventos`
+              : `${filas.length} eventos (todos los filtrados)`,
+        },
+        { etiqueta: "Total registrado", valor: String(auditLog.length) },
+        { etiqueta: "Rol", valor: rolBtnLabel },
+        { etiqueta: "Acción", valor: accBtnLabel },
+        { etiqueta: "Búsqueda", valor: query.trim() || "sin filtro" },
+      ],
+      columnas: [
+        { encabezado: "Fecha y hora", ancho: "13%", valor: (e) => `${formatFecha(e.createdAt)} ${formatHora(e.createdAt)}` },
+        { encabezado: "Usuario", ancho: "17%", valor: (e) => `${e.nombre} (${ROL_LABEL[e.rol]})` },
+        { encabezado: "Acción", ancho: "17%", valor: (e) => e.accion },
+        { encabezado: "Entidad", ancho: "12%", valor: (e) => e.entidad },
+        { encabezado: "ID de entidad", ancho: "20%", valor: (e) => e.entidadId },
+        { encabezado: "Detalle", ancho: "21%", valor: (e) => e.descripcion },
+      ],
+      filas,
+      pie: "Documento generado por ActiveHub a partir del registro de auditoría. Uso interno / confidencial.",
+    });
+    if (!ok) {
+      setError("El navegador bloqueó la ventana de exportación. Habilitá las ventanas emergentes para este sitio.");
+    }
+  };
+
   return (
     <DashLayout role="admin" active="trazabilidad">
       <div style={s("background:#fff;border-bottom:1px solid #E7EDF3;padding:18px 32px;display:flex;align-items:center;")}>
@@ -135,19 +206,32 @@ export default function AdminTrazabilidad() {
             Listado inalterable de todas las operaciones del sistema. Buscá por palabra clave y filtrá por rol o tipo de acción.
           </p>
         </div>
-        <button
-          className="ah-btn"
-          title="Exportación no disponible en este demo"
-          style={s(
-            "margin-left:auto;background:#fff;border:1px solid #E2E9F0;border-radius:10px;padding:10px 15px;font:700 13px Manrope,sans-serif;color:#41566B;cursor:pointer;display:flex;align-items:center;gap:7px;",
-          )}
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0C8576" strokeWidth={2}>
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-            <path d="M14 2v6h6" />
-          </svg>
-          Exportar
-        </button>
+        <div style={s("margin-left:auto;display:flex;gap:9px;flex-wrap:wrap;")}>
+          <button
+            className="ah-btn"
+            onClick={() => exportar("pagina")}
+            title="Exporta a PDF sólo los eventos de esta página"
+            style={s(
+              "background:#fff;border:1px solid #E2E9F0;border-radius:10px;padding:10px 15px;font:700 13px Manrope,sans-serif;color:#41566B;cursor:pointer;display:flex;align-items:center;gap:7px;",
+            )}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0C8576" strokeWidth={2}>
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <path d="M14 2v6h6" />
+            </svg>
+            Exportar esta página
+          </button>
+          <button
+            className="ah-btn"
+            onClick={() => exportar("todo")}
+            title="Exporta a PDF todos los eventos que pasan los filtros actuales"
+            style={s(
+              "background:#fff;border:1px solid #E2E9F0;border-radius:10px;padding:10px 15px;font:700 13px Manrope,sans-serif;color:#65788C;cursor:pointer;display:flex;align-items:center;gap:7px;",
+            )}
+          >
+            Exportar todo ({filtered.length})
+          </button>
+        </div>
       </div>
 
       <div style={s("padding:24px 32px 50px;")}>
@@ -183,7 +267,7 @@ export default function AdminTrazabilidad() {
               </svg>
               <input
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(e) => { setQuery(e.target.value); setPagina(1); }}
                 placeholder="Buscar por usuario, entidad, acción o palabra clave…"
                 style={s("border:none;outline:none;background:transparent;font:600 14px Manrope,sans-serif;color:#0E2A47;width:100%;")}
               />
@@ -223,6 +307,7 @@ export default function AdminTrazabilidad() {
                         key={o.key}
                         onClick={() => {
                           setRolFiltro(o.key);
+                          setPagina(1);
                           setRolOpen(false);
                         }}
                         className="ah-btn"
@@ -268,6 +353,7 @@ export default function AdminTrazabilidad() {
                     <div
                       onClick={() => {
                         setAccFiltro("TODAS");
+                        setPagina(1);
                         setAccOpen(false);
                       }}
                       className="ah-btn"
@@ -285,6 +371,7 @@ export default function AdminTrazabilidad() {
                           key={acc}
                           onClick={() => {
                             setAccFiltro(acc);
+                            setPagina(1);
                             setAccOpen(false);
                           }}
                           className="ah-btn"
@@ -306,6 +393,7 @@ export default function AdminTrazabilidad() {
           <div style={s("margin-top:13px;padding-top:13px;border-top:1px solid #F1F4F8;display:flex;align-items:center;gap:12px;")}>
             <span style={s("font:700 12.5px Manrope,sans-serif;color:#90A1B2;")}>
               {filtered.length} de {auditLog.length} eventos
+              {totalPaginas > 1 && ` · mostrando ${visibles.length} en esta página`}
             </span>
             <button
               onClick={clearFiltros}
@@ -319,10 +407,10 @@ export default function AdminTrazabilidad() {
 
         <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:18px;overflow:hidden;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
           <div style={s("overflow-x:auto;")}>
-            <div style={s("min-width:820px;")}>
+            <div style={s("min-width:980px;")}>
               <div
                 style={s(
-                  "display:grid;grid-template-columns:148px 1.5fr 124px 1.4fr 2.3fr;padding:12px 22px;background:#F7FAFC;border-bottom:1px solid #EEF2F6;font:700 11.5px Manrope,sans-serif;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;",
+                  "display:grid;grid-template-columns:130px minmax(150px,1.3fr) minmax(196px,1.1fr) minmax(104px,.8fr) minmax(190px,1.9fr);gap:14px;padding:12px 22px;background:#F7FAFC;border-bottom:1px solid #EEF2F6;font:700 11.5px Manrope,sans-serif;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;",
                 )}
               >
                 <span>Fecha y hora</span>
@@ -331,15 +419,19 @@ export default function AdminTrazabilidad() {
                 <span>Entidad</span>
                 <span>Detalle</span>
               </div>
-              {filtered.map((l) => {
+              {visibles.map((l) => {
                 const [rolBg, rolFg] = ROL_STYLE[l.rol];
                 const [accBg, accFg, accBd] = accionStyle(l.accion);
-                const detalle = `${l.entidad} · ${l.entidadId}${l.metadata ? " · " + l.metadata : ""}`;
+                // "Detalle" es la descripción legible que arma el backend (ver
+                // DescripcionAuditoria). El id de la entidad tiene su propia columna, así que la
+                // evidencia técnica no se pierde: lo que se sacó de acá es el texto crudo, que
+                // era un UUID seguido de una clave de permiso y no le decía nada a nadie.
+                const detalle = l.descripcion;
                 return (
                   <div
                     key={l.id}
                     className="ah-row"
-                    style={s("display:grid;grid-template-columns:148px 1.5fr 124px 1.4fr 2.3fr;padding:14px 22px;border-bottom:1px solid #F1F4F8;align-items:center;")}
+                    style={s("display:grid;grid-template-columns:130px minmax(150px,1.3fr) minmax(196px,1.1fr) minmax(104px,.8fr) minmax(190px,1.9fr);gap:14px;padding:14px 22px;border-bottom:1px solid #F1F4F8;align-items:center;")}
                   >
                     <span style={s("font:700 12px ui-monospace,Menlo,monospace;color:#0E2A47;line-height:1.5;")}>
                       {formatFecha(l.createdAt)}
@@ -362,18 +454,29 @@ export default function AdminTrazabilidad() {
                       </span>
                     </div>
                     <span
+                      title={l.accion}
                       style={s(
-                        `justify-self:start;font:700 11.5px Manrope,sans-serif;padding:4px 11px;border-radius:99px;background:${accBg};color:${accFg};border:1px solid ${accBd};`,
+                        `justify-self:start;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:700 11.5px Manrope,sans-serif;padding:4px 11px;border-radius:99px;background:${accBg};color:${accFg};border:1px solid ${accBd};`,
                       )}
                     >
                       {l.accion}
                     </span>
-                    <span style={s("font:700 12.5px Manrope,sans-serif;color:#33485E;")}>{l.entidad}</span>
-                    <span style={s("font-size:12.5px;color:#65788C;font-weight:600;line-height:1.45;")}>{detalle}</span>
+                    <span
+                      title={l.entidad}
+                      style={s("min-width:0;font:700 12.5px Manrope,sans-serif;color:#33485E;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;")}
+                    >
+                      {l.entidad}
+                    </span>
+                    <span
+                      title={detalle}
+                      style={s("min-width:0;font-size:12.5px;color:#65788C;font-weight:600;line-height:1.45;word-break:break-word;")}
+                    >
+                      {detalle}
+                    </span>
                   </div>
                 );
               })}
-              {filtered.length === 0 && (
+              {visibles.length === 0 && (
                 <div style={s("padding:46px 22px;text-align:center;")}>
                   <div style={s("font:700 15px Space Grotesk,sans-serif;color:#0E2A47;margin-bottom:4px;")}>Sin resultados</div>
                   <div style={s("font-size:13px;color:#90A1B2;font-weight:600;")}>No se encontraron operaciones con esos criterios de búsqueda.</div>
@@ -382,6 +485,38 @@ export default function AdminTrazabilidad() {
             </div>
           </div>
         </div>
+
+        {totalPaginas > 1 && (
+          <div
+            style={s(
+              "margin-top:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center;",
+            )}
+          >
+            <button
+              className="ah-btn"
+              onClick={() => setPagina(paginaActual - 1)}
+              disabled={paginaActual === 1}
+              style={s(
+                `background:#fff;border:1px solid #E2E9F0;border-radius:10px;padding:9px 14px;font:700 12.5px Manrope,sans-serif;color:${paginaActual === 1 ? "#C2CCD6" : "#41566B"};cursor:${paginaActual === 1 ? "default" : "pointer"};`,
+              )}
+            >
+              Anterior
+            </button>
+            <span style={s("font:700 12.5px Manrope,sans-serif;color:#65788C;")}>
+              Página {paginaActual} de {totalPaginas}
+            </span>
+            <button
+              className="ah-btn"
+              onClick={() => setPagina(paginaActual + 1)}
+              disabled={paginaActual === totalPaginas}
+              style={s(
+                `background:#fff;border:1px solid #E2E9F0;border-radius:10px;padding:9px 14px;font:700 12.5px Manrope,sans-serif;color:${paginaActual === totalPaginas ? "#C2CCD6" : "#41566B"};cursor:${paginaActual === totalPaginas ? "default" : "pointer"};`,
+              )}
+            >
+              Siguiente
+            </button>
+          </div>
+        )}
 
         <div style={s("margin-top:16px;display:flex;align-items:center;gap:12px;background:#F6F9FC;border:1px solid #EAF0F6;border-radius:12px;padding:14px 18px;")}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B45C8" strokeWidth={2} style={{ flex: "none" }}>

@@ -2,7 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import DashLayout from "../../components/DashLayout";
 import { s } from "../../lib/style";
 import { useAhora } from "../../lib/ahora";
+import { siPuede } from "../../lib/cargaParcial";
 import ErrorReintentar from "../../components/ErrorReintentar";
+import GraficoBarras from "../../components/GraficoBarras";
+import Modal from "../../components/Modal";
+import { exportarPdf } from "../../lib/exportPdf";
+import { descargarCsv } from "../../lib/exportCsv";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import type { ClaseAdmin, DenunciaAdmin, InscripcionAdmin, PenalizacionAdmin, UsuarioAdmin } from "../../context/DataContext";
@@ -26,25 +31,6 @@ const PERIODOS: { dias: number; label: string }[] = [
   { dias: 0, label: "Todo el histórico" },
 ];
 
-/**
- * Descarga real de un CSV armado en el cliente. Antes los tres botones de exportación
- * (PDF, Excel, CSV) llamaban al mismo `setModalOpen(true)` y no generaban ningún archivo.
- * El CSV se abre en Excel sin conversión, así que cubre los dos formatos tabulares.
- */
-function descargarCsv(nombreArchivo: string, filas: (string | number)[][]) {
-  const escapar = (v: string | number) => {
-    const texto = String(v ?? "");
-    return /[";\n]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
-  };
-  // BOM para que Excel respete los acentos; separador ";" que es lo que espera en es-AR.
-  const contenido = "﻿" + filas.map((f) => f.map(escapar).join(";")).join("\r\n");
-  const url = URL.createObjectURL(new Blob([contenido], { type: "text/csv;charset=utf-8;" }));
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = nombreArchivo;
-  a.click();
-  URL.revokeObjectURL(url);
-}
 
 function money(n: number): string {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1).replace(".0", "")}M`;
@@ -54,7 +40,7 @@ function money(n: number): string {
 
 export default function AdminReportes() {
   const ahora = useAhora();
-  const { currentUser } = useAuth();
+  const { currentUser, puede } = useAuth();
   const {
     actividades,
     tiposActividad,
@@ -76,15 +62,37 @@ export default function AdminReportes() {
 
   const [errorCarga, setErrorCarga] = useState(false);
 
-  // Un reporte con datos a medias miente: si falla cualquiera de las cuatro consultas se
-  // muestra el error con "Reintentar" en vez de KPIs calculados sobre listas vacías.
+  /**
+   * Pestañas visibles. "Reclamos y penalizaciones" sale de dos módulos que no son reportes
+   * (`denuncias.resolver` y `penalizaciones.gestionar`); sin ninguno de los dos mostraría
+   * ceros, que se leen como "no hubo reclamos" en vez de "no tenés permiso".
+   *
+   * <p>`tab` — y no `reportTab` — es lo que lee el resto de la pantalla: si la pestaña
+   * guardada en el estado deja de estar disponible, cae sola en la primera en vez de quedar
+   * seleccionada una que ya no se muestra.
+   */
+  const tabsVisibles = TABS.filter(
+    (t) => t.key !== "reclamos" || puede("denuncias.resolver") || puede("penalizaciones.gestionar"),
+  );
+  const activeTab = tabsVisibles.find((t) => t.key === reportTab) ?? tabsVisibles[0];
+  const tab = activeTab.key;
+
+  // Un reporte con datos a medias miente: si falla una consulta que el rol SÍ podía hacer,
+  // se muestra el error con "Reintentar" en vez de KPIs calculados sobre listas vacías.
+  //
+  // Ahora bien, esta pantalla cruza cinco módulos y sólo dos de las cinco consultas son
+  // `reportes.ver`: las otras tres (denuncias, usuarios, penalizaciones) pertenecen a
+  // módulos que un rol con permiso de reportes puede perfectamente no tener. Sin envolverlas,
+  // ese 403 tiraba el `Promise.all` entero y la pantalla de Reportes quedaba en error para
+  // alguien que tenía justamente el permiso de verla. Lo que no se puede pedir queda vacío y
+  // la pestaña correspondiente se oculta (ver lib/cargaParcial.ts).
   const cargar = useCallback(() => {
     Promise.all([
-      listarDenunciasAdmin(),
-      listarUsuariosAdmin(),
-      listarInscripcionesAdmin(),
-      listarClasesAdmin(),
-      listarPenalizaciones(),
+      siPuede(puede("denuncias.resolver"), listarDenunciasAdmin, []),
+      siPuede(puede("usuarios.gestionar"), listarUsuariosAdmin, []),
+      siPuede(puede("reportes.ver"), listarInscripcionesAdmin, []),
+      siPuede(puede("reportes.ver"), listarClasesAdmin, []),
+      siPuede(puede("penalizaciones.gestionar"), listarPenalizaciones, []),
     ])
       .then(([den, us, insc, clases, pen]) => {
         setDenuncias(den);
@@ -95,7 +103,7 @@ export default function AdminReportes() {
         setErrorCarga(false);
       })
       .catch(() => setErrorCarga(true));
-  }, [listarDenunciasAdmin, listarUsuariosAdmin, listarInscripcionesAdmin, listarClasesAdmin, listarPenalizaciones]);
+  }, [puede, listarDenunciasAdmin, listarUsuariosAdmin, listarInscripcionesAdmin, listarClasesAdmin, listarPenalizaciones]);
 
   useEffect(() => {
     cargar();
@@ -144,22 +152,83 @@ export default function AdminReportes() {
     return { totalInscripciones, ingresos, cancelPct };
   }, [inscripcionesFiltradas, pagos]);
 
-  const weekBars = useMemo(() => {
-    const now = new Date();
-    const buckets = Array.from({ length: 8 }, (_, i) => {
-      const start = new Date(now);
-      start.setDate(now.getDate() - (7 - i) * 7);
-      const end = new Date(start);
-      end.setDate(start.getDate() + 7);
-      const count = inscripcionesFiltradas.filter((insc) => {
+  /**
+   * La serie temporal del reporte.
+   *
+   * <p>Antes eran 8 barras rotuladas `S1`…`S8`, ocho semanas hacia atrás **fijas**, sin
+   * relación con el período elegido ni con el calendario. De ahí venían las dos preguntas
+   * razonables que nadie podía responder mirando el gráfico: qué semana es "S1" (ninguna en
+   * particular: la octava contando desde hoy hacia atrás) y qué significa una "semana 7" si
+   * un mes tiene cuatro (nada: no eran semanas del mes). Encima faltaba el eje Y, así que una
+   * barra más alta que otra no decía cuántas inscripciones más eran.
+   *
+   * <p>Ahora los tramos salen del período seleccionado, con la granularidad que lo hace
+   * legible, y cada uno lleva su fecha real y su valor:
+   * <ul>
+   *   <li>7 días → un tramo por día ("lun 8").</li>
+   *   <li>30 días → un tramo por semana, rotulado con el día en que arranca ("8 sep").</li>
+   *   <li>90 días, un año o todo el histórico → un tramo por mes ("sep").</li>
+   * </ul>
+   */
+  const serie = useMemo(() => {
+    const dia = 24 * 60 * 60 * 1000;
+    const fin = new Date(ahora);
+    fin.setHours(23, 59, 59, 999);
+
+    type Tramo = { label: string; detalle: string; desde: Date; hasta: Date };
+    const tramos: Tramo[] = [];
+
+    const fmtDiaMes = (d: Date) => d.toLocaleDateString("es-AR", { day: "numeric", month: "short" });
+
+    if (periodoDias === 7) {
+      for (let i = 6; i >= 0; i--) {
+        const desde = new Date(fin.getTime() - i * dia);
+        desde.setHours(0, 0, 0, 0);
+        const hasta = new Date(desde.getTime() + dia);
+        tramos.push({
+          label: desde.toLocaleDateString("es-AR", { weekday: "short" }),
+          detalle: fmtDiaMes(desde),
+          desde,
+          hasta,
+        });
+      }
+    } else if (periodoDias === 30) {
+      for (let i = 4; i >= 0; i--) {
+        const hasta = new Date(fin.getTime() - i * 7 * dia);
+        const desde = new Date(hasta.getTime() - 7 * dia);
+        tramos.push({ label: fmtDiaMes(desde), detalle: `${fmtDiaMes(desde)} al ${fmtDiaMes(hasta)}`, desde, hasta });
+      }
+    } else {
+      // 90 días → 3 meses; un año → 12; todo el histórico → los 12 últimos, que es lo que
+      // entra sin que las etiquetas se pisen.
+      const meses = periodoDias === 90 ? 3 : 12;
+      for (let i = meses - 1; i >= 0; i--) {
+        const desde = new Date(fin.getFullYear(), fin.getMonth() - i, 1);
+        const hasta = new Date(fin.getFullYear(), fin.getMonth() - i + 1, 1);
+        tramos.push({
+          label: desde.toLocaleDateString("es-AR", { month: "short" }),
+          detalle: desde.toLocaleDateString("es-AR", { month: "long", year: "numeric" }),
+          desde,
+          hasta,
+        });
+      }
+    }
+
+    const barras = tramos.map((t) => ({
+      label: t.label,
+      detalle: t.detalle,
+      count: inscripcionesFiltradas.filter((insc) => {
         const d = new Date(insc.createdAt);
-        return d >= start && d < end;
-      }).length;
-      return { label: `S${i + 1}`, count };
-    });
-    const max = Math.max(1, ...buckets.map((b) => b.count));
-    return buckets.map((b) => ({ label: b.label, h: `${Math.max(6, Math.round((b.count / max) * 100))}%` }));
-  }, [inscripcionesFiltradas]);
+        return d >= t.desde && d < t.hasta;
+      }).length,
+    }));
+
+    // El eje Y, las alturas y los valores los arma `GraficoBarras`: acá solo se cuenta.
+    return { barras: barras.map((b) => ({ label: b.label, valor: b.count, detalle: b.detalle })) };
+  }, [inscripcionesFiltradas, periodoDias, ahora]);
+
+  const serieTitulo =
+    periodoDias === 7 ? "Inscripciones por día" : periodoDias === 30 ? "Inscripciones por semana" : "Inscripciones por mes";
 
   const categoriaStats = useMemo(() => {
     return categorias.map((cat, i) => {
@@ -203,22 +272,6 @@ export default function AdminReportes() {
     });
   }, [categorias, actividades, tiposActividad, inscripcionesFiltradas, usuarios]);
 
-  const exportarCsv = () => {
-    const filas: (string | number)[][] = [
-      ["Reporte ActiveHub"],
-      ["Período", periodoLabel],
-      ["Alcance", categoriaLabel],
-      [],
-      ["Total inscripciones", globalKpis.totalInscripciones],
-      ["Ingresos acreditados", globalKpis.ingresos],
-      ["Cancelaciones (%)", globalKpis.cancelPct.toFixed(1)],
-      [],
-      ["Categoría", "Inscripciones", "Ingresos", "Top instructor"],
-      ...categoriaStats.map((c) => [c.cat, c.inscripciones, c.ingreso, c.top]),
-    ];
-    descargarCsv(`activehub-reporte-${new Date().toISOString().slice(0, 10)}.csv`, filas);
-  };
-
   const donut = useMemo(() => {
     const total = Math.max(1, categoriaStats.reduce((sum, c) => sum + c.inscripciones, 0));
     return categoriaStats.map((c) => ({ l: c.cat, p: `${Math.round((c.inscripciones / total) * 100)}%`, c: c.color }));
@@ -245,8 +298,13 @@ export default function AdminReportes() {
     return { total: denuncias.length, pendientes, auditoria, resueltas };
   }, [denuncias]);
 
-  const dKpis = useMemo(() => {
-    switch (reportTab) {
+  /**
+   * KPIs de la pestaña activa. Sin `useMemo`: es un switch sobre valores ya calculados, y un
+   * memo que devuelve arrays literales desde un switch hace que el compilador de React se
+   * saltee la optimización del componente entero (regla `preserve-manual-memoization`).
+   */
+  const dKpis = (() => {
+    switch (tab) {
       case "desempeno":
         return [
           { l: "Total de inscripciones", v: String(globalKpis.totalInscripciones) },
@@ -285,9 +343,130 @@ export default function AdminReportes() {
           { l: "Penalizaciones aplicadas", v: String(penalizaciones.length) },
         ];
     }
-  }, [reportTab, globalKpis, actividades, pagos, actividadRanking, clasesAdmin, reclamosStats, penalizaciones]);
+  })();
 
-  const activeTab = TABS.find((t) => t.key === reportTab)!;
+  /**
+   * Qué tabla se muestra bajo los KPIs. Es la misma decisión que ya tomaba el PDF; el bug era
+   * que sólo la tomaba **ahí**: en la pantalla las cuatro pestañas mostraban exactamente lo
+   * mismo (KPIs fijos + detalle por categoría), así que hacer click no cambiaba nada a la
+   * vista y parecían botones muertos.
+   */
+  /**
+   * Tabla de detalle de la pestaña activa: encabezados, anchos y filas ya formateadas.
+   * Sin `useMemo`: es un mapeo barato sobre listas ya calculadas, y un segundo memo que
+   * devuelve un objeto literal dentro de un `switch` hace que el compilador de React se saltee
+   * la optimización de todo el componente (regla `preserve-manual-memoization`).
+   */
+  const detalle = (() => {
+    switch (tab) {
+      case "actividades":
+        return {
+          titulo: "Ranking de actividades",
+          grid: "1.8fr 1.3fr .9fr .7fr",
+          columnas: ["Actividad", "Instructor", "Inscripciones", "Rating"],
+          filas: actividadRanking.map((a) => ({
+            clave: a.nombre,
+            celdas: [
+              a.nombre,
+              a.instructor ? `${a.instructor.nombre} ${a.instructor.apellido}` : "—",
+              String(a.inscripciones),
+              `★ ${a.rating.toFixed(1)}`,
+            ],
+          })),
+        };
+      case "reclamos":
+        return {
+          titulo: "Reclamos registrados",
+          grid: "2fr 1fr 1fr 1fr",
+          columnas: ["Motivo", "Estado", "Resolución", "Fecha"],
+          filas: denuncias.map((d) => ({
+            clave: d.id,
+            celdas: [
+              d.motivo,
+              d.estado,
+              d.resolucion ?? "—",
+              new Date(d.createdAt).toLocaleDateString("es-AR"),
+            ],
+          })),
+        };
+      case "financiero":
+        return {
+          titulo: "Ingresos por categoría",
+          grid: "1.5fr 1fr 1fr 1.3fr",
+          columnas: ["Categoría", "Inscripciones", "Ingresos acreditados", "Top instructor"],
+          filas: categoriaStats.map((r) => ({
+            clave: r.cat,
+            celdas: [r.cat, String(r.inscripciones), money(r.ingreso), r.top],
+          })),
+        };
+      default:
+        return {
+          titulo: "Detalle por categoría",
+          grid: "1.5fr 1fr 1fr 1.3fr",
+          columnas: ["Categoría", "Inscripciones", "Ingresos", "Top instructor"],
+          filas: categoriaStats.map((r) => ({
+            clave: r.cat,
+            celdas: [r.cat, String(r.inscripciones), money(r.ingreso), r.top],
+          })),
+        };
+    }
+  })();
+
+
+  /**
+   * El CSV sigue la pestaña activa, igual que los KPIs y la tabla de la pantalla. Antes
+   * exportaba siempre el detalle por categoría, así que desde "Reclamos" bajabas un archivo
+   * que no tenía nada que ver con lo que estabas mirando.
+   */
+  /**
+   * El PDF ahora sale por el mismo helper que Trazabilidad y Metricas, e incluye el grafico.
+   * Antes el boton llamaba a `window.print()` sobre el modal: imprimia la pantalla tal cual,
+   * con el fondo oscuro y la barra de botones adentro del papel.
+   */
+  const exportarPdfReporte = () => {
+    const ok = exportarPdf({
+      titulo: activeTab.title,
+      subtitulo: `${periodoLabel} · ${categoriaLabel}`,
+      meta: [
+        { etiqueta: "Generado por", valor: generadoPor },
+        { etiqueta: "Emisión", valor: emision },
+        ...(dKpis ?? []).map((k) => ({ etiqueta: k.l, valor: k.v })),
+      ],
+      grafico: {
+        titulo: serieTitulo,
+        barras: serie.barras.map((b) => ({ label: b.label, valor: b.valor })),
+        unidad: "inscripciones",
+      },
+      columnas: detalle.columnas.map((c, i) => ({
+        encabezado: c,
+        valor: (f: (typeof detalle.filas)[number]) => f.celdas[i] ?? "",
+      })),
+      filas: detalle.filas,
+      pie: "Documento generado automáticamente por ActiveHub a partir de datos operativos de la plataforma · Uso interno / confidencial.",
+    });
+    if (!ok) {
+      window.alert("El navegador bloqueó la ventana de exportación. Habilitá las ventanas emergentes para este sitio.");
+    }
+  };
+
+  const exportarCsv = () => {
+    const filas: (string | number)[][] = [
+      ["Reporte ActiveHub", activeTab.title],
+      ["Período", periodoLabel],
+      ["Alcance", categoriaLabel],
+      [],
+      ...(dKpis ?? []).map((k) => [k.l, k.v]),
+      [],
+      detalle.columnas,
+      ...detalle.filas.map((f) => f.celdas),
+      [],
+      // La serie del gráfico va como filas: un CSV no puede llevar una imagen, pero sí los
+      // números con los que está hecho, que es lo que alguien va a querer para rehacerlo.
+      [serieTitulo, "Inscripciones"],
+      ...serie.barras.map((b) => [b.detalle ?? b.label, b.valor]),
+    ];
+    descargarCsv(`activehub-reporte-${tab}-${new Date().toISOString().slice(0, 10)}.csv`, filas);
+  };
   const now = new Date();
   const generadoPor = currentUser ? `${currentUser.nombre} ${currentUser.apellido}` : "Administrador";
   const emision = now.toLocaleString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -379,13 +558,13 @@ export default function AdminReportes() {
         </div>
 
         <div style={s("display:flex;gap:6px;background:#F1F4F8;border-radius:12px;padding:5px;width:fit-content;margin-bottom:20px;flex-wrap:wrap;")}>
-          {TABS.map((t) => (
+          {tabsVisibles.map((t) => (
             <span
               key={t.key}
               onClick={() => setReportTab(t.key)}
               className="ah-btn"
               style={s(
-                `padding:10px 20px;border-radius:9px;font:700 13.5px Manrope,sans-serif;cursor:pointer;color:${reportTab === t.key ? "#0E2A47" : "#65788C"};background:${reportTab === t.key ? "#fff" : "transparent"};`,
+                `padding:10px 20px;border-radius:9px;font:700 13.5px Manrope,sans-serif;cursor:pointer;color:${tab === t.key ? "#0E2A47" : "#65788C"};background:${tab === t.key ? "#fff" : "transparent"};`,
               )}
             >
               {t.label}
@@ -393,32 +572,31 @@ export default function AdminReportes() {
           ))}
         </div>
 
-        <div className="ah-grid-3" style={s("display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px;")}>
-          <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:16px;padding:18px;")}>
-            <div style={s("font-size:12.5px;color:#7A8C9E;font-weight:600;margin-bottom:8px;")}>Total inscripciones</div>
-            <div style={s("font:700 26px Space Grotesk,sans-serif;color:#0E2A47;")}>{globalKpis.totalInscripciones.toLocaleString("es-AR")}</div>
-          </div>
-          <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:16px;padding:18px;")}>
-            <div style={s("font-size:12.5px;color:#7A8C9E;font-weight:600;margin-bottom:8px;")}>Ingresos totales</div>
-            <div style={s("font:700 26px Space Grotesk,sans-serif;color:#0E2A47;")}>{money(globalKpis.ingresos)}</div>
-          </div>
-          <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:16px;padding:18px;")}>
-            <div style={s("font-size:12.5px;color:#7A8C9E;font-weight:600;margin-bottom:8px;")}>Cancelaciones</div>
-            <div style={s("font:700 26px Space Grotesk,sans-serif;color:#BE3A3E;")}>{globalKpis.cancelPct.toFixed(1)}%</div>
-          </div>
+        <div style={s("font:700 17px Space Grotesk,sans-serif;color:#0E2A47;margin-bottom:3px;")}>{activeTab.title}</div>
+        <div style={s("font-size:12.5px;color:#90A1B2;font-weight:600;margin-bottom:14px;")}>
+          {periodoLabel} · {categoriaLabel}
+        </div>
+
+        {/* Los KPIs son los de la pestaña: son los que cambian al elegir Financiero,
+            Actividades o Reclamos. Antes esta fila era fija y sólo el PDF los respetaba. */}
+        <div className="ah-grid-4" style={s("display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px;")}>
+          {dKpis?.map((k) => (
+            <div key={k.l} style={s("background:#fff;border:1px solid #E7EDF3;border-radius:16px;padding:18px;")}>
+              <div style={s("font-size:12.5px;color:#7A8C9E;font-weight:600;margin-bottom:8px;line-height:1.35;")}>{k.l}</div>
+              <div style={s("font:700 22px Space Grotesk,sans-serif;color:#0E2A47;line-height:1.2;word-break:break-word;")}>{k.v}</div>
+            </div>
+          ))}
         </div>
 
         <div className="ah-grid-side" style={s("display:grid;grid-template-columns:1.4fr 1fr;gap:18px;margin-bottom:20px;")}>
           <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:18px;padding:22px;")}>
-            <div style={s("font:700 16px Space Grotesk,sans-serif;margin-bottom:20px;")}>Inscripciones por semana</div>
-            <div style={s("display:flex;align-items:flex-end;gap:12px;height:170px;")}>
-              {weekBars.map((b) => (
-                <div key={b.label} style={s("flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;justify-content:flex-end;height:100%;")}>
-                  <div style={s(`width:100%;border-radius:7px 7px 3px 3px;background:linear-gradient(180deg,#FF8A5C,#FF6A2B);height:${b.h};`)} />
-                  <span style={s("font-size:10px;color:#90A1B2;font-weight:700;")}>{b.label}</span>
-                </div>
-              ))}
+            <div style={s("margin-bottom:18px;")}>
+              <div style={s("font:700 16px Space Grotesk,sans-serif;")}>{serieTitulo}</div>
+              <div style={s("font-size:12px;color:#90A1B2;font-weight:600;margin-top:2px;")}>
+                {periodoLabel} · cantidad de inscripciones creadas en cada tramo
+              </div>
             </div>
+            <GraficoBarras barras={serie.barras} color="naranja" alto={180} unidad="inscripciones" />
           </div>
           <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:18px;padding:22px;")}>
             <div style={s("font:700 16px Space Grotesk,sans-serif;margin-bottom:20px;")}>Distribución por categoría</div>
@@ -439,34 +617,51 @@ export default function AdminReportes() {
         </div>
 
         <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:18px;overflow:hidden;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
-          <div style={s("padding:18px 22px;font:700 16px Space Grotesk,sans-serif;")}>Detalle por categoría</div>
+          <div style={s("padding:18px 22px;font:700 16px Space Grotesk,sans-serif;")}>{detalle.titulo}</div>
           <div style={s("overflow-x:auto;")}>
-            <div style={s("min-width:640px;")}>
+            <div style={s("min-width:680px;")}>
               <div
                 style={s(
-                  "display:grid;grid-template-columns:1.5fr 1fr 1fr 1.3fr;padding:12px 22px;background:#F7FAFC;border-top:1px solid #EEF2F6;border-bottom:1px solid #EEF2F6;font:700 11.5px Manrope,sans-serif;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;",
+                  `display:grid;grid-template-columns:${detalle.grid};padding:12px 22px;background:#F7FAFC;border-top:1px solid #EEF2F6;border-bottom:1px solid #EEF2F6;font:700 11.5px Manrope,sans-serif;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;gap:12px;`,
                 )}
               >
-                <span>Categoría</span>
-                <span>Inscripciones</span>
-                <span>Ingresos</span>
-                <span>Top instructor</span>
+                {detalle.columnas.map((c) => (
+                  <span key={c}>{c}</span>
+                ))}
               </div>
-              {categoriaStats.map((r) => (
-                <div key={r.cat} style={s("display:grid;grid-template-columns:1.5fr 1fr 1fr 1.3fr;padding:14px 22px;border-bottom:1px solid #F1F4F8;align-items:center;")}>
-                  <span style={s("font:700 14px Manrope,sans-serif;color:#0E2A47;")}>{r.cat}</span>
-                  <span style={s("font-size:14px;color:#41566B;font-weight:600;")}>{r.inscripciones}</span>
-                  <span style={s("font:700 14px Space Grotesk,sans-serif;color:#0E2A47;")}>{money(r.ingreso)}</span>
-                  <span style={s("font-size:13px;color:#65788C;font-weight:600;")}>{r.top}</span>
+              {detalle.filas.map((fila, i) => (
+                <div
+                  key={fila.clave}
+                  style={s(
+                    `display:grid;grid-template-columns:${detalle.grid};padding:14px 22px;border-bottom:1px solid #F1F4F8;align-items:center;gap:12px;background:${i % 2 === 1 ? "#FCFDFE" : "#fff"};`,
+                  )}
+                >
+                  {fila.celdas.map((celda, j) => (
+                    <span
+                      key={j}
+                      style={s(
+                        j === 0
+                          ? "font:700 14px Manrope,sans-serif;color:#0E2A47;min-width:0;word-break:break-word;"
+                          : "font-size:13.5px;color:#41566B;font-weight:600;min-width:0;word-break:break-word;",
+                      )}
+                    >
+                      {celda}
+                    </span>
+                  ))}
                 </div>
               ))}
+              {detalle.filas.length === 0 && (
+                <div style={s("padding:34px 22px;text-align:center;color:#90A1B2;font-weight:600;font-size:13.5px;")}>
+                  Sin datos para esta pestaña con los filtros aplicados.
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
 
       {modalOpen && (
-        <div style={s("position:fixed;inset:0;z-index:80;background:rgba(8,22,38,.64);backdrop-filter:blur(4px);display:flex;flex-direction:column;")}>
+        <Modal layout="columna" fondo="rgba(8,22,38,.64)">
           <div style={s("flex:none;background:#0E2A47;color:#fff;padding:12px 22px;display:flex;align-items:center;gap:13px;border-bottom:1px solid #1C3A5A;")}>
             <span style={s("width:30px;height:30px;border-radius:8px;background:#FF6A2B;display:flex;align-items:center;justify-content:center;font:800 13px Space Grotesk,sans-serif;color:#fff;")}>
               AH
@@ -475,7 +670,7 @@ export default function AdminReportes() {
             <span style={s("font:600 12px Manrope,sans-serif;color:#9DB3C9;")}>Generado el {emision}</span>
             <div style={s("margin-left:auto;display:flex;align-items:center;gap:8px;")}>
               <button
-                onClick={() => window.print()}
+                onClick={exportarPdfReporte}
                 className="ah-btn"
                 style={s("display:flex;align-items:center;gap:7px;background:#FF6A2B;color:#fff;border:none;border-radius:9px;padding:9px 15px;font:700 13px Manrope,sans-serif;cursor:pointer;")}
               >
@@ -485,13 +680,6 @@ export default function AdminReportes() {
                   <path d="M12 15V3" />
                 </svg>
                 Descargar PDF
-              </button>
-              <button
-                title="Exportación a Excel no disponible en este demo"
-                className="ah-btn"
-                style={s("display:flex;align-items:center;gap:7px;background:rgba(255,255,255,.1);color:#fff;border:1px solid #2B496B;border-radius:9px;padding:9px 14px;font:700 13px Manrope,sans-serif;cursor:pointer;")}
-              >
-                Excel
               </button>
               <button
                 onClick={() => setModalOpen(false)}
@@ -522,7 +710,7 @@ export default function AdminReportes() {
                   <div style={s("text-align:right;")}>
                     <div style={s("font:700 10px Manrope,sans-serif;color:#9DB3C9;letter-spacing:.6px;text-transform:uppercase;margin-bottom:3px;")}>Reporte N.º</div>
                     <div style={s("font:700 13px ui-monospace,Menlo,monospace;color:#0FB8A9;")}>
-                      RP-{reportTab.slice(0, 3).toUpperCase()}-{now.getFullYear()}-{String(now.getMonth() + 1).padStart(2, "0")}
+                      RP-{tab.slice(0, 3).toUpperCase()}-{now.getFullYear()}-{String(now.getMonth() + 1).padStart(2, "0")}
                     </div>
                   </div>
                 </div>
@@ -573,7 +761,9 @@ export default function AdminReportes() {
                   02 · Detalle
                 </div>
 
-                {(reportTab === "desempeno" || reportTab === "financiero") && (
+                {/* El PDF ya distinguía por pestaña; se deja como estaba para no tocar el
+                    formato del documento, pero ahora coincide con lo que se ve en pantalla. */}
+                {(tab === "desempeno" || tab === "financiero") && (
                   <div style={s("border:1px solid #E7EDF3;border-radius:14px;overflow:hidden;")}>
                     <div
                       style={s(
@@ -596,7 +786,7 @@ export default function AdminReportes() {
                   </div>
                 )}
 
-                {reportTab === "actividades" && (
+                {tab === "actividades" && (
                   <div style={s("border:1px solid #E7EDF3;border-radius:14px;overflow:hidden;")}>
                     <div
                       style={s(
@@ -619,7 +809,7 @@ export default function AdminReportes() {
                   </div>
                 )}
 
-                {reportTab === "reclamos" && (
+                {tab === "reclamos" && (
                   <div style={s("border:1px solid #E7EDF3;border-radius:14px;overflow:hidden;")}>
                     <div
                       style={s(
@@ -649,7 +839,7 @@ export default function AdminReportes() {
               </div>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </DashLayout>
   );

@@ -5,7 +5,7 @@ import Logo from "./Logo";
 import NotificationBell from "./NotificationBell";
 import Avatar from "./Avatar";
 import ChatbotWidget from "./ChatbotWidget";
-import { areasDisponibles, PERMISO_POR_ITEM } from "../lib/areas";
+import { areasDisponibles, homeDeArea, puedeVerItem } from "../lib/areas";
 import { useAuth } from "../context/AuthContext";
 
 type AlumnoNavKey = "home" | "explorar" | "calendario" | "favoritos" | "misclases";
@@ -20,12 +20,12 @@ const ITEMS: { key: AlumnoNavKey; label: string; path: string }[] = [
 
 export default function AlumnoNav({ active }: { active: AlumnoNavKey }) {
   const navigate = useNavigate();
-  const { currentUser, puede, permisos } = useAuth();
+  const { currentUser, permisos } = useAuth();
   const nombre = currentUser?.nombre ?? "Invitado";
   // RN-19: el menú lo arman los permisos, no el nombre del rol. Un rol al que el admin le
   // sacó `inscripciones.gestionar` no debe ver "Mis clases" ni "Calendario" — el backend
   // se las rechaza igual.
-  const items = ITEMS.filter((it) => !PERMISO_POR_ITEM[it.key] || puede(PERMISO_POR_ITEM[it.key]));
+  const items = ITEMS.filter((it) => puedeVerItem(it.key, permisos));
   // Si además tiene permisos de instructor o de administración, el acceso va acá: sin esto
   // quedaba encerrado en el panel de alumno sin ninguna forma de llegar al resto.
   const otrasAreas = areasDisponibles(permisos).filter((a) => a.area !== "alumno");
@@ -66,7 +66,7 @@ export default function AlumnoNav({ active }: { active: AlumnoNavKey }) {
           {otrasAreas.map((a) => (
             <span
               key={a.area}
-              onClick={() => navigate(a.home)}
+              onClick={() => navigate(homeDeArea(a.area, permisos))}
               className="ah-btn"
               style={s(
                 "cursor:pointer;padding:9px 14px;border-radius:10px;font:700 13.5px Manrope,sans-serif;color:#0E2A47;border:1px solid #E7EDF3;background:#fff;white-space:nowrap;",

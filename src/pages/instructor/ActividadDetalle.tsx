@@ -5,6 +5,7 @@ import DashLayout from "../../components/DashLayout";
 import StatusBadge from "../../components/StatusBadge";
 import ActivityPhoto from "../../components/ActivityPhoto";
 import { s } from "../../lib/style";
+import { useAhora } from "../../lib/ahora";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import { ApiError } from "../../lib/api";
@@ -49,11 +50,14 @@ export default function InstructorActividadDetalle() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  const ahora = useAhora();
+  /** 4 días: el mismo umbral que `VentanaInscripcion.UMBRAL_PREINSCRIPCION` del backend. */
+  const UMBRAL_PREINSCRIPCION_MS = 4 * 24 * 60 * 60 * 1000;
+
   const [formOpen, setFormOpen] = useState(false);
   const [editingClaseId, setEditingClaseId] = useState<string | null>(null);
   const [fechaStr, setFechaStr] = useState("");
   const [horaStr, setHoraStr] = useState("");
-  const [horaFinStr, setHoraFinStr] = useState("");
   const [cuposStr, setCuposStr] = useState("");
   // E2I-HU06 criterio 6: "Repetir cada semana" crea la AgendaClases de la recurrencia.
   const [repetir, setRepetir] = useState(false);
@@ -69,8 +73,25 @@ export default function InstructorActividadDetalle() {
     .getClasesDeActividad(actividad.id)
     .sort((a, b) => new Date(a.fechaHora).getTime() - new Date(b.fechaHora).getTime());
 
-  /** Hora fin por defecto: inicio + la duración que tiene cargada la actividad. */
-  const finSugerido = (hora: string) => {
+  /**
+   * Clase CONGELADA: ya entró a la ventana de inscripción (faltan 4 días o menos) y tiene al
+   * menos un inscripto. A partir de ahí hay gente que pagó por esos datos, así que no se
+   * editan ni los pisa un cambio de precio de la actividad. Espejo de
+   * `VentanaInscripcion.estaCongelada` en el backend, que es quien lo hace cumplir: esto
+   * sólo evita ofrecer un botón que va a volver con 400.
+   *
+   * <p>El camino para una clase congelada que no se va a dictar es cancelarla (desde la
+   * gestión de la clase), que reintegra y avisa a cada alumno.
+   */
+  const estaCongelada = (clase: { fechaHora: string; cuposOcupados: number }) =>
+    clase.cuposOcupados > 0 &&
+    new Date(clase.fechaHora).getTime() - ahora <= UMBRAL_PREINSCRIPCION_MS;
+
+  /**
+   * La hora de fin ya no se pide: la calcula el backend con la duración de la actividad. Acá
+   * sólo se muestra, para que el instructor vea a qué hora termina antes de guardar.
+   */
+  const finCalculado = (hora: string) => {
     if (!hora) return "";
     const [h, m] = hora.split(":").map(Number);
     const total = h * 60 + m + actividad.duracionMin;
@@ -81,7 +102,6 @@ export default function InstructorActividadDetalle() {
     setEditingClaseId(null);
     setFechaStr("");
     setHoraStr("");
-    setHoraFinStr("");
     setCuposStr("");
     setRepetir(false);
     setRepetirHasta("");
@@ -96,7 +116,6 @@ export default function InstructorActividadDetalle() {
     setEditingClaseId(claseId);
     setFechaStr(toDateInputLocal(d));
     setHoraStr(toTimeInputLocal(d));
-    setHoraFinStr(toTimeInputLocal(new Date(c.horaFin)));
     setCuposStr(String(c.cuposMax));
     setRepetir(false);
     setRepetirHasta("");
@@ -106,13 +125,10 @@ export default function InstructorActividadDetalle() {
 
   const submitClase = async (e: FormEvent) => {
     e.preventDefault();
-    if (!fechaStr || !horaStr || !horaFinStr) return;
+    if (!fechaStr || !horaStr) return;
     setError(null);
 
     const inicio = new Date(`${fechaStr}T${horaStr}:00`);
-    // Si el fin es "menor" que el inicio se asume que cruza la medianoche.
-    const fin = new Date(`${fechaStr}T${horaFinStr}:00`);
-    if (fin <= inicio) fin.setDate(fin.getDate() + 1);
 
     // El cupo ya no cae a un valor de la actividad: es obligatorio y propio de la clase.
     const cupos = Number(cuposStr);
@@ -130,13 +146,11 @@ export default function InstructorActividadDetalle() {
       if (editingClaseId) {
         await data.actualizarClase(editingClaseId, actividad.id, {
           fechaHora: inicio.toISOString(),
-          horaFin: fin.toISOString(),
           cuposMax: cupos,
         });
       } else {
         await data.crearClase(actividad.id, {
           fechaHora: inicio.toISOString(),
-          horaFin: fin.toISOString(),
           cuposMax: cupos,
           repetirSemanalmente: repetir,
           repetirHasta: repetir && repetirHasta ? repetirHasta : undefined,
@@ -301,23 +315,33 @@ export default function InstructorActividadDetalle() {
                 type="time"
                 required
                 value={horaStr}
-                onChange={(e) => {
-                  setHoraStr(e.target.value);
-                  // Se propone el fin según la duración de la actividad; se puede cambiar.
-                  if (!horaFinStr) setHoraFinStr(finSugerido(e.target.value));
-                }}
+                onChange={(e) => setHoraStr(e.target.value)}
                 style={s("border:1px solid #D9E1EA;border-radius:9px;padding:9px 12px;font:600 13.5px Manrope;color:#0E2A47;outline:none;")}
               />
             </div>
             <div>
-              <label style={s("display:block;font:700 12px Manrope;color:#41566B;margin-bottom:6px;")}>Hora fin</label>
-              <input
-                type="time"
-                required
-                value={horaFinStr}
-                onChange={(e) => setHoraFinStr(e.target.value)}
-                style={s("border:1px solid #D9E1EA;border-radius:9px;padding:9px 12px;font:600 13.5px Manrope;color:#0E2A47;outline:none;")}
-              />
+              {/*
+                La hora de fin es CALCULADA, no un campo: sale de la duración de la actividad
+                (${actividad.duracionMin} min). Se muestra para que el instructor la vea antes
+                de guardar, pero no se edita — una clase que dura algo distinto de lo que
+                promete su actividad no tendría cómo explicarse al alumno.
+              */}
+              {/*
+                La duración va en la ETIQUETA, no debajo de la caja: la fila del formulario es
+                `align-items:flex-end`, así que un texto colgando abajo empujaba esta caja hacia
+                arriba y quedaba desalineada respecto de los demás campos.
+              */}
+              <label style={s("display:block;font:700 12px Manrope;color:#41566B;margin-bottom:6px;white-space:nowrap;")}>
+                Hora fin <span style={s("font-weight:600;color:#90A1B2;")}>({actividad.duracionMin} min)</span>
+              </label>
+              <div
+                title="Se calcula con la duración de la actividad"
+                style={s(
+                  "border:1px dashed #D9E1EA;border-radius:9px;padding:9px 12px;font:600 13.5px Manrope;color:#65788C;background:#F7FAFC;min-width:88px;",
+                )}
+              >
+                {horaStr ? finCalculado(horaStr) : "—"}
+              </div>
             </div>
             <div>
               <label style={s("display:block;font:700 12px Manrope;color:#41566B;margin-bottom:6px;")}>Cupo máximo</label>
@@ -416,15 +440,30 @@ export default function InstructorActividadDetalle() {
                 >
                   Ver
                 </button>
-                <button
-                  className="ah-btn"
-                  onClick={() => openEditar(c.id)}
-                  style={s(
-                    "background:#fff;border:1px solid #E2E9F0;border-radius:8px;padding:7px 11px;font:700 12px Manrope;color:#41566B;cursor:pointer;",
-                  )}
-                >
-                  Editar
-                </button>
+                {estaCongelada(c) ? (
+                  <span
+                    title="Ya tiene inscriptos y está en período de inscripción: sus datos quedaron congelados. Si no la vas a dictar, cancelala desde “Ver”."
+                    style={s(
+                      "display:flex;align-items:center;gap:5px;background:#F4F7FA;border:1px solid #E2E9F0;border-radius:8px;padding:7px 11px;font:700 12px Manrope;color:#90A1B2;",
+                    )}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#90A1B2" strokeWidth={2.4}>
+                      <rect x="3" y="11" width="18" height="11" rx="2" />
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                    </svg>
+                    Congelada
+                  </span>
+                ) : (
+                  <button
+                    className="ah-btn"
+                    onClick={() => openEditar(c.id)}
+                    style={s(
+                      "background:#fff;border:1px solid #E2E9F0;border-radius:8px;padding:7px 11px;font:700 12px Manrope;color:#41566B;cursor:pointer;",
+                    )}
+                  >
+                    Editar
+                  </button>
+                )}
                 {c.cuposOcupados === 0 && (
                   <button
                     className="ah-btn"

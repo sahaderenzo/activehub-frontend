@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AlumnoNav from "../../components/AlumnoNav";
 import { s } from "../../lib/style";
+import Modal from "../../components/Modal";
 import { useData } from "../../context/DataContext";
 import type { MiInscripcion, MiResenia } from "../../context/DataContext";
 import { formatFecha } from "../../lib/mockData";
 import { ApiError } from "../../lib/api";
+import { useAuth } from "../../context/AuthContext";
+import { siPuede } from "../../lib/cargaParcial";
 
 function Stars({ n, onPick }: { n: number; onPick?: (v: number) => void }) {
   return (
@@ -36,19 +39,26 @@ interface FormState {
 
 export default function AlumnoMisResenas() {
   const data = useData();
+  const { puede } = useAuth();
   const [misInscripciones, setMisInscripciones] = useState<MiInscripcion[]>([]);
   const [misResenias, setMisResenias] = useState<MiResenia[]>([]);
   const [form, setForm] = useState<FormState | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Las inscripciones son de otro módulo (`inscripciones.gestionar`) y sólo alimentan la
+  // lista de clases calificables: sin ese permiso las reseñas ya escritas se siguen viendo y
+  // lo que no se puede es escribir una nueva (ver lib/cargaParcial.ts).
   const cargar = useCallback(() => {
-    Promise.all([data.listarMisInscripciones("Inscripto"), data.listarMisResenas()])
+    Promise.all([
+      siPuede(puede("inscripciones.gestionar"), () => data.listarMisInscripciones("Inscripto"), []),
+      data.listarMisResenas(),
+    ])
       .then(([insc, res]) => {
         setMisInscripciones(insc);
         setMisResenias(res);
       })
       .catch((err) => setError(err instanceof ApiError ? err.message : "No pudimos cargar tus reseñas."));
-  }, [data.listarMisInscripciones, data.listarMisResenas]);
+  }, [puede, data.listarMisInscripciones, data.listarMisResenas]);
 
   useEffect(() => {
     cargar();
@@ -216,11 +226,8 @@ export default function AlumnoMisResenas() {
       </div>
 
       {form && (
-        <div
-          onClick={() => setForm(null)}
-          style={s("position:fixed;inset:0;background:rgba(14,42,71,.45);display:flex;align-items:center;justify-content:center;z-index:60;padding:20px;")}
-        >
-          <div onClick={(e) => e.stopPropagation()} style={s("background:#fff;border-radius:18px;padding:26px;max-width:440px;width:100%;")}>
+        <Modal onClose={() => setForm(null)} zIndex={60}>
+          <div style={s("background:#fff;border-radius:18px;padding:26px;max-width:440px;width:100%;")}>
             <div style={s("font:700 18px Space Grotesk,sans-serif;color:#0E2A47;margin-bottom:4px;")}>
               {form.editingId ? "Editar reseña" : "Dejar reseña"}
             </div>
@@ -261,7 +268,7 @@ export default function AlumnoMisResenas() {
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

@@ -89,9 +89,11 @@ Las respuestas salen de `lib/faqs.ts` por coincidencia de palabras, **no de un m
 
 `admin/Roles.tsx` consume `listarRolesPermisos()` (GET `/api/admin/roles`), `actualizarPermisosRol(rolId, claves)` y `crearRol(nombre, descripcion?)`. La matriz de checkboxes sale de `ConfiguracionRol` en la base (RN-19) — antes vivía en una constante del componente y "Guardar cambios" solo pintaba un cartel.
 
+**Un rol por vez, elegido en un combo.** La pantalla era una matriz de N columnas (una por rol) con la lista de roles fija a la izquierda: con los tres del sistema entraba justo, pero en cuanto el admin crea roles propios —que es el punto de la pantalla— la grilla se vuelve ilegible y hay que scrollear en horizontal para saber qué columna es cuál. Hoy el rol se elige en un `<select>` arriba, la lista de permisos ocupa todo el ancho y el borrador sigue siendo **por rol**, así que se puede cambiar de rol sin perder lo tocado y "Guardar cambios" manda todos los roles que cambiaron.
+
 Cosas a respetar:
 - **Se guarda la foto completa del rol**: se manda la lista de claves marcadas y el backend apaga todo lo que no venga. Por eso el botón solo se habilita si hay diferencias contra lo cargado.
-- **Las columnas son dinámicas**: hay tantas como roles devuelva la API (el admin puede crear roles nuevos), no tres fijas.
+- **Los permisos implícitos no se muestran.** `PermisoAdmin.configurable` viene del backend (`Permiso.IMPLICITOS`); hoy el único implícito es `catalogo.explorar`. Se conserva en la base y en las guardas — explorar el catálogo lo hace cualquiera y la única guarda que usa esa clave son los favoritos —, pero como checkbox sólo servía para romper un rol sin querer. **Filtrar por `configurable`, no por una lista de claves escrita en el componente.**
 - **Al Administrador no se le pueden sacar los permisos críticos**: el backend rechaza con 400 y la pantalla recarga desde el servidor, así los checkboxes vuelven a su estado previo (criterios 6 y 8) en vez de quedar mintiendo.
 - Un rol creado acá **nace sin permisos**, y sí se le puede asignar a una cuenta (desde el modal de edición de `admin/Gestion.tsx`). Con permisos de más de un área, el usuario ve el botón "Ir a …" para cambiar de panel.
 
@@ -118,16 +120,119 @@ La spec la retiró del alcance ("el registro de asistencia manual fue retirado d
 
 `AuthContext` expone `permisos` (las claves del rol, que vienen en `GET /api/auth/me`) y `puede(clave)`.
 
-**`src/lib/areas.ts` es la fuente de verdad**: define las tres áreas (`alumno`, `instructor`, `admin`), qué permisos habilitan cada una (alcanza con **uno**) y qué permiso pide cada ítem de menú (`PERMISO_POR_ITEM`, compartido por los tres menús). Antes esto estaba repartido entre `RequireRole`, una constante privada de `DashSidebar` y dos mapas `HOME_BY_ROL`.
+**`src/lib/areas.ts` es la fuente de verdad**: define las tres áreas (`alumno`, `instructor`, `admin`), qué permisos habilitan cada una (alcanza con **uno**) y, en `pantallas`, la lista ordenada de pantallas de cada área con el permiso que pide cada una. Antes esto estaba repartido entre `RequireRole`, una constante privada de `DashSidebar`, dos mapas `HOME_BY_ROL` y un `PERMISO_POR_ITEM` escrito a mano.
+
+De esa única lista salen las tres respuestas: qué áreas ve alguien (`areasDisponibles`), qué ítems de menú ve dentro (`puedeVerItem`) y **a dónde aterriza** (`homeDe`, `homeDeArea`). **No hay N menús para N combinaciones de permisos**: hay 3 menús y un filtro. Agregar una pantalla = una entrada en `pantallas` + su grupo de ruta en `App.tsx`.
+
+Tres reglas de ese archivo que no son obvias:
+
+- **`requiere` puede ser una lista, y significa "alcanza con uno".** Es el caso de Gestión, que tiene una pestaña por módulo: exigirle `usuarios.gestionar` a alguien que sólo tiene `denuncias.resolver` lo dejaba afuera de la pantalla que contiene su pestaña de Reclamos. Adentro, `admin/Gestion.tsx` filtra qué pestañas se ven y cae en la primera permitida si la URL pide una que no.
+- **El aterrizaje es la primera pantalla que los permisos habilitan, no la raíz del área.** Los paneles de inicio van primeros y declaran los permisos de su **contenido**, así que un administrador completo cae en su Dashboard y uno con sólo `taxonomia.gestionar` lo saltea y va directo al ABM (antes caía en `/admin` y veía el cartel de error, porque las cuatro consultas del panel son de otros módulos).
+- **Invariante: un permiso que abre un área tiene que habilitar alguna pantalla de esa área.** `cobros.confirmar` la violaba: abría el área de instructor pero no es un módulo con menú propio, es una acción dentro del roster de la clase (`clases.gestionar`). Quien lo tuviera solo entraba a un área sin ni una pantalla que ver. Salió de `requiere`. Si agregás un permiso ahí, fijate que alguna `pantalla` lo liste.
+
+Cómo se aplica todo eso, pantalla por pantalla:
 
 - **`RequireArea` reemplazó a `RequireRole`.** La guarda vieja comparaba `currentUser.rol` contra un nombre fijo, así que un rol con permisos de instructor no llegaba nunca a `/instructor` — era el bug reportado ("si le asigno los permisos del instructor al alumno no aparecen los menús"). Ahora la puerta la abre el permiso, igual que en el backend.
   - Mientras `initializing` está en true no decide nada: con `permisos` todavía vacío, cualquier redirección es un falso 403 y el usuario rebotaba al catálogo público al recargar.
+- **`RequirePermiso` (`components/RequirePermiso.tsx`) guarda cada PANTALLA; `RequireArea` sólo guarda el área.** Es una distinción que costó un bug: el área se abre con **alguno** de sus permisos, así que a un alumno al que le sacaron `inscripciones.gestionar` le seguían quedando `resenias.escribir` y `denuncias.crear` — entraba a `/alumno` y desde ahí a `/alumno/inscripcion/:id`, que el backend rechaza con 403. Ése era el "le quité el permiso y me sigo pudiendo inscribir". Hoy en `App.tsx` cada grupo de rutas va detrás del permiso que exige el `@PreAuthorize` del endpoint que consume, en las tres áreas. **Al agregar una pantalla, ponela dentro del grupo que le corresponde.**
+- **Ocultar el ítem de menú no alcanza.** Un permiso que gatea un endpoint tiene que gatear también el **botón** que lo llama: los CTA de inscripción de `alumno/Detalle.tsx` (`puedeInscribirse`), el "Reportar inasistencia" de `alumno/MisClases.tsx` (`denuncias.crear`) y los tres atajos de `alumno/Perfil.tsx`. Cuando el botón desaparece, dejá en su lugar un cartel que explique por qué — un panel que se queda mudo se lee como si estuviera roto.
 - **Los tres menús filtran por permiso**, no sólo el del admin: `AlumnoNav` y el sidebar de instructor también. Nadie ve un ítem que el backend le va a rechazar con 403.
+- **El Administrador no tiene permisos de las otras áreas** (V22 del backend): nacía con todos menos `inscripciones.gestionar`, y por eso le aparecían los botones "Ir a Instructor" e "Ir a Alumno". El admin gobierna la plataforma; no publica actividades ni se inscribe.
+- **Los botones "Ir a …" llevan a `homeDeArea(area, permisos)`**, no a la raíz del área: si no, el cambio de panel aterrizaba en una pantalla que el usuario no podía usar, exactamente igual que el login.
 - **Botón "Ir a …" cuando alguien tiene más de un área.** Sin eso, un usuario con permisos mixtos quedaba encerrado en el área a la que entró. Está en `AlumnoNav` y en el pie de `DashSidebar`.
 - **El login redirige con `homeDe(user.permisos)`**, no con un mapa por rol — un rol creado por el admin no tiene entrada en ningún mapa fijo. Por eso `login()` devuelve los permisos dentro de la sesión: si no, habría que esperar al render siguiente del contexto.
 - **El perfil de instructor se pide por permiso.** `fetchPerfilInstructorSiCorresponde` miraba `rol !== "INSTRUCTOR"`; ahora mira `puedeEntrarA("instructor", permisos)`. Por eso en `login()` la llamada a `/api/auth/me` va **antes** que la del perfil.
 - El rol de una cuenta se cambia desde el modal de edición de `admin/Gestion.tsx` (`asignarRolUsuario`, endpoint propio). El selector lista los roles reales, marcando cuáles creó el admin.
 - `UsuarioAdmin.rol` es `string`, no la unión de los tres nombres: puede ser un rol nuevo.
+
+## Dashboard, Reportes y Trazabilidad del admin: lo que decía la pantalla vs. lo que hacía
+
+Tres pantallas tenían controles que no controlaban nada. El patrón se repite, así que vale como regla general: **un control que no hace nada es peor que no tenerlo**, porque el número que está al lado parece filtrado y no lo está.
+
+- **`admin/Dashboard.tsx` — el período ahora existe.** "Últimos 30 días" era un `div` de texto fijo y, encima, los KPIs y los dos gráficos se calculaban sobre todo el histórico. Hoy es un `<select>` (`PERIODOS`, los mismos rangos que Reportes) y filtra de verdad. **El período recorta flujos, no estados:** "Usuarios activos" y "Actividades publicadas" son una foto del ahora y no se recortan (recortarlos daría "2 usuarios activos" en una plataforma con 17); lo que se recorta son las inscripciones y el conteo de altas nuevas, y la leyenda de la tarjeta lo aclara.
+- **Las tarjetas del Dashboard son links.** Cada KPI lleva `path` + `destino` y navega a su sección (`/admin/gestion/usuarios`, `/instructores`, `/actividades`, `/reclamos`). La grilla "Accesos rápidos" de abajo se eliminó: repetía esos mismos cuatro destinos, así que el número y el lugar donde se resuelve eran dos tarjetas distintas.
+- **`admin/Reportes.tsx` — las pestañas mandan en la PANTALLA, no sólo en el PDF.** Desempeño / Financiero / Actividades / Reclamos ya decidían el contenido del modal de impresión, pero la pantalla mostraba siempre lo mismo (KPIs fijos + detalle por categoría): hacer click no cambiaba nada visible. Hoy la pestaña elige los KPIs (`dKpis`), la tabla de detalle (`detalle`) y lo que baja el CSV.
+- **El gráfico tiene eje Y y fechas reales.** Eran ocho barras `S1`…`S8`: ocho semanas hacia atrás fijas, sin relación con el período elegido ni con el calendario — de ahí las dos preguntas que nadie podía responder mirándolo ("¿qué semana es S1?", "¿qué es una semana 7 si el mes tiene cuatro?"). Y sin eje Y, una barra más alta que otra no decía cuántas inscripciones más eran. Ahora la granularidad sale del período (7 días → días; 30 → semanas; 90/año/histórico → meses), cada tramo lleva su fecha y su valor, y el eje Y se redondea a cuatro marcas enteras. Lo mismo en el gráfico del Dashboard.
+- **`admin/Trazabilidad.tsx` — "Exportar" exporta.** No tenía `onClick`. Ahora baja un PDF con **lo filtrado**, no la tabla entera: un registro de auditoría que exporta algo distinto de lo que se está mirando no sirve como respaldo. La grilla también dejó de pisarse: la columna "Acción" era de 124px sin `gap` y sin límite de ancho, así que una acción larga (`PERMISOS_ACTUALIZADOS`) se montaba sobre "Entidad".
+
+## `lib/cargaParcial.ts`: un 403 de un módulo no puede tirar la pantalla entera
+
+Consecuencia de RN-19 que no es obvia: un permiso habilita un **módulo**, no un área, así que cualquier combinación existe. Varias pantallas cargan con un `Promise.all` de tres a cinco consultas de módulos distintos, y **`Promise.all` se rechaza entero si una sola falla** — un 403 de una consulta secundaria dejaba toda la pantalla en estado de error aunque el módulo que el usuario sí tiene hubiera respondido bien. (Es la misma trampa que ya había costado la landing pública con `/api/niveles-intensidad`.)
+
+**La regla: en un `Promise.all` que cruza módulos, cada consulta va envuelta en `siPuede(puede("clave"), fn, vacío)`** con el permiso que exige su `@PreAuthorize`. Lo que no se pudo pedir queda vacío y la pantalla **oculta** esa sección — nunca la muestra en cero, que se lee como "no hay datos" en vez de "no tenés permiso". Ya aplicado en `admin/Dashboard`, `admin/Reportes`, `admin/Penalizaciones`, `instructor/Panel`, `alumno/Perfil`, `alumno/MisResenas` y `alumno/MisDenuncias`.
+
+Lo que cada pantalla oculta cuando falta el permiso: las tarjetas KPI del Dashboard (cada una declara su `requiere`) y sus dos gráficos; la pestaña "Reclamos y penalizaciones" de Reportes; el botón "Nueva penalización"; y las listas de clases calificables / reportables de Mis reseñas y Mis denuncias — el historial se sigue viendo, lo que no se puede es dar de alta.
+
+## Trazabilidad: paginada, exportable y legible
+
+- **15 eventos por página** (`POR_PAGINA`). La auditoría es de sólo-append y crece para siempre: con miles de filas la pantalla tardaba en pintar y "Exportar" generaba un PDF de cientos de hojas.
+- **Dos botones de exportación**: "Exportar esta página" y "Exportar todo (N)". El segundo **avisa cuántos son y pide confirmación** antes de generar el documento.
+- **La columna "Detalle" muestra `descripcion`**, la frase en castellano que arma el backend (`DescripcionAuditoria`). Antes concatenaba `entidadId + metadata`, o sea un UUID y una clave técnica.
+- Cualquier cambio de filtro vuelve a la página 1; si un filtro deja menos páginas que la actual, se cae a la última válida en vez de mostrar una página vacía.
+
+## `components/Modal.tsx`: los modales van en un portal, siempre
+
+**Nunca escribas un `position:fixed;inset:0` suelto dentro de una pantalla.** Los modales se abrían "en el medio de la página" en vez de en el medio de la pantalla: con la página scrolleada quedaban arriba de todo y había que subir para encontrarlos. Pasaba en Mis reseñas del alumno, en Tipos y niveles del admin y en todos los demás.
+
+La causa no estaba en los modales —todos eran `position:fixed;inset:0`, que es correcto— sino en su ancestro: `.ah-screen`, la clase del contenedor raíz de cada pantalla, tiene `animation: ahFade .28s ease both`, y esa animación anima `transform`. **Un elemento con una animación de `transform` aplicada crea un containing block para sus descendientes `position:fixed`**, así que `inset:0` dejaba de resolverse contra el viewport y pasaba a hacerlo contra el alto completo de la página. Es primo del caso de `backdrop-filter` en `AlumnoNav` que ya está documentado más abajo.
+
+`Modal` lo resuelve con un **portal a `document.body`**: sin ancestros de la pantalla, ninguna propiedad futura (un `transform`, un `filter`, un `contain`) puede volver a capturarlo. De paso trae bloqueo de scroll del body, cierre con Escape y cierre al hacer click en el fondo. Bajarle el `fill-mode` a la animación también lo arreglaría hoy, pero dejaría la trampa armada para el próximo efecto que se le agregue al contenedor.
+
+## `components/GraficoBarras.tsx`: el gráfico de barras, uno solo
+
+El mismo gráfico estaba escrito cuatro veces (Dashboard y Reportes del admin, Panel y Métricas del instructor) y las cuatro copias compartían el defecto: **barras sin eje Y y sin valores**, que no se pueden leer. Hoy las cuatro usan este componente, que pone eje Y con marcas enteras (el tope se redondea a un múltiplo de 4), el valor debajo de cada barra, tooltip con el detalle, y deja un hilo visible en las barras en cero. **Las etiquetas tienen que significar algo** — una fecha, un mes, un día —, nunca un índice: `S1`…`S8` en Reportes era justamente eso.
+
+## `lib/exportCsv.ts` y `lib/exportPdf.ts`: exportación sin dependencias
+
+`exportarPdf({titulo, subtitulo, meta, columnas, filas, pie})` abre una ventana nueva con un documento HTML propio y dispara el diálogo de impresión, donde "Guardar como PDF" es el destino por defecto. Por qué así:
+
+- **No una librería (jsPDF / pdfmake):** lo que se exporta son tablas largas que hay que paginar, con encabezado repetido por hoja y acentos. El motor de impresión del navegador hace las tres cosas gratis.
+- **No `window.print()` sobre la pantalla:** imprimiría el sidebar, los filtros y los botones, y obligaría a mantener una hoja `@media print` en paralelo al diseño.
+- **El `window.open` va dentro del handler del click.** Disparado desde un `setTimeout` o un `.then()` lo corta el bloqueador de pop-ups; la función devuelve `false` en ese caso y la pantalla muestra el aviso.
+- **El documento se entrega como Blob, NO con `document.write`.** Con `window.open("")` + `document.write` la ventana se queda en `about:blank` y su evento `load` **ya se disparó** antes de que escribiéramos nada, así que el `onload` que llamaba a `print()` no corría nunca: ventana en blanco y sin diálogo de impresión. Con un Blob la ventana carga un documento real y la llamada a `print()` viaja **dentro** del HTML.
+- **El gráfico se puede incluir** (`grafico`): se dibuja con divs y CSS, no como imagen. Un `<canvas>` rasterizado sale borroso al imprimir; con barras de CSS el PDF queda vectorial. Lleva el valor escrito sobre cada barra y escala a la izquierda, porque un gráfico impreso no tiene tooltip. Lo usan Reportes y Métricas; el CSV, que no puede llevar imagen, incluye la serie como filas.
+- Todo el texto se escapa antes de interpolarse: el contenido viene de datos que escribieron usuarios.
+
+## Pantallas del instructor: lo que cambió en este tramo
+
+- **`instructor/Perfil.tsx` es nuevo** (`/instructor/perfil`, ítem "Mi perfil" en el sidebar). El instructor no tenía dónde cambiar su nombre, su teléfono ni su contraseña: "Mis datos" (`Solicitud.tsx`) es otra cosa —el estado de su verificación y la documentación— y su formulario sólo aparecía mientras la solicitud estaba en revisión.
+- **La foto se sube sólo desde ahí.** El `Avatar` del `DashSidebar` perdió su `onUpload`: un avatar es identidad, no un control, y estando en todas las pantallas se abría el explorador de archivos sin querer. Es la regla que ya seguía el alumno.
+- **Métricas exporta** a PDF y a CSV, con los helpers compartidos. Antes la única forma de sacar esos números era copiarlos a mano.
+- **El Historial no es clickeable.** Una clase Finalizada o Cancelada no tiene nada que gestionar, y el click llevaba a una pantalla de acciones que ahí no aplican. En su lugar, cada fila muestra la **ganancia** (precio de la clase × inscriptos; `$0` si se canceló), que sale de `MiClaseInstructor.precio` — el precio congelado de esa clase, no el actual de la actividad.
+- **El formulario de clase pide sólo fecha y hora de inicio.** La hora de fin se calcula con `actividad.duracionMin` y se muestra como texto al lado. El backend hace lo mismo: `horaFin` ya no viaja en el request.
+- **Una clase congelada no ofrece "Editar"**, muestra un chip "Congelada" con el motivo. Espejo de `VentanaInscripcion.estaCongelada`; el backend es quien lo hace cumplir.
+- **Se sacó la pasarela de 4 pasos** del alta/edición de actividad. No es un asistente: es un formulario de una página con todos los campos visibles, y los números marcaban un avance que nunca avanzaba.
+
+## Reseñas del admin: dos sub-pestañas, y qué significa "Ocultar"
+
+La pestaña Reseñas de `admin/Gestion.tsx` tiene **Pendientes de moderación** (la cola de siempre: Aprobar / Rechazar) y **Publicadas** (lo nuevo: Ocultar).
+
+- **"Ocultar" no borra.** Pide motivo obligatorio y baja la reseña del detalle público y del promedio, pero la fila queda con su autor y su texto — si el contenido llega a ser algo en lo que deba intervenir la justicia, esa es justamente la evidencia. Las ya ocultas se siguen listando, en gris y tachadas, con un chip "Oculta".
+- **Existe porque faltaba el camino.** Una reseña impropia que se filtraba en la moderación sólo se podía bajar si el instructor la denunciaba; el admin que la veía después no tenía ningún botón. Ver la tabla de los tres caminos en el CLAUDE.md del backend.
+- **No confundir con `enModeracion`**: esa es "todavía no se aprobó" y se resuelve en la otra sub-pestaña.
+
+## Resolver una denuncia: las cuatro opciones están descritas en pantalla
+
+`ETIQUETA_ACCION` y `DESCRIPCION_ACCION` en `admin/Gestion.tsx` son la fuente de esos textos, y **describen lo que el backend hace**, no lo que uno supondría. Aparecen en tres lugares: el panel plegable "¿Qué hace cada resolución?" arriba de la tabla de Reclamos, el `title` de cada botón y el modal de Suspender.
+
+- **Reintegrar el pago** — cancela la inscripción y devuelve el pago a **todos los inscriptos de la clase**, no sólo a quien denunció.
+- **Suspender al instructor** — lo inhabilita N días (mín. 15) + multa opcional, cancela sus clases del período y reintegra a esos inscriptos.
+- **Aplicar penalización económica** — sólo multa + historial. No inhabilita, no cancela clases, no devuelve pagos. (Se llamaba "Penalizar al instructor", que no distinguía de Suspender.)
+- **Desestimar** — cierra el caso sin consecuencias.
+- **Ocultar la reseña** — sólo para denuncias de tipo `RESENIA`.
+
+Si cambia el comportamiento del backend, cambian estos textos.
+
+## "Roles y permisos" son dos preguntas, y ahora dos secciones
+
+`admin/Roles.tsx` tiene dos pestañas:
+
+- **Roles y permisos** — "qué puede hacer este ROL". Se edita el rol y el cambio alcanza a todos los que lo tengan.
+- **Roles de los usuarios** — "qué rol tiene esta PERSONA". Se elige un usuario, se ve su rol actual y se le asigna otro; no se toca ningún permiso.
+
+Lo segundo ya existía pero **sólo escondido en el modal de edición de `admin/Gestion.tsx`**, que es la pantalla de datos personales: para cambiarle el rol a alguien había que entrar a editar su nombre y su teléfono. Sigue ahí (es parte del flujo "editar usuario"), pero ahora también está donde uno lo busca.
+
+Dos detalles: la pestaña de usuarios **sólo aparece con `usuarios.gestionar`** (el listado de personas es de ese módulo, y alguien puede tener `roles.configurar` sin él), y **no te podés cambiar el rol a vos mismo** — el selector se deshabilita con el motivo, espejo de la guarda del backend.
 
 ## Home del alumno (E3A-HU01)
 
@@ -163,6 +268,7 @@ El repo estaba con 38 errores de base; hoy `npx eslint src` da **0 errores** (qu
 
 - **`react-hooks/set-state-in-effect`:** la función `cargar` de una pantalla **no toca estado de forma síncrona**. El "limpiar el error" va dentro del `.then(...)` y el "prender el spinner" arranca en `useState(true)` o lo hace el handler del botón "Reintentar" (un evento sí puede). Ojo: con `async/await` la regla igual se queja — el setState tiene que estar dentro de un callback (`.then`/`.catch`/`.finally`), por eso `refrescarCatalogo` y el `cargar` de Roles están escritos como cadena de promesas.
 - **`react-hooks/purity`:** nada de `Date.now()` durante el render. Para "faltan X días" / "ya pasó" se usa el hook `lib/ahora.ts` (`useAhora()`), que congela el reloj al montar. En un handler (submit, click) `Date.now()` está bien.
+- **`react-hooks/preserve-manual-memoization`:** el error dice "Compilation Skipped" y apunta a un `useMemo` que en realidad está bien — el culpable suele ser **otro**. Dos causas vistas en `admin/Reportes.tsx`: un `useMemo` leído desde un closure declarado **antes** que él (mover la función abajo lo arregla), y un segundo `useMemo` que devuelve objetos literales desde un `switch` (si el cálculo es barato, sacarle el `useMemo` y dejarlo como `const x = (() => { … })()`: el compilador memoiza solo).
 
 Donde el efecto sincroniza con algo externo de verdad (la navegación en Explorar, la geolocalización en CrearActividad, el mapa de Leaflet, la actividad por defecto en Reseñas del instructor) va un `eslint-disable` **de bloque** con el motivo escrito.
 

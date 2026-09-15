@@ -2,6 +2,8 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { DataProvider } from "./context/DataContext";
 import RequireArea from "./components/RequireArea";
+import RequirePermiso from "./components/RequirePermiso";
+import { permisosDePantalla } from "./lib/areas";
 
 import Landing from "./pages/public/Landing";
 import Ayuda from "./pages/public/Ayuda";
@@ -32,6 +34,7 @@ import InstructorHistorialClases from "./pages/instructor/HistorialClases";
 import InstructorMetricas from "./pages/instructor/Metricas";
 import InstructorResenas from "./pages/instructor/Resenas";
 import InstructorSolicitud from "./pages/instructor/Solicitud";
+import InstructorPerfil from "./pages/instructor/Perfil";
 
 import AdminDashboard from "./pages/admin/Dashboard";
 import AdminGestion from "./pages/admin/Gestion";
@@ -66,43 +69,84 @@ function AppRoutes() {
             <Route path="/alumno" element={<AlumnoHome />} />
             <Route path="/alumno/explorar" element={<AlumnoExplorar />} />
             <Route path="/alumno/actividad/:id" element={<AlumnoDetalle />} />
-            <Route path="/alumno/calendario" element={<AlumnoCalendario />} />
             <Route path="/alumno/favoritos" element={<AlumnoFavoritos />} />
-            <Route path="/alumno/mis-clases" element={<AlumnoMisClases />} />
-            <Route path="/alumno/preinscripcion/:id" element={<AlumnoPreInscripcion />} />
-            <Route path="/alumno/inscripcion/:id" element={<AlumnoInscripcion />} />
-            <Route path="/alumno/mis-pagos" element={<AlumnoMisPagos />} />
-            <Route path="/alumno/mis-resenas" element={<AlumnoMisResenas />} />
-            <Route path="/alumno/mis-denuncias" element={<AlumnoMisDenuncias />} />
+            {/*
+              Estas pantallas no son "el area de alumno": son modulos con permiso propio. El
+              area se abre con ALGUNO de sus permisos, asi que a un alumno sin
+              "inscripciones.gestionar" le quedaban resenias/denuncias y seguia entrando a
+              /alumno — y desde ahi a /alumno/inscripcion/:id, que el backend rechaza con 403.
+            */}
+            <Route element={<RequirePermiso clave="inscripciones.gestionar" />}>
+              <Route path="/alumno/calendario" element={<AlumnoCalendario />} />
+              <Route path="/alumno/mis-clases" element={<AlumnoMisClases />} />
+              <Route path="/alumno/preinscripcion/:id" element={<AlumnoPreInscripcion />} />
+              <Route path="/alumno/inscripcion/:id" element={<AlumnoInscripcion />} />
+              <Route path="/alumno/mis-pagos" element={<AlumnoMisPagos />} />
+            </Route>
+            <Route element={<RequirePermiso clave="resenias.escribir" />}>
+              <Route path="/alumno/mis-resenas" element={<AlumnoMisResenas />} />
+            </Route>
+            <Route element={<RequirePermiso clave="denuncias.crear" />}>
+              <Route path="/alumno/mis-denuncias" element={<AlumnoMisDenuncias />} />
+            </Route>
             <Route path="/alumno/perfil" element={<AlumnoPerfil />} />
           </Route>
 
           <Route element={<RequireArea area="instructor" />}>
             <Route path="/instructor" element={<InstructorPanel />} />
-            <Route path="/instructor/actividades" element={<InstructorMisActividades />} />
-            <Route path="/instructor/actividades/nueva" element={<InstructorCrearActividad />} />
-            <Route path="/instructor/actividades/:id/editar" element={<InstructorCrearActividad />} />
-            <Route path="/instructor/actividades/:id" element={<InstructorActividadDetalle />} />
-            <Route path="/instructor/clases/:id" element={<InstructorGestionClase />} />
-            <Route path="/instructor/proximas-clases" element={<InstructorProximasClases />} />
-            <Route path="/instructor/historial" element={<InstructorHistorialClases />} />
-            <Route path="/instructor/metricas" element={<InstructorMetricas />} />
-            <Route path="/instructor/resenas" element={<InstructorResenas />} />
+            {/* "Mis datos" (solicitud) es identidad, no un módulo: no lleva permiso, igual
+                que en el backend — RN-16 le deja esa única pantalla al no verificado. */}
             <Route path="/instructor/solicitud" element={<InstructorSolicitud />} />
+            <Route path="/instructor/perfil" element={<InstructorPerfil />} />
+            <Route element={<RequirePermiso clave="actividades.publicar" />}>
+              <Route path="/instructor/actividades" element={<InstructorMisActividades />} />
+              <Route path="/instructor/actividades/nueva" element={<InstructorCrearActividad />} />
+              <Route path="/instructor/actividades/:id/editar" element={<InstructorCrearActividad />} />
+              <Route path="/instructor/actividades/:id" element={<InstructorActividadDetalle />} />
+            </Route>
+            <Route element={<RequirePermiso clave="clases.gestionar" />}>
+              <Route path="/instructor/clases/:id" element={<InstructorGestionClase />} />
+              <Route path="/instructor/proximas-clases" element={<InstructorProximasClases />} />
+              <Route path="/instructor/historial" element={<InstructorHistorialClases />} />
+              <Route path="/instructor/metricas" element={<InstructorMetricas />} />
+            </Route>
+            <Route element={<RequirePermiso clave="resenias.responder" />}>
+              <Route path="/instructor/resenas" element={<InstructorResenas />} />
+            </Route>
           </Route>
 
           <Route element={<RequireArea area="admin" />}>
             <Route path="/admin" element={<AdminDashboard />} />
-            <Route path="/admin/gestion" element={<AdminGestion />} />
-            <Route path="/admin/gestion/:tab" element={<AdminGestion />} />
-            <Route path="/admin/validar-instructor/:id" element={<AdminValidarInstructor />} />
-            <Route path="/admin/reportes" element={<AdminReportes />} />
-            <Route path="/admin/taxonomia" element={<AdminTaxonomia />} />
-            <Route path="/admin/taxonomia/:tab" element={<AdminTaxonomia />} />
-            <Route path="/admin/roles" element={<AdminRoles />} />
-            <Route path="/admin/penalizaciones" element={<AdminPenalizaciones />} />
-            <Route path="/admin/auditoria" element={<AdminAuditoria />} />
-            <Route path="/admin/trazabilidad" element={<AdminTrazabilidad />} />
+            {/* Cada pantalla de administración detrás de SU permiso, el mismo que exige el
+                `@PreAuthorize` del endpoint que consume. Sin esto alcanzaba con tener uno
+                cualquiera de los permisos de admin para entrar por URL a todas las demás y
+                comerse un 403 en cada consulta. */}
+            {/* Gestión tiene una pestaña por módulo: la abre cualquiera de sus permisos y
+                adentro se filtran las pestañas (ver `permisosDePantalla` en lib/areas.ts). */}
+            <Route element={<RequirePermiso clave={permisosDePantalla("gestionadmin")} />}>
+              <Route path="/admin/gestion" element={<AdminGestion />} />
+              <Route path="/admin/gestion/:tab" element={<AdminGestion />} />
+            </Route>
+            <Route element={<RequirePermiso clave="instructores.validar" />}>
+              <Route path="/admin/validar-instructor/:id" element={<AdminValidarInstructor />} />
+            </Route>
+            <Route element={<RequirePermiso clave="reportes.ver" />}>
+              <Route path="/admin/reportes" element={<AdminReportes />} />
+            </Route>
+            <Route element={<RequirePermiso clave="taxonomia.gestionar" />}>
+              <Route path="/admin/taxonomia" element={<AdminTaxonomia />} />
+              <Route path="/admin/taxonomia/:tab" element={<AdminTaxonomia />} />
+            </Route>
+            <Route element={<RequirePermiso clave="roles.configurar" />}>
+              <Route path="/admin/roles" element={<AdminRoles />} />
+            </Route>
+            <Route element={<RequirePermiso clave="penalizaciones.gestionar" />}>
+              <Route path="/admin/penalizaciones" element={<AdminPenalizaciones />} />
+            </Route>
+            <Route element={<RequirePermiso clave="auditoria.ver" />}>
+              <Route path="/admin/auditoria" element={<AdminAuditoria />} />
+              <Route path="/admin/trazabilidad" element={<AdminTrazabilidad />} />
+            </Route>
           </Route>
 
           <Route path="/404" element={<Errores />} />

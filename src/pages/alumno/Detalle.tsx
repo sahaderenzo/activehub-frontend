@@ -676,8 +676,15 @@ function BookingPanel({
   misInscripciones: MiInscripcion[];
 }) {
   const navigate = useNavigate();
-  const { currentUser } = useAuth();
+  const { currentUser, puede } = useAuth();
   const geolocation = useGeolocation();
+  /**
+   * RN-19: preinscribirse, inscribirse y cancelar es un modulo con permiso propio. Sin el, el
+   * backend devuelve 403 en /api/alumno/inscripciones, asi que mostrar el boton solo servia
+   * para chocar contra el error. El detalle de la actividad se sigue viendo entero: explorar
+   * el catalogo es un permiso implicito que tiene todo rol.
+   */
+  const puedeInscribirse = puede("inscripciones.gestionar");
 
   // A diferencia de Explorar (donde pedir ubicación queda atrás de un click
   // explícito para no ser invasivo en una lista larga), acá el usuario ya
@@ -704,7 +711,9 @@ function BookingPanel({
   const pct = selectedClase ? Math.min(100, Math.round((selectedClase.cuposOcupados / selectedClase.cuposMax) * 100)) : 0;
 
   let msg = "Elegí una fecha disponible para ver el detalle de inscripción.";
-  if (selectedClase && ingreso === "preinscripcion" && !existente) {
+  if (!puedeInscribirse) {
+    msg = "Tu rol no tiene habilitado el módulo de inscripciones. Podés explorar el catálogo, pero no anotarte en clases. Consultá con un administrador.";
+  } else if (selectedClase && ingreso === "preinscripcion" && !existente) {
     msg = `Faltan ${dias} días para la clase. Podés preinscribirte ahora; la inscripción con pago se habilita cuando falten 4 días o menos.`;
   } else if (selectedClase && ingreso === "preinscripcion" && existente?.estado === "PreInscripción") {
     msg = "Ya te preinscribiste. Te avisaremos cuando falten 4 días para que puedas inscribirte y pagar.";
@@ -762,7 +771,23 @@ function BookingPanel({
           </div>
         )}
 
-        {selectedClase && ingreso === "preinscripcion" && !existente && (
+        {!puedeInscribirse && (
+          <div
+            style={s(
+              "background:#F4F7FA;border:1px solid #E2E9F0;border-radius:13px;padding:14px 16px;margin-bottom:14px;display:flex;align-items:flex-start;gap:10px;",
+            )}
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#7A8C9E" strokeWidth={2} style={{ flex: "none", marginTop: "1px" }}>
+              <rect x="3" y="11" width="18" height="11" rx="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+            <span style={s("font:600 12.5px Manrope,sans-serif;color:#5A6B7D;line-height:1.5;")}>
+              Inscripciones no habilitadas para tu rol.
+            </span>
+          </div>
+        )}
+
+        {puedeInscribirse && selectedClase && ingreso === "preinscripcion" && !existente && (
           <>
             <button
               className="ah-btn"
@@ -787,7 +812,7 @@ function BookingPanel({
           </>
         )}
 
-        {selectedClase && ingreso === "preinscripcion" && existente?.estado === "PreInscripción" && (
+        {puedeInscribirse && selectedClase && ingreso === "preinscripcion" && existente?.estado === "PreInscripción" && (
           <>
             <button
               disabled
@@ -811,7 +836,7 @@ function BookingPanel({
           </>
         )}
 
-        {selectedClase && ingreso === "inscripcion" && (!existente || existente.estado === "Cancelada") && (
+        {puedeInscribirse && selectedClase && ingreso === "inscripcion" && (!existente || existente.estado === "Cancelada") && (
           <button
             className="ah-btn"
             onClick={() => navigate(`/alumno/inscripcion/${selectedClase.id}`)}
@@ -827,7 +852,7 @@ function BookingPanel({
           </button>
         )}
 
-        {selectedClase && ingreso === "inscripcion" && existente?.estado === "PreInscripción" && (
+        {puedeInscribirse && selectedClase && ingreso === "inscripcion" && existente?.estado === "PreInscripción" && (
           <>
             <button
               disabled
@@ -856,7 +881,7 @@ function BookingPanel({
           </>
         )}
 
-        {selectedClase && existente?.estado === "PagoPendiente" && (
+        {puedeInscribirse && selectedClase && existente?.estado === "PagoPendiente" && (
           <button
             disabled
             style={s(
@@ -867,7 +892,7 @@ function BookingPanel({
           </button>
         )}
 
-        {selectedClase && existente?.estado === "Inscripto" && (
+        {puedeInscribirse && selectedClase && existente?.estado === "Inscripto" && (
           <button
             disabled
             style={s(

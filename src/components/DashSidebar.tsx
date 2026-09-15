@@ -2,9 +2,8 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { s } from "../lib/style";
-import { areasDisponibles, PERMISO_POR_ITEM } from "../lib/areas";
+import { areasDisponibles, homeDeArea, puedeVerItem } from "../lib/areas";
 import { useAuth } from "../context/AuthContext";
-import { useData } from "../context/DataContext";
 import NotificationBell from "./NotificationBell";
 import Avatar from "./Avatar";
 
@@ -68,6 +67,12 @@ function instructorItems(color: (on: boolean) => string, activeKey: string): Nav
       "Reseñas",
       "/instructor/resenas",
       '<path d="M11.5 3.5 13.8 8l5 .7-3.6 3.5.9 5L11.5 15l-4.5 2.4.9-5L4.3 8.7l5-.7z"/>',
+    ],
+    [
+      "perfil",
+      "Mi perfil",
+      "/instructor/perfil",
+      '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
     ],
   ];
   return defs.map(([key, label, path, icon]) => ({
@@ -139,15 +144,14 @@ interface DashSidebarProps {
 
 export default function DashSidebar({ role, active }: DashSidebarProps) {
   const navigate = useNavigate();
-  const { currentUser, logout, puede, permisos } = useAuth();
-  const data = useData();
+  const { currentUser, logout, permisos } = useAuth();
   const color = (on: boolean) => (on ? "#12B5A5" : "#9DB3C9");
   const todos = role === "admin" ? adminItems(color, active) : instructorItems(color, active);
   // El menú muestra solo lo que el rol puede hacer (RN-19). Vale para los dos paneles: el
   // de instructor también se filtraba antes por nombre de rol, así que un rol nuevo con
   // `clases.gestionar` veía ítems que el backend después le rechazaba con 403 — y al revés,
   // un alumno con permisos de instructor no tenía cómo llegar acá.
-  const items = todos.filter((it) => !PERMISO_POR_ITEM[it.key] || puede(PERMISO_POR_ITEM[it.key]));
+  const items = todos.filter((it) => puedeVerItem(it.key, permisos));
   // Alguien puede tener permisos de más de un área (un instructor que además se inscribe,
   // o un rol mixto creado en "Roles y permisos"): se le ofrece el cambio en vez de dejarlo
   // encerrado en el panel al que entró.
@@ -157,7 +161,8 @@ export default function DashSidebar({ role, active }: DashSidebarProps) {
     role === "admin" ? "linear-gradient(140deg,#F5A623,#FF6A2B)" : "linear-gradient(140deg,#12B5A5,#0E2A47)";
   const userName = currentUser ? `${currentUser.nombre} ${currentUser.apellido}` : "Invitado";
   const userRole = role === "admin" ? "Administrador" : "Instructor";
-  const [fotoVersion, setFotoVersion] = useState(0);
+  // La versión ya no cambia acá: la foto se sube desde "Mi perfil", que remonta al volver.
+  const [fotoVersion] = useState(0);
 
   const handleLogout = () => {
     logout();
@@ -194,6 +199,11 @@ export default function DashSidebar({ role, active }: DashSidebarProps) {
           "padding:6px 14px;margin:0 12px 16px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:12px;display:flex;align-items:center;gap:10px;",
         )}
       >
+        {/*
+          Sin `onUpload`: el avatar del sidebar es identidad, no un control. Estando en todas
+          las pantallas, un click al pasar abría el explorador de archivos sin querer. La foto
+          se cambia sólo desde "Mi perfil" — la misma regla que ya seguía el alumno.
+        */}
         <Avatar
           usuarioId={currentUser?.id}
           nombre={currentUser?.nombre ?? "?"}
@@ -201,10 +211,6 @@ export default function DashSidebar({ role, active }: DashSidebarProps) {
           fontSize={14}
           gradient={avatarBg}
           version={fotoVersion}
-          onUpload={async (archivo) => {
-            await data.subirFotoPerfil(archivo);
-            setFotoVersion((v) => v + 1);
-          }}
         />
         <div style={s("min-width:0;")}>
           <div style={s("font:700 13.5px Manrope,sans-serif;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;")}>
@@ -235,7 +241,7 @@ export default function DashSidebar({ role, active }: DashSidebarProps) {
         {otrasAreas.map((a) => (
           <div
             key={a.area}
-            onClick={() => navigate(a.home)}
+            onClick={() => navigate(homeDeArea(a.area, permisos))}
             className="ah-btn"
             style={s("display:flex;align-items:center;gap:12px;padding:11px 13px;border-radius:11px;cursor:pointer;font:700 14px Manrope,sans-serif;color:#9DB3C9;")}
           >

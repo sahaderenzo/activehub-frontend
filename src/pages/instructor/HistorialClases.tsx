@@ -147,13 +147,15 @@ export default function InstructorHistorialClases() {
         {!errorCarga && visibles.length > 0 && (
           <div style={s("display:flex;flex-direction:column;gap:11px;")}>
             {visibles.map((c) => (
+              // El historial es de LECTURA: la tarjeta ya no navega a la gestión de la clase.
+              // Una clase Finalizada o Cancelada no tiene nada que gestionar, y el click llevaba
+              // a una pantalla de acciones que ahí ya no aplican.
               <div
                 key={c.claseId}
-                onClick={() => navigate(`/instructor/clases/${c.claseId}`)}
                 style={s(
                   `background:#fff;border:1px solid #E7EDF3;border-left:4px solid ${
                     c.estado === "Cancelada" ? "#E5484D" : "#6B7B8C"
-                  };border-radius:14px;padding:16px 18px;display:flex;align-items:center;gap:16px;cursor:pointer;box-shadow:0 1px 2px rgba(14,42,71,.04);`,
+                  };border-radius:14px;padding:16px 18px;display:flex;align-items:center;gap:16px;box-shadow:0 1px 2px rgba(14,42,71,.04);`,
                 )}
               >
                 <div style={s("min-width:96px;")}>
@@ -171,13 +173,23 @@ export default function InstructorHistorialClases() {
                   </div>
                   <div style={s("font-size:12.5px;color:#7A8C9E;font-weight:600;")}>📍 {c.actividadUbicacion}</div>
                 </div>
-                <span style={s("font-size:12.5px;color:#41566B;font-weight:700;flex:none;")}>
+                <span style={s("font-size:12.5px;color:#41566B;font-weight:700;flex:none;text-align:right;")}>
                   {c.cuposOcupados}/{c.cuposMax} inscriptos
+                  <br />
+                  <span
+                    title={
+                      c.estado === 'Cancelada'
+                        ? 'La clase se canceló: los pagos se reintegraron.'
+                        : `${c.cuposOcupados} inscriptos × $${c.precio.toLocaleString('es-AR')}`
+                    }
+                    style={s(
+                      `font:700 13px Space Grotesk;color:${c.estado === 'Cancelada' ? '#A6B3C0' : '#0C8576'};`,
+                    )}
+                  >
+                    {c.estado === 'Cancelada' ? '$0' : `$${(c.precio * c.cuposOcupados).toLocaleString('es-AR')}`}
+                  </span>
                 </span>
                 <StatusBadge type={claseStatusType(c.estado)} />
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#C2CCD6" strokeWidth={2}>
-                  <path d="m9 18 6-6-6-6" />
-                </svg>
               </div>
             ))}
           </div>

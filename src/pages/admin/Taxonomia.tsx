@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
 import { s } from "../../lib/style";
+import Modal from "../../components/Modal";
 import { useData } from "../../context/DataContext";
 import { ApiError } from "../../lib/api";
 import { nivelStyle } from "../../lib/nivelStyle";
@@ -411,7 +412,7 @@ export default function AdminTaxonomia() {
       </div>
 
       {form && (
-        <div style={s("position:fixed;inset:0;z-index:80;background:rgba(8,22,38,.5);display:flex;align-items:center;justify-content:center;")}>
+        <Modal onClose={() => setForm(null)}>
           <div style={s("width:100%;max-width:380px;background:#fff;border-radius:16px;padding:22px;box-shadow:0 26px 64px rgba(0,0,0,.3);")}>
             <div style={s("font:700 16px Space Grotesk,sans-serif;color:#0E2A47;margin-bottom:14px;")}>
               {form.id ? "Editar tipo de actividad" : "Nuevo tipo de actividad"}
@@ -451,11 +452,11 @@ export default function AdminTaxonomia() {
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
       {catForm && (
-        <div style={s("position:fixed;inset:0;z-index:80;background:rgba(8,22,38,.5);display:flex;align-items:center;justify-content:center;")}>
+        <Modal onClose={() => setCatForm(null)}>
           <div style={s("width:100%;max-width:380px;background:#fff;border-radius:16px;padding:22px;box-shadow:0 26px 64px rgba(0,0,0,.3);")}>
             <div style={s("font:700 16px Space Grotesk,sans-serif;color:#0E2A47;margin-bottom:14px;")}>
               {catForm.id ? "Editar categoría" : "Nueva categoría"}
@@ -483,12 +484,12 @@ export default function AdminTaxonomia() {
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* E4Ad-HU05 criterio 2: modal con Nombre* y Descripción*, ambos obligatorios. */}
       {nivelForm && (
-        <div style={s("position:fixed;inset:0;z-index:80;background:rgba(8,22,38,.5);display:flex;align-items:center;justify-content:center;")}>
+        <Modal onClose={() => setNivelForm(null)}>
           <div style={s("width:100%;max-width:420px;background:#fff;border-radius:16px;padding:22px;box-shadow:0 26px 64px rgba(0,0,0,.3);")}>
             <div style={s("font:700 16px Space Grotesk,sans-serif;color:#0E2A47;margin-bottom:14px;")}>
               {nivelForm.id ? "Editar nivel de intensidad" : "Nuevo nivel de intensidad"}
@@ -541,7 +542,7 @@ export default function AdminTaxonomia() {
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </DashLayout>
   );

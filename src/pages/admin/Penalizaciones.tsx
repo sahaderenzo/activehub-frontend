@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import DashLayout from "../../components/DashLayout";
 import { s } from "../../lib/style";
+import Modal from "../../components/Modal";
+import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import type { PenalizacionAdmin, UsuarioAdmin } from "../../context/DataContext";
 import { ApiError } from "../../lib/api";
@@ -42,11 +44,19 @@ function diasEntre(desde: string, hasta: string): number {
 }
 
 export default function AdminPenalizaciones() {
+  const { puede } = useAuth();
   const { listarPenalizaciones, crearPenalizacion, listarUsuariosAdmin } = useData();
+  // El listado de usuarios es `usuarios.gestionar`, un módulo distinto del de esta pantalla:
+  // un rol puede tener penalizaciones sin gestión de usuarios. En ese caso el listado no se
+  // pide y el alta queda deshabilitada con su explicación, en vez de un select vacío o una
+  // pantalla en error (ver lib/cargaParcial.ts).
+  const puedeElegirUsuario = puede("usuarios.gestionar");
 
   const [penalizaciones, setPenalizaciones] = useState<PenalizacionAdmin[]>([]);
   const [usuarios, setUsuarios] = useState<UsuarioAdmin[]>([]);
   const [showForm, setShowForm] = useState(false);
+  /** La penalización es irreversible: se pide una confirmación explícita antes de aplicarla. */
+  const [confirmado, setConfirmado] = useState(false);
   const [form, setForm] = useState<FormState>(FORM_VACIO);
   const [error, setError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -69,10 +79,12 @@ export default function AdminPenalizaciones() {
     // profesor (E4Ad-HU06 / RN-13), así que multar o suspender a un alumno o a un
     // administrador no significa nada. El backend rechaza igual el resto — acá se evita
     // ofrecerlo. El flag viene calculado por permiso, no por nombre de rol (RN-19).
-    listarUsuariosAdmin()
-      .then((lista) => setUsuarios(lista.filter((u) => u.puedeDarClases)))
-      .catch(() => setError("No pudimos cargar el listado de usuarios."));
-  }, [listarPenalizaciones, listarUsuariosAdmin]);
+    if (puedeElegirUsuario) {
+      listarUsuariosAdmin()
+        .then((lista) => setUsuarios(lista.filter((u) => u.puedeDarClases)))
+        .catch(() => setError("No pudimos cargar el listado de usuarios."));
+    }
+  }, [listarPenalizaciones, listarUsuariosAdmin, puedeElegirUsuario]);
 
   useEffect(() => {
     cargar();
@@ -142,18 +154,33 @@ export default function AdminPenalizaciones() {
             Sanciones a instructores: económicas o suspensión temporal. Cada instructor acumula su cantidad.
           </p>
         </div>
-        <button
-          className="ah-btn"
-          onClick={() => setShowForm(true)}
-          style={s(
-            "margin-left:auto;background:#E5484D;color:#fff;border:none;border-radius:12px;padding:12px 20px;font:700 14px Manrope,sans-serif;cursor:pointer;display:flex;align-items:center;gap:8px;",
-          )}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.4}>
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-          Nueva penalización
-        </button>
+        {/* Sin `usuarios.gestionar` no hay a quién elegir: el alta se oculta y queda el
+            listado, que es lo que sí habilita `penalizaciones.gestionar`. */}
+        {puedeElegirUsuario ? (
+          <button
+            className="ah-btn"
+            onClick={() => {
+              setConfirmado(false);
+              setShowForm(true);
+            }}
+            style={s(
+              "margin-left:auto;background:#E5484D;color:#fff;border:none;border-radius:12px;padding:12px 20px;font:700 14px Manrope,sans-serif;cursor:pointer;display:flex;align-items:center;gap:8px;",
+            )}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.4}>
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            Nueva penalización
+          </button>
+        ) : (
+          <span
+            style={s(
+              "margin-left:auto;max-width:300px;font:600 12.5px Manrope,sans-serif;color:#90A1B2;line-height:1.5;text-align:right;",
+            )}
+          >
+            Para aplicar una penalización hace falta también el permiso de gestión de usuarios.
+          </span>
+        )}
       </div>
 
       <div style={s("padding:26px 32px 50px;")}>
@@ -263,7 +290,7 @@ export default function AdminPenalizaciones() {
       </div>
 
       {showForm && (
-        <div style={s("position:fixed;inset:0;z-index:80;background:rgba(8,22,38,.5);display:flex;align-items:center;justify-content:center;")}>
+        <Modal onClose={() => setShowForm(false)}>
           <div style={s("width:100%;max-width:420px;background:#fff;border-radius:16px;padding:22px;box-shadow:0 26px 64px rgba(0,0,0,.3);")}>
             <div style={s("font:700 16px Space Grotesk,sans-serif;color:#0E2A47;margin-bottom:14px;")}>Nueva penalización</div>
 
@@ -359,6 +386,48 @@ export default function AdminPenalizaciones() {
               <div style={s("font:700 12.5px Manrope,sans-serif;color:#BE3A3E;margin-bottom:12px;")}>{formError}</div>
             )}
 
+            {/*
+              Una penalización NO se puede deshacer: no hay endpoint para borrarla ni para
+              acortarla, a propósito — es un acto sancionatorio con constancia en auditoría. Y
+              una suspensión, además, cancela las clases del período y reintegra a los
+              inscriptos. Eso hay que decirlo ANTES de confirmar, no después.
+            */}
+            <div
+              style={s(
+                "display:flex;gap:9px;background:#FFF3E0;border:1px solid #F6E2C0;border-radius:11px;padding:11px 13px;margin-bottom:12px;",
+              )}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#B9741A" strokeWidth={2.2} style={{ flex: "none", marginTop: "1px" }}>
+                <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <path d="M12 9v4M12 17h.01" />
+              </svg>
+              <span style={s("font:600 12.5px Manrope,sans-serif;color:#8A5A12;line-height:1.5;")}>
+                <b>Esta acción no se puede deshacer.</b> Una penalización aplicada no se cancela
+                ni se acorta: queda registrada en la auditoría.
+                {form.suspension && (
+                  <>
+                    {" "}
+                    Además, se <b>cancelarán todas las clases</b> del instructor dentro del
+                    período y se reintegrará el pago a cada inscripto.
+                  </>
+                )}
+              </span>
+            </div>
+
+            <label
+              style={s(
+                "display:flex;align-items:flex-start;gap:9px;margin-bottom:14px;cursor:pointer;font:600 12.5px Manrope,sans-serif;color:#41566B;line-height:1.5;",
+              )}
+            >
+              <input
+                type="checkbox"
+                checked={confirmado}
+                onChange={(e) => setConfirmado(e.target.checked)}
+                style={{ marginTop: "2px" }}
+              />
+              Entiendo que la penalización es definitiva.
+            </label>
+
             <div style={s("display:flex;gap:10px;")}>
               <button
                 className="ah-btn"
@@ -370,18 +439,18 @@ export default function AdminPenalizaciones() {
               <button
                 className="ah-btn"
                 onClick={submit}
-                disabled={guardando}
+                disabled={guardando || !confirmado}
                 style={s(
                   `flex:1;background:#E5484D;color:#fff;border:none;border-radius:10px;padding:11px;font:700 13.5px Manrope,sans-serif;cursor:${
-                    guardando ? "not-allowed" : "pointer"
-                  };opacity:${guardando ? ".6" : "1"};`,
+                    guardando || !confirmado ? "not-allowed" : "pointer"
+                  };opacity:${guardando || !confirmado ? ".6" : "1"};`,
                 )}
               >
                 {guardando ? "Aplicando…" : "Aplicar penalización"}
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </DashLayout>
   );

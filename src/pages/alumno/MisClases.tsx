@@ -26,7 +26,11 @@ const TABS: { key: TabKey; label: string }[] = [
 export default function AlumnoMisClases() {
   const ahora = useAhora();
   const navigate = useNavigate();
-  const { currentUser } = useAuth();
+  const { currentUser, puede } = useAuth();
+  const puedeResenar = puede("resenias.escribir");
+  // Reportar una inasistencia es el modulo de denuncias, no el de inscripciones: se puede
+  // tener uno sin el otro, y sin `denuncias.crear` el POST vuelve 403.
+  const puedeDenunciar = puede("denuncias.crear");
   const { getActividad, getTipoActividad, getCategoria, instructorNombre, cancelarInscripcion, crearDenuncia, listarMisInscripciones } =
     useData();
   const [tab, setTab] = useState<TabKey>("todas");
@@ -92,10 +96,34 @@ export default function AlumnoMisClases() {
     <div className="ah-screen" style={s("min-height:100vh;background:#F4F7FA;")}>
       <AlumnoNav active="misclases" />
       <div style={s("max-width:1000px;margin:0 auto;padding:30px 28px 60px;")}>
-        <h1 style={s("font:700 30px Space Grotesk,sans-serif;letter-spacing:-.7px;margin:0 0 4px;")}>Mis clases</h1>
-        <p style={s("font-size:14.5px;color:#7A8C9E;margin:0 0 24px;")}>
-          Gestioná tus preinscripciones, inscripciones, pagos y clases finalizadas.
-        </p>
+        <div style={s("display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:24px;")}>
+          <div style={s("flex:1;min-width:240px;")}>
+            <h1 style={s("font:700 30px Space Grotesk,sans-serif;letter-spacing:-.7px;margin:0 0 4px;")}>Mis clases</h1>
+            <p style={s("font-size:14.5px;color:#7A8C9E;margin:0;")}>
+              Gestioná tus preinscripciones, inscripciones, pagos y clases finalizadas.
+            </p>
+          </div>
+          {/*
+            Atajo a "Mis reseñas". Calificar una clase finalizada se hace desde ahí, y el único
+            camino era Perfil → Mis reseñas: tres pantallas para algo que se decide justo acá,
+            mirando la clase que terminó. El botón aparece sólo si hay finalizadas y si el rol
+            tiene el permiso de reseñas — el módulo se puede quitar (RN-19).
+          */}
+          {puedeResenar && counts.finalizadas > 0 && (
+            <button
+              className="ah-btn"
+              onClick={() => navigate("/alumno/mis-resenas")}
+              style={s(
+                "background:#fff;border:1px solid #FFD9C4;border-radius:12px;padding:11px 17px;font:700 13.5px Manrope,sans-serif;color:#FF6A2B;cursor:pointer;display:flex;align-items:center;gap:8px;flex:none;",
+              )}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF6A2B" strokeWidth={2}>
+                <path d="M11.5 3.5 13.8 8l5 .7-3.6 3.5.9 5L11.5 15l-4.5 2.4.9-5L4.3 8.7l5-.7z" />
+              </svg>
+              Calificar mis clases
+            </button>
+          )}
+        </div>
 
         <div style={s("display:flex;gap:4px;border-bottom:1px solid #E2E9F0;margin-bottom:24px;flex-wrap:wrap;")}>
           {TABS.map((t) => {
@@ -168,8 +196,8 @@ export default function AlumnoMisClases() {
 
               const horasDesdeInicio = (ahora - new Date(r.claseFechaHora).getTime()) / (1000 * 60 * 60);
               const yaReportada = reportadas.has(r.id);
-              const repEnabled = r.estado === "Inscripto" && horasDesdeInicio >= 1 && !yaReportada;
-              const repDisabled = r.estado === "Inscripto" && horasDesdeInicio < 1 && !yaReportada;
+              const repEnabled = puedeDenunciar && r.estado === "Inscripto" && horasDesdeInicio >= 1 && !yaReportada;
+              const repDisabled = puedeDenunciar && r.estado === "Inscripto" && horasDesdeInicio < 1 && !yaReportada;
 
               return (
                 <div

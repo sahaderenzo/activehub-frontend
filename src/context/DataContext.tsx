@@ -156,6 +156,12 @@ export interface MiClaseInstructor {
   estado: EstadoClase;
   cuposMax: number;
   cuposOcupados: number;
+  /**
+   * Precio de ESTA clase, no el actual de la actividad (V23 del backend). Es lo que hace
+   * que la ganancia del Historial sea la real: si la actividad cambió de precio después,
+   * la clase ya dictada sigue valiendo lo que se cobró.
+   */
+  precio: number;
 }
 
 /** Inscripción a una clase propia del instructor (GET /api/instructor/inscripciones). */
@@ -301,6 +307,14 @@ export interface ReseniaPendiente {
   createdAt: string;
 }
 
+/**
+ * Reseña **ya publicada** (GET /api/admin/resenas/publicadas). Misma forma que la pendiente
+ * más `oculta`: el admin tiene que poder ver también lo que ya bajó, no sólo lo visible.
+ */
+export interface ReseniaPublicada extends ReseniaPendiente {
+  oculta: boolean;
+}
+
 
 /** E4Ad-HU08: la matriz de "Roles y permisos" (GET /api/admin/roles). */
 export interface RolAdmin {
@@ -364,6 +378,12 @@ export interface AuditoriaEntry {
   entidad: string;
   entidadId: string;
   metadata: string | null;
+  /**
+   * La misma fila contada en castellano, armada por el backend (`DescripcionAuditoria`). Es lo
+   * que se muestra en la columna "Detalle": antes ahí iba `entidadId + metadata`, o sea un UUID
+   * seguido de una clave técnica.
+   */
+  descripcion: string;
   createdAt: string;
 }
 
@@ -489,8 +509,9 @@ interface NivelIntensidadInput {
 
 interface ClaseInput {
   fechaHora: string;
-  /** Fin de la clase. Obligatorio: el backend valida que sea posterior al inicio. */
-  horaFin: string;
+  // Sin `horaFin`: la calcula el backend sumándole `actividad.duracionMin` al inicio. La
+  // duración es un dato de la actividad, así que pedirla otra vez por clase era el mismo
+  // dato dos veces — y permitía una clase de 90 min en una actividad que promete 60.
   cuposMax: number;
   repetirSemanalmente?: boolean;
   /** Fecha de corte de la repetición (YYYY-MM-DD). Sin valor = sin corte. */
@@ -578,6 +599,9 @@ interface DataContextValue {
   listarMisResenas: () => Promise<MiResenia[]>;
   listarResenasInstructor: () => Promise<ReseniaInstructor[]>;
   listarResenasPendientes: () => Promise<ReseniaPendiente[]>;
+  listarResenasPublicadas: () => Promise<ReseniaPublicada[]>;
+  /** Baja una reseña ya publicada. El motivo es obligatorio: queda en auditoría. */
+  ocultarResenia: (id: string, motivo: string) => Promise<void>;
   aprobarResenia: (id: string) => Promise<void>;
   rechazarResenia: (id: string) => Promise<void>;
 
@@ -961,6 +985,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return api.get<ReseniaPendiente[]>("/api/admin/resenas");
   }, []);
 
+  const listarResenasPublicadas = useCallback(async () => {
+    return api.get<ReseniaPublicada[]>("/api/admin/resenas/publicadas");
+  }, []);
+
+  const ocultarResenia = useCallback(async (id: string, motivo: string) => {
+    await api.post(`/api/admin/resenas/${id}/ocultar`, { motivo });
+  }, []);
+
   const aprobarResenia = useCallback(async (id: string) => {
     await api.post(`/api/admin/resenas/${id}/aprobar`);
   }, []);
@@ -1154,6 +1186,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       listarMisResenas,
       listarResenasInstructor,
       listarResenasPendientes,
+      listarResenasPublicadas,
+      ocultarResenia,
       aprobarResenia,
       rechazarResenia,
       crearDenuncia,
@@ -1241,6 +1275,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       listarMisResenas,
       listarResenasInstructor,
       listarResenasPendientes,
+      listarResenasPublicadas,
+      ocultarResenia,
       aprobarResenia,
       rechazarResenia,
       crearDenuncia,

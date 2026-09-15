@@ -7,7 +7,9 @@ import Avatar from "../../components/Avatar";
 import ErrorReintentar from "../../components/ErrorReintentar";
 import ActivityPhoto from "../../components/ActivityPhoto";
 import { s } from "../../lib/style";
+import Modal from "../../components/Modal";
 import { useAuth, passwordStrength } from "../../context/AuthContext";
+import { siPuede } from "../../lib/cargaParcial";
 import { ApiError } from "../../lib/api";
 import { useData } from "../../context/DataContext";
 import type { MiDenuncia, MiResenia, MiInscripcion } from "../../context/DataContext";
@@ -40,6 +42,7 @@ export default function AlumnoPerfil() {
     actualizarMisIntereses,
     cambiarMiContrasenia,
     darDeBajaMiCuenta,
+    puede,
   } = useAuth();
   const data = useData();
 
@@ -55,7 +58,15 @@ export default function AlumnoPerfil() {
     if (!currentUser) return;
     // Sin filtro de estado: la misma consulta alimenta el historial (todas) y el contador de
     // reseñas pendientes (solo las Inscripto ya finalizadas).
-    Promise.all([data.listarMisResenas(), data.listarMisInscripciones(), data.listarMisDenuncias()])
+    // Las tres consultas son de módulos distintos (`resenias.escribir`,
+    // `inscripciones.gestionar`, `denuncias.crear`) y el Perfil lo ve cualquiera que haya
+    // entrado al área: sin envolverlas, a un alumno con permisos parciales el Promise.all se
+    // le caía entero y el perfil mostraba el banner de error (ver lib/cargaParcial.ts).
+    Promise.all([
+      siPuede(puede("resenias.escribir"), data.listarMisResenas, []),
+      siPuede(puede("inscripciones.gestionar"), data.listarMisInscripciones, []),
+      siPuede(puede("denuncias.crear"), data.listarMisDenuncias, []),
+    ])
       .then(([resenias, inscripcionesAlumno, denuncias]) => {
         setMisResenias(resenias);
         setMisInscripciones(inscripcionesAlumno);
@@ -68,7 +79,7 @@ export default function AlumnoPerfil() {
         setErrorResumen(false);
       })
       .catch(() => setErrorResumen(true));
-  }, [currentUser, data.listarMisResenas, data.listarMisInscripciones, data.listarMisDenuncias]);
+  }, [currentUser, puede, data.listarMisResenas, data.listarMisInscripciones, data.listarMisDenuncias]);
 
   useEffect(() => {
     cargarResumen();
@@ -306,6 +317,7 @@ export default function AlumnoPerfil() {
         )}
 
         <div className="ah-grid-3" style={s("display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px;")}>
+          {puede("inscripciones.gestionar") && (
           <QuickLink
             onClick={() => navigate("/alumno/mis-pagos")}
             bg="#FFF3E0"
@@ -316,6 +328,8 @@ export default function AlumnoPerfil() {
             <rect x="2" y="5" width="20" height="14" rx="2" />
             <path d="M2 10h20" />
           </QuickLink>
+          )}
+          {puede("resenias.escribir") && (
           <QuickLink
             onClick={() => navigate("/alumno/mis-resenas")}
             bg="#FFF4EE"
@@ -325,6 +339,8 @@ export default function AlumnoPerfil() {
           >
             <path d="M11.5 3.5 13.8 8l5 .7-3.6 3.5.9 5L11.5 15l-4.5 2.4.9-5L4.3 8.7l5-.7z" />
           </QuickLink>
+          )}
+          {puede("denuncias.crear") && (
           <QuickLink
             onClick={() => navigate("/alumno/mis-denuncias")}
             bg="#FBEAEB"
@@ -335,6 +351,7 @@ export default function AlumnoPerfil() {
             <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
             <path d="M12 9v4M12 17h.01" />
           </QuickLink>
+          )}
         </div>
 
         <div className="ah-grid-2" style={s("display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;")}>
@@ -556,12 +573,7 @@ export default function AlumnoPerfil() {
       </div>
 
       {fotoAmpliada && (
-        <div
-          onClick={() => setFotoAmpliada(false)}
-          style={s(
-            "position:fixed;inset:0;z-index:80;background:rgba(8,22,38,.72);display:flex;align-items:center;justify-content:center;",
-          )}
-        >
+        <Modal onClose={() => setFotoAmpliada(false)} fondo="rgba(8,22,38,.72)">
           <div style={s("position:relative;")} onClick={(e) => e.stopPropagation()}>
             <Avatar
               usuarioId={currentUser.id}
@@ -583,7 +595,7 @@ export default function AlumnoPerfil() {
               </svg>
             </span>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
