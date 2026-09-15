@@ -45,6 +45,7 @@ import AdminRoles from "./pages/admin/Roles";
 import AdminPenalizaciones from "./pages/admin/Penalizaciones";
 import AdminAuditoria from "./pages/admin/Auditoria";
 import AdminTrazabilidad from "./pages/admin/Trazabilidad";
+import AdminPerfil from "./pages/admin/Perfil";
 
 function AppRoutes() {
   const { initializing } = useAuth();
@@ -117,6 +118,9 @@ function AppRoutes() {
 
           <Route element={<RequireArea area="admin" />}>
             <Route path="/admin" element={<AdminDashboard />} />
+            {/* "Mi perfil" no lleva permiso: son los datos de la propia cuenta, no un módulo
+                de administración. Misma regla que en el panel del instructor. */}
+            <Route path="/admin/perfil" element={<AdminPerfil />} />
             {/* Cada pantalla de administración detrás de SU permiso, el mismo que exige el
                 `@PreAuthorize` del endpoint que consume. Sin esto alcanzaba con tener uno
                 cualquiera de los permisos de admin para entrar por URL a todas las demás y

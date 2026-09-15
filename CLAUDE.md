@@ -163,12 +163,33 @@ Consecuencia de RN-19 que no es obvia: un permiso habilita un **módulo**, no un
 
 Lo que cada pantalla oculta cuando falta el permiso: las tarjetas KPI del Dashboard (cada una declara su `requiere`) y sus dos gráficos; la pestaña "Reclamos y penalizaciones" de Reportes; el botón "Nueva penalización"; y las listas de clases calificables / reportables de Mis reseñas y Mis denuncias — el historial se sigue viendo, lo que no se puede es dar de alta.
 
-## Trazabilidad: paginada, exportable y legible
+## Trazabilidad: paginada, ordenable, exportable y legible
 
 - **15 eventos por página** (`POR_PAGINA`). La auditoría es de sólo-append y crece para siempre: con miles de filas la pantalla tardaba en pintar y "Exportar" generaba un PDF de cientos de hojas.
 - **Dos botones de exportación**: "Exportar esta página" y "Exportar todo (N)". El segundo **avisa cuántos son y pide confirmación** antes de generar el documento.
 - **La columna "Detalle" muestra `descripcion`**, la frase en castellano que arma el backend (`DescripcionAuditoria`). Antes concatenaba `entidadId + metadata`, o sea un UUID y una clave técnica.
 - Cualquier cambio de filtro vuelve a la página 1; si un filtro deja menos páginas que la actual, se cae a la última válida en vez de mostrar una página vacía.
+
+### "Exportar todo" no andaba: `window.confirm` consume la activación de usuario
+
+Es la trampa que explica por qué "Exportar esta página" funcionaba perfecto y el de al lado no hacía **nada**, sin error ni ventana. `exportarPdf` abre una pestaña con `window.open`, y el navegador sólo lo permite mientras dura la **activación de usuario** (*transient user activation*) del click. "Exportar todo" pasaba antes por un `window.confirm`: ese diálogo es modal del navegador y al cerrarlo la activación ya se consumió, así que el `window.open` de después salía bloqueado en silencio.
+
+La confirmación ahora es un **modal de la app** (`components/Modal.tsx`) y el PDF lo dispara el click en su botón "Exportar", que es un gesto de usuario nuevo. **Regla general: entre el click y un `window.open` no puede haber un `alert`/`confirm`/`prompt` ni un `await`.** Por eso `exportar()` (decide) y `generarPdf()` (abre la ventana) están separadas.
+
+### Ordenar por columna: sólo al hacer click
+
+Los cinco encabezados de la tabla son botones. El primer click ordena **Fecha y hora** de más reciente a más antiguo y las columnas de texto de la A a la Z; a partir del segundo, alterna. Al cargar la pantalla **no se ordena nada** (`orden === null`): se respeta el orden que devuelve el backend.
+
+Tres cosas a respetar si se toca:
+- Se ordena `filtered` y recién después se pagina (`ordenados` → `visibles`). Ordenar la página visible daría un orden distinto en cada página.
+- El texto se compara con `Intl.Collator("es-AR")`, no con `<`: por códigos UTF-16, "Ñandú" y "álvarez" caen después de "Zapata".
+- `COLUMNAS` y `GRID_COLUMNAS` son constantes del módulo: el encabezado y las filas comparten la misma definición de grilla, que antes estaba escrita dos veces y ya se había desincronizado.
+
+"Exportar todo" exporta **en el orden elegido** (usa `ordenados`), no el del backend.
+
+### Paginación: primera, última y número editable
+
+A la izquierda de "Anterior" hay un botón que va a la **primera** página y a la derecha de "Siguiente" uno que va a la **última**, y el número del medio es un **botón que se convierte en input**: se hace click, se escribe la página y se confirma con Enter (Escape cancela, el blur también confirma). Con 200 páginas, llegar a la 137 a fuerza de "Siguiente" no es navegación. `irAPagina` clampea a `[1, totalPaginas]`, así que un número fuera de rango no rompe nada.
 
 ## `components/Modal.tsx`: los modales van en un portal, siempre
 
@@ -191,7 +212,16 @@ El mismo gráfico estaba escrito cuatro veces (Dashboard y Reportes del admin, P
 - **El `window.open` va dentro del handler del click.** Disparado desde un `setTimeout` o un `.then()` lo corta el bloqueador de pop-ups; la función devuelve `false` en ese caso y la pantalla muestra el aviso.
 - **El documento se entrega como Blob, NO con `document.write`.** Con `window.open("")` + `document.write` la ventana se queda en `about:blank` y su evento `load` **ya se disparó** antes de que escribiéramos nada, así que el `onload` que llamaba a `print()` no corría nunca: ventana en blanco y sin diálogo de impresión. Con un Blob la ventana carga un documento real y la llamada a `print()` viaja **dentro** del HTML.
 - **El gráfico se puede incluir** (`grafico`): se dibuja con divs y CSS, no como imagen. Un `<canvas>` rasterizado sale borroso al imprimir; con barras de CSS el PDF queda vectorial. Lleva el valor escrito sobre cada barra y escala a la izquierda, porque un gráfico impreso no tiene tooltip. Lo usan Reportes y Métricas; el CSV, que no puede llevar imagen, incluye la serie como filas.
+- **Los fondos hay que pedirlos: `print-color-adjust: exact`.** Los navegadores imprimen sin fondos por defecto, así que del gráfico del PDF de Reportes se veían los ejes, las líneas y las etiquetas (texto y bordes) pero **las barras del centro salían en blanco**, igual que el encabezado gris de la tabla. La declaración va en el selector `*` de la hoja del documento —Chrome la aplica por elemento, no se hereda— y las barras además llevan `border` como plan B por si alguien imprime con "Gráficos de fondo" desactivado a mano.
 - Todo el texto se escapa antes de interpolarse: el contenido viene de datos que escribieron usuarios.
+
+## `admin/Perfil.tsx`: el administrador también tiene cuenta propia
+
+`/admin/perfil`, ítem "Mi perfil" al final del sidebar de admin (key `perfilAdmin` en `lib/areas.ts`, **sin `requiere`**: son los datos de la propia cuenta, no un módulo, y va último para que nunca sea el aterrizaje de nadie).
+
+Antes el administrador era el único de los tres roles sin pantalla de cuenta propia: podía editar el nombre, el correo y el teléfono de **cualquier otro** usuario desde Gestión, pero no los suyos. Usa `actualizarMiPerfil` / `cambiarMiContrasenia` de `AuthContext` —no `actualizarUsuarioAdmin`, que apunta a un id ajeno—, que son las que refrescan `currentUser`, así que el nombre y el avatar del sidebar se actualizan solos al guardar.
+
+**No tiene "dar de baja mi cuenta"**, a diferencia del alumno: un administrador que se borra a sí mismo puede dejar la plataforma sin nadie que la administre. Esas bajas se hacen desde Gestión, con otra cuenta.
 
 ## Pantallas del instructor: lo que cambió en este tramo
 
@@ -274,7 +304,7 @@ Donde el efecto sincroniza con algo externo de verdad (la navegación en Explora
 
 ## Foto de perfil: solo desde Perfil, y en modo edición
 
-El avatar de `AlumnoNav` **no** sube foto: es identidad, no un control. El único punto de subida para el alumno es el avatar de `alumno/Perfil.tsx`, y solo cuando está en modo edición (`onUpload` se pasa condicionado a `editando`). Ojo: `DashSidebar` (instructor/admin) todavía deja subir desde el sidebar, porque esos roles no tienen otra pantalla donde hacerlo — es una decisión pendiente, no un olvido.
+El avatar de `AlumnoNav` **no** sube foto: es identidad, no un control. El único punto de subida para el alumno es el avatar de `alumno/Perfil.tsx`, y solo cuando está en modo edición (`onUpload` se pasa condicionado a `editando`). El `Avatar` de `DashSidebar` **ya no sube foto** (perdió su `onUpload`): instructor y admin tienen ahora su propia pantalla de perfil (`instructor/Perfil.tsx`, `admin/Perfil.tsx`) y ése es el único punto de subida de los tres roles.
 
 ## Penalizaciones: los dos tipos son combinables y la suspensión pide plazo
 

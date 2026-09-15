@@ -128,6 +128,12 @@ function adminItems(color: (on: boolean) => string, activeKey: string): NavDef[]
       "/admin/reportes",
       '<path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/>',
     ],
+    [
+      "perfilAdmin",
+      "Mi perfil",
+      "/admin/perfil",
+      '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+    ],
   ];
   return defs.map(([key, label, path, icon]) => ({
     key,

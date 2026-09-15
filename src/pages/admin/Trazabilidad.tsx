@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import DashLayout from "../../components/DashLayout";
+import Modal from "../../components/Modal";
 import { s } from "../../lib/style";
 import { useData } from "../../context/DataContext";
 import type { AuditoriaEntry } from "../../context/DataContext";
@@ -53,6 +54,23 @@ function accionStyle(accion: string): [string, string, string, string] {
   return ACCION_PALETTE[hashStr(accion) % ACCION_PALETTE.length];
 }
 
+/**
+ * Las columnas de la tabla, en orden. Vive acá y no inline en el JSX porque la misma lista
+ * arma el encabezado clickeable y decide por qué campo se ordena.
+ */
+type CampoOrden = "fecha" | "usuario" | "accion" | "entidad" | "detalle";
+
+const COLUMNAS: { campo: CampoOrden; label: string }[] = [
+  { campo: "fecha", label: "Fecha y hora" },
+  { campo: "usuario", label: "Usuario" },
+  { campo: "accion", label: "Acción" },
+  { campo: "entidad", label: "Entidad" },
+  { campo: "detalle", label: "Detalle" },
+];
+
+const GRID_COLUMNAS =
+  "grid-template-columns:130px minmax(150px,1.3fr) minmax(196px,1.1fr) minmax(104px,.8fr) minmax(190px,1.9fr);";
+
 function sameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
@@ -67,6 +85,14 @@ export default function AdminTrazabilidad() {
   const [rolOpen, setRolOpen] = useState(false);
   const [pagina, setPagina] = useState(1);
   const [accOpen, setAccOpen] = useState(false);
+  // `null` = el orden que devuelve el backend (más reciente primero). Sólo se ordena a mano
+  // cuando el usuario hace click en un encabezado: al cargar la pantalla no se toca nada.
+  const [orden, setOrden] = useState<{ campo: CampoOrden; dir: "asc" | "desc" } | null>(null);
+  // El número de página es editable: con 200 páginas, llegar a la 137 a fuerza de "Siguiente"
+  // no es navegación.
+  const [editandoPagina, setEditandoPagina] = useState(false);
+  const [paginaInput, setPaginaInput] = useState("");
+  const [confirmarExport, setConfirmarExport] = useState(false);
 
   useEffect(() => {
     listarAuditoria()
@@ -102,14 +128,65 @@ export default function AdminTrazabilidad() {
     });
   }, [entries, query, rolFiltro, accFiltro]);
 
+  /**
+   * Orden client-side, como todo el resto del proyecto (no hay ordenamiento server-side en
+   * ningún endpoint). Se ordena **lo filtrado**, no la página visible: ordenar sólo las 15
+   * filas de la pantalla daría un orden distinto en cada página.
+   *
+   * <p>El texto se compara con `Intl.Collator` en es-AR y no con `<`: comparando códigos
+   * UTF-16, "Ñandú" y "álvarez" caen después de "Zapata".
+   */
+  const ordenados = useMemo(() => {
+    if (!orden) return filtered;
+    const collator = new Intl.Collator("es-AR", { sensitivity: "base", numeric: true });
+    const texto = (e: (typeof filtered)[number]) =>
+      orden.campo === "usuario"
+        ? e.nombre
+        : orden.campo === "accion"
+          ? e.accion
+          : orden.campo === "entidad"
+            ? e.entidad
+            : e.descripcion;
+    const copia = [...filtered];
+    copia.sort((a, b) => {
+      const r =
+        orden.campo === "fecha"
+          ? new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+          : collator.compare(texto(a), texto(b));
+      return orden.dir === "asc" ? r : -r;
+    });
+    return copia;
+  }, [filtered, orden]);
+
+  /**
+   * Primer click: las fechas arrancan por la más reciente (que es lo que alguien espera de un
+   * log) y el texto por la A. Del segundo click en adelante alterna.
+   */
+  const toggleOrden = (campo: CampoOrden) => {
+    setOrden((o) =>
+      !o || o.campo !== campo
+        ? { campo, dir: campo === "fecha" ? "desc" : "asc" }
+        : { campo, dir: o.dir === "asc" ? "desc" : "asc" },
+    );
+    setPagina(1);
+  };
+
   const totalPaginas = Math.max(1, Math.ceil(filtered.length / POR_PAGINA));
   // Si un filtro deja menos páginas que la actual, se vuelve a la primera en vez de mostrar
   // una página vacía.
   const paginaActual = Math.min(pagina, totalPaginas);
   const visibles = useMemo(
-    () => filtered.slice((paginaActual - 1) * POR_PAGINA, paginaActual * POR_PAGINA),
-    [filtered, paginaActual],
+    () => ordenados.slice((paginaActual - 1) * POR_PAGINA, paginaActual * POR_PAGINA),
+    [ordenados, paginaActual],
   );
+
+  const irAPagina = (n: number) => setPagina(Math.min(totalPaginas, Math.max(1, n)));
+
+  const confirmarPaginaEscrita = () => {
+    const n = parseInt(paginaInput, 10);
+    if (!Number.isNaN(n)) irAPagina(n);
+    setEditandoPagina(false);
+  };
 
   const kpis = useMemo(() => {
     const now = new Date();
@@ -148,19 +225,8 @@ export default function AdminTrazabilidad() {
    * en este demo". Ahora exporta a PDF lo **filtrado**, no la tabla entera — un registro de
    * auditoría que exporta algo distinto de lo que se está mirando no sirve como respaldo.
    */
-  const exportar = (alcance: "pagina" | "todo") => {
-    const filas = alcance === "pagina" ? visibles : filtered;
-
-    // Exportar todo puede ser mucho: se avisa cuántos son y se pide confirmación antes de
-    // generar un documento que puede tardar.
-    if (alcance === "todo" && filas.length > POR_PAGINA) {
-      const seguir = window.confirm(
-        `Vas a exportar ${filas.length} eventos (${totalPaginas} páginas de la tabla).\n\n` +
-          "Con muchos registros el documento puede tardar unos segundos en abrirse.\n\n" +
-          "¿Querés continuar?",
-      );
-      if (!seguir) return;
-    }
+  const generarPdf = (alcance: "pagina" | "todo") => {
+    const filas = alcance === "pagina" ? visibles : ordenados;
 
     const ok = exportarPdf({
       titulo: "Registro de auditoría y trazabilidad",
@@ -194,6 +260,39 @@ export default function AdminTrazabilidad() {
       setError("El navegador bloqueó la ventana de exportación. Habilitá las ventanas emergentes para este sitio.");
     }
   };
+
+  /**
+   * Por qué la confirmación de "Exportar todo" es un modal propio y no `window.confirm`.
+   *
+   * <p>`exportarPdf` abre una pestaña con `window.open`, y eso el navegador sólo lo permite
+   * mientras dura la **activación de usuario** del click. `window.confirm` es un diálogo modal
+   * del navegador: al cerrarlo esa activación ya se consumió, así que el `window.open` que
+   * venía después salía bloqueado y no pasaba absolutamente nada. Por eso "Exportar esta
+   * página" —que no confirma nada— funcionaba y "Exportar todo" no.
+   *
+   * <p>Con un modal de la propia app, el click en "Exportar" es un gesto de usuario nuevo y el
+   * `window.open` sale desde adentro de su handler, igual que en el otro botón.
+   */
+  const exportar = (alcance: "pagina" | "todo") => {
+    if (alcance === "todo" && ordenados.length > POR_PAGINA) {
+      setConfirmarExport(true);
+      return;
+    }
+    generarPdf(alcance);
+  };
+
+  const navBtn = (label: string, onClick: () => void, disabled: boolean) => (
+    <button
+      className="ah-btn"
+      onClick={onClick}
+      disabled={disabled}
+      style={s(
+        `background:#fff;border:1px solid #E2E9F0;border-radius:10px;padding:9px 14px;font:700 12.5px Manrope,sans-serif;color:${disabled ? "#C2CCD6" : "#41566B"};cursor:${disabled ? "default" : "pointer"};`,
+      )}
+    >
+      {label}
+    </button>
+  );
 
   return (
     <DashLayout role="admin" active="trazabilidad">
@@ -410,14 +509,39 @@ export default function AdminTrazabilidad() {
             <div style={s("min-width:980px;")}>
               <div
                 style={s(
-                  "display:grid;grid-template-columns:130px minmax(150px,1.3fr) minmax(196px,1.1fr) minmax(104px,.8fr) minmax(190px,1.9fr);gap:14px;padding:12px 22px;background:#F7FAFC;border-bottom:1px solid #EEF2F6;font:700 11.5px Manrope,sans-serif;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;",
+                  `display:grid;${GRID_COLUMNAS}gap:14px;padding:12px 22px;background:#F7FAFC;border-bottom:1px solid #EEF2F6;font:700 11.5px Manrope,sans-serif;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;`,
                 )}
               >
-                <span>Fecha y hora</span>
-                <span>Usuario</span>
-                <span>Acción</span>
-                <span>Entidad</span>
-                <span>Detalle</span>
+                {COLUMNAS.map((c) => {
+                  const activa = orden?.campo === c.campo;
+                  const asc = activa && orden.dir === "asc";
+                  return (
+                    <button
+                      key={c.campo}
+                      type="button"
+                      onClick={() => toggleOrden(c.campo)}
+                      title={`Ordenar por ${c.label}`}
+                      style={s(
+                        `display:flex;align-items:center;gap:5px;justify-self:start;background:none;border:none;padding:0;margin:0;cursor:pointer;font:inherit;text-transform:inherit;letter-spacing:inherit;color:${activa ? "#2D5BC8" : "#90A1B2"};`,
+                      )}
+                    >
+                      {c.label}
+                      {/* La flecha sólo se pinta en la columna por la que se está ordenando:
+                          marcarlas todas convierte el encabezado en ruido. */}
+                      <svg
+                        width="11"
+                        height="11"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={3}
+                        style={{ opacity: activa ? 1 : 0.28, transform: asc ? "rotate(180deg)" : "none" }}
+                      >
+                        <path d="m6 9 6 6 6-6" />
+                      </svg>
+                    </button>
+                  );
+                })}
               </div>
               {visibles.map((l) => {
                 const [rolBg, rolFg] = ROL_STYLE[l.rol];
@@ -431,7 +555,7 @@ export default function AdminTrazabilidad() {
                   <div
                     key={l.id}
                     className="ah-row"
-                    style={s("display:grid;grid-template-columns:130px minmax(150px,1.3fr) minmax(196px,1.1fr) minmax(104px,.8fr) minmax(190px,1.9fr);gap:14px;padding:14px 22px;border-bottom:1px solid #F1F4F8;align-items:center;")}
+                    style={s(`display:grid;${GRID_COLUMNAS}gap:14px;padding:14px 22px;border-bottom:1px solid #F1F4F8;align-items:center;`)}
                   >
                     <span style={s("font:700 12px ui-monospace,Menlo,monospace;color:#0E2A47;line-height:1.5;")}>
                       {formatFecha(l.createdAt)}
@@ -489,32 +613,55 @@ export default function AdminTrazabilidad() {
         {totalPaginas > 1 && (
           <div
             style={s(
-              "margin-top:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center;",
+              "margin-top:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center;",
             )}
           >
-            <button
-              className="ah-btn"
-              onClick={() => setPagina(paginaActual - 1)}
-              disabled={paginaActual === 1}
-              style={s(
-                `background:#fff;border:1px solid #E2E9F0;border-radius:10px;padding:9px 14px;font:700 12.5px Manrope,sans-serif;color:${paginaActual === 1 ? "#C2CCD6" : "#41566B"};cursor:${paginaActual === 1 ? "default" : "pointer"};`,
+            {/*
+              "Primera" y "Última" existen porque con cientos de páginas volver al principio a
+              fuerza de "Anterior" no es navegación. Por la misma razón el número del medio es
+              un input: se hace click y se escribe la página a la que se quiere ir.
+            */}
+            {navBtn("« Primera", () => irAPagina(1), paginaActual === 1)}
+            {navBtn("Anterior", () => irAPagina(paginaActual - 1), paginaActual === 1)}
+            <span style={s("display:flex;align-items:center;gap:6px;font:700 12.5px Manrope,sans-serif;color:#65788C;")}>
+              Página
+              {editandoPagina ? (
+                <input
+                  autoFocus
+                  type="number"
+                  min={1}
+                  max={totalPaginas}
+                  value={paginaInput}
+                  onChange={(e) => setPaginaInput(e.target.value)}
+                  onBlur={confirmarPaginaEscrita}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") confirmarPaginaEscrita();
+                    if (e.key === "Escape") setEditandoPagina(false);
+                  }}
+                  style={s(
+                    "width:64px;text-align:center;border:1.5px solid #2D5BC8;border-radius:8px;padding:6px 4px;font:700 12.5px Manrope,sans-serif;color:#0E2A47;outline:none;",
+                  )}
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPaginaInput(String(paginaActual));
+                    setEditandoPagina(true);
+                  }}
+                  title="Escribir el número de página"
+                  className="ah-btn"
+                  style={s(
+                    "background:#fff;border:1px solid #E2E9F0;border-radius:8px;padding:6px 12px;font:700 12.5px Manrope,sans-serif;color:#0E2A47;cursor:pointer;",
+                  )}
+                >
+                  {paginaActual}
+                </button>
               )}
-            >
-              Anterior
-            </button>
-            <span style={s("font:700 12.5px Manrope,sans-serif;color:#65788C;")}>
-              Página {paginaActual} de {totalPaginas}
+              de {totalPaginas}
             </span>
-            <button
-              className="ah-btn"
-              onClick={() => setPagina(paginaActual + 1)}
-              disabled={paginaActual === totalPaginas}
-              style={s(
-                `background:#fff;border:1px solid #E2E9F0;border-radius:10px;padding:9px 14px;font:700 12.5px Manrope,sans-serif;color:${paginaActual === totalPaginas ? "#C2CCD6" : "#41566B"};cursor:${paginaActual === totalPaginas ? "default" : "pointer"};`,
-              )}
-            >
-              Siguiente
-            </button>
+            {navBtn("Siguiente", () => irAPagina(paginaActual + 1), paginaActual === totalPaginas)}
+            {navBtn("Última »", () => irAPagina(totalPaginas), paginaActual === totalPaginas)}
           </div>
         )}
 
@@ -529,6 +676,47 @@ export default function AdminTrazabilidad() {
           </span>
         </div>
       </div>
+
+      {confirmarExport && (
+        <Modal onClose={() => setConfirmarExport(false)}>
+          <div
+            style={s(
+              "background:#fff;border-radius:18px;padding:24px;max-width:440px;width:100%;box-shadow:0 24px 60px rgba(14,42,71,.25);",
+            )}
+          >
+            <div style={s("font:700 17px Space Grotesk,sans-serif;color:#0E2A47;margin-bottom:8px;")}>
+              Exportar {ordenados.length} eventos
+            </div>
+            <p style={s("font-size:13.5px;color:#65788C;font-weight:600;line-height:1.55;margin:0 0 18px;")}>
+              Son {totalPaginas} páginas de la tabla. Con muchos registros el documento puede tardar unos segundos
+              en abrirse.
+            </p>
+            <div style={s("display:flex;gap:10px;justify-content:flex-end;")}>
+              <button
+                className="ah-btn"
+                onClick={() => setConfirmarExport(false)}
+                style={s(
+                  "background:#fff;border:1px solid #E2E9F0;border-radius:11px;padding:10px 16px;font:700 13px Manrope,sans-serif;color:#65788C;cursor:pointer;",
+                )}
+              >
+                Cancelar
+              </button>
+              <button
+                className="ah-btn"
+                onClick={() => {
+                  setConfirmarExport(false);
+                  generarPdf("todo");
+                }}
+                style={s(
+                  "background:#0FB8A9;border:none;border-radius:11px;padding:10px 18px;font:700 13px Manrope,sans-serif;color:#fff;cursor:pointer;",
+                )}
+              >
+                Exportar
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </DashLayout>
   );
 }

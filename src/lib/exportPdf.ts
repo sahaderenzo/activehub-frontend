@@ -121,7 +121,14 @@ export function exportarPdf<T>(reporte: ReportePdf<T>): boolean {
 <meta charset="utf-8">
 <title>${escapar(reporte.titulo)}</title>
 <style>
-  * { box-sizing: border-box; }
+  /*
+   * Los navegadores imprimen SIN fondos por defecto: el background de un div se descarta al
+   * pasar a PDF. Por eso el grafico salia con los ejes y las etiquetas (texto y bordes, que si
+   * se imprimen) pero con las barras del centro en blanco, igual que el encabezado de la tabla.
+   * print-color-adjust:exact le pide al motor que respete los fondos; va en el selector * porque
+   * Chrome lo aplica por elemento y no se hereda.
+   */
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   body { margin: 0; padding: 28px 34px 40px; font: 400 12px/1.5 system-ui, "Segoe UI", sans-serif; color: #33485E; }
   header { border-bottom: 2px solid #0E2A47; padding-bottom: 14px; margin-bottom: 16px; }
   .marca { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; }
@@ -153,7 +160,10 @@ export function exportarPdf<T>(reporte: ReportePdf<T>): boolean {
   .g-barras { position: relative; height: 150px; border-bottom: 1px solid #CBD5E1; display: flex;
               align-items: flex-end; gap: 6px; }
   .g-linea { position: absolute; left: 0; right: 0; border-top: 1px dashed #ECF1F6; }
-  .g-barra { flex: 1; background: #12B5A5; border-radius: 3px 3px 0 0; position: relative; }
+  /* El borde es el plan B: si alguien imprime con "Graficos de fondo" desactivado a mano, la
+     barra igual se ve como un contorno solido en vez de desaparecer del todo. */
+  .g-barra { flex: 1; background: #12B5A5; border: 1px solid #0C8576; border-radius: 3px 3px 0 0;
+             position: relative; }
   .g-etiquetas { display: flex; gap: 6px; margin-top: 5px; }
   .g-etiquetas span { flex: 1; text-align: center; font: 700 8px system-ui, sans-serif; color: #90A1B2; }
   .g-etiquetas b { display: block; color: #0E2A47; font-size: 9.5px; }

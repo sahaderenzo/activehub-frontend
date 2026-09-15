@@ -104,6 +104,10 @@ export const AREAS: AreaDef[] = [
       { key: "auditoria", path: "/admin/auditoria", requiere: "auditoria.ver" },
       { key: "trazabilidad", path: "/admin/trazabilidad", requiere: "auditoria.ver" },
       { key: "reportes", path: "/admin/reportes", requiere: "reportes.ver" },
+      // Perfil no lleva permiso y va último, por la misma razón que el del instructor: son
+      // los datos de la propia cuenta y nunca tiene que ser el aterrizaje de alguien que
+      // tenga algo más que hacer.
+      { key: "perfilAdmin", path: "/admin/perfil" },
     ],
   },
   {
