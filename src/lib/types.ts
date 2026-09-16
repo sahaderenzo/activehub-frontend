@@ -130,6 +130,14 @@ export interface Clase {
   cuposOcupados: number;
   /** Solo presente cuando la clase viene del detalle de actividad (obteneractividad). */
   cantidadPreInscripcion?: number;
+  /**
+   * Precio de ESTA clase (V23 del backend), que es el que se cobra al inscribirse — no el
+   * actual de la actividad. Una clase con inscriptos queda congelada: si el instructor sube
+   * el precio después, esa clase sigue valiendo lo que valía. **Toda pantalla que muestre
+   * el importe de una clase concreta tiene que usar esto, no `actividad.precio`**, que es
+   * sólo el precio de lista del catálogo.
+   */
+  precio: number;
 }
 
 export interface Pago {

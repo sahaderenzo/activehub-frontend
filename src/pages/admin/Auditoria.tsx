@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import DashLayout from "../../components/DashLayout";
+import Modal from "../../components/Modal";
 import StatusBadge from "../../components/StatusBadge";
 import { s } from "../../lib/style";
 import { useData } from "../../context/DataContext";
@@ -19,6 +20,16 @@ const ICON_REINTEGRO = '<path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0
 const ICON_SUSPENDER = '<circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/>';
 const ICON_PENALIZAR = '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/>';
 const ICON_DESESTIMAR = '<path d="M18 6 6 18M6 6l12 12"/>';
+
+/** Espejo de `VentanaPenalizacion.MINIMO_DIAS_SUSPENSION` del backend (y de `admin/Gestion.tsx`). */
+const MIN_DIAS_SUSPENSION = 15;
+
+/** Borrador del modal de suspensión: los días y la multa se escriben como texto y se validan al confirmar. */
+interface SuspensionEnCurso {
+  denuncia: DenunciaAdmin;
+  dias: string;
+  monto: string;
+}
 
 const ACTIONS: ResolAction[] = [
   { key: "REINTEGRAR", label: "Reintegrar pago", icon: ICON_REINTEGRO, tint: "#E7F8F5", color: "#0C8576" },
@@ -41,6 +52,15 @@ export default function AdminAuditoria() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [resolviendo, setResolviendo] = useState(false);
+  /**
+   * "Suspender instructor denunciado" no es un botón directo: el backend exige `diasSuspension`
+   * (mínimo 15) y acepta una multa opcional. Sin este modal la pantalla mandaba la acción pelada
+   * y el backend contestaba "Indicá cuántos días dura la suspensión." sin que hubiera ningún
+   * lado donde indicarlo — el botón estaba roto de punta a punta. Es el mismo formulario que
+   * ya tenía la pestaña Reclamos de `admin/Gestion.tsx`.
+   */
+  const [suspension, setSuspension] = useState<SuspensionEnCurso | null>(null);
+  const [errorSuspension, setErrorSuspension] = useState<string | null>(null);
 
   const cargar = useCallback(() => {
     listarDenunciasAdmin()
@@ -69,8 +89,42 @@ export default function AdminAuditoria() {
     }
   };
 
+  const confirmarSuspension = async () => {
+    if (!suspension) return;
+    const dias = Number(suspension.dias);
+    const monto = suspension.monto.trim() === "" ? 0 : Number(suspension.monto);
+
+    if (!Number.isInteger(dias) || dias < MIN_DIAS_SUSPENSION) {
+      return setErrorSuspension(`La suspensión no puede durar menos de ${MIN_DIAS_SUSPENSION} días.`);
+    }
+    if (!Number.isFinite(monto) || monto < 0) {
+      return setErrorSuspension("El monto no puede ser negativo. Dejalo en 0 si no querés aplicar multa.");
+    }
+
+    setErrorSuspension(null);
+    setResolviendo(true);
+    try {
+      await resolverDenuncia(suspension.denuncia.id, "SUSPENDER", undefined, {
+        montoMulta: monto,
+        diasSuspension: dias,
+      });
+      setSuspension(null);
+      setSelectedId(null);
+      cargar();
+    } catch (err) {
+      setErrorSuspension(err instanceof ApiError ? err.message : "No pudimos aplicar la suspensión.");
+    } finally {
+      setResolviendo(false);
+    }
+  };
+
   const resolver = async (accion: AccionResolucion) => {
     if (!selected) return;
+    if (accion === "SUSPENDER") {
+      setErrorSuspension(null);
+      setSuspension({ denuncia: selected, dias: String(MIN_DIAS_SUSPENSION), monto: "0" });
+      return;
+    }
     setResolviendo(true);
     setError(null);
     try {
@@ -181,6 +235,90 @@ export default function AdminAuditoria() {
           </div>
         </div>
       </div>
+
+      {suspension && (
+        <Modal onClose={() => !resolviendo && setSuspension(null)} zIndex={60}>
+          <div style={s("background:#fff;border-radius:18px;padding:26px;max-width:460px;width:100%;")}>
+            <div style={s("font:700 18px Space Grotesk,sans-serif;color:#0E2A47;margin-bottom:4px;")}>
+              Suspender al instructor
+            </div>
+            <div style={s("font-size:13.5px;color:#7A8C9E;font-weight:600;margin-bottom:18px;")}>
+              {suspension.denuncia.instructor.nombre} {suspension.denuncia.instructor.apellido} · la suspensión se
+              levanta sola al vencer.
+            </div>
+
+            <div
+              style={s(
+                "background:#FFF9EF;border:1px solid #F6E2C0;border-radius:11px;padding:11px 14px;margin-bottom:16px;font:600 12.5px Manrope,sans-serif;color:#8A5A12;line-height:1.5;",
+              )}
+            >
+              Lo inhabilita por los días indicados, cancela sus clases de ese período y reintegra el pago a todos los
+              inscriptos. La multa es opcional.
+            </div>
+
+            <div style={s("display:flex;flex-direction:column;gap:12px;")}>
+              <label style={s("display:flex;flex-direction:column;gap:6px;")}>
+                <span style={s("font:700 12.5px Manrope,sans-serif;color:#41566B;")}>
+                  Días de suspensión (mínimo {MIN_DIAS_SUSPENSION})
+                </span>
+                <input
+                  type="number"
+                  min={MIN_DIAS_SUSPENSION}
+                  step={1}
+                  value={suspension.dias}
+                  onChange={(e) => setSuspension({ ...suspension, dias: e.target.value })}
+                  style={s("border:1px solid #E2E9F0;border-radius:10px;padding:11px 12px;font:600 14px Manrope,sans-serif;color:#0E2A47;")}
+                />
+              </label>
+
+              <label style={s("display:flex;flex-direction:column;gap:6px;")}>
+                <span style={s("font:700 12.5px Manrope,sans-serif;color:#41566B;")}>Multa (puede ser 0)</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={100}
+                  value={suspension.monto}
+                  onChange={(e) => setSuspension({ ...suspension, monto: e.target.value })}
+                  style={s("border:1px solid #E2E9F0;border-radius:10px;padding:11px 12px;font:600 14px Manrope,sans-serif;color:#0E2A47;")}
+                />
+                <span style={s("font-size:11.5px;color:#9AAABA;font-weight:600;")}>
+                  En 0 no se aplica penalización económica, solo la suspensión.
+                </span>
+              </label>
+            </div>
+
+            {errorSuspension && (
+              <div
+                style={s("margin-top:12px;background:#FBEAEB;border:1px solid #F3C6C7;color:#BE3A3E;border-radius:10px;padding:10px 13px;font:600 13px Manrope,sans-serif;")}
+                role="alert"
+              >
+                {errorSuspension}
+              </div>
+            )}
+
+            <div style={s("display:flex;gap:10px;margin-top:18px;")}>
+              <button
+                className="ah-btn"
+                onClick={() => setSuspension(null)}
+                disabled={resolviendo}
+                style={s("flex:1;background:#fff;border:1px solid #D6DEE7;border-radius:11px;padding:12px;font:700 14px Manrope,sans-serif;color:#41566B;cursor:pointer;")}
+              >
+                Cancelar
+              </button>
+              <button
+                className="ah-btn"
+                onClick={confirmarSuspension}
+                disabled={resolviendo}
+                style={s(
+                  `flex:1;background:${resolviendo ? "#D89A9C" : "#BE3A3E"};border:none;border-radius:11px;padding:12px;font:700 14px Manrope,sans-serif;color:#fff;cursor:${resolviendo ? "wait" : "pointer"};`,
+                )}
+              >
+                {resolviendo ? "Aplicando…" : "Suspender"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </DashLayout>
   );
 }

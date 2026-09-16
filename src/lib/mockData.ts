@@ -378,6 +378,8 @@ export const clases: Clase[] = actividades.flatMap((a, i) => {
       estado,
       cuposMax: cupos,
       cuposOcupados: Math.min(ocupados, cupos),
+      // La clase de demo nace con el precio de su actividad, igual que en el backend (V23).
+      precio: a.precio,
     };
   });
 });

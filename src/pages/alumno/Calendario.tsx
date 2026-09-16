@@ -326,9 +326,16 @@ function ClaseCard({ item, onClick, getActividad, getTipoActividad, getCategoria
         {item.actividadNombre} <span style={s("color:#9AAABA;font-weight:600;")}>· {cat?.nombre}</span>
       </div>
       <div style={s("font-size:12.5px;color:#7A8C9E;font-weight:600;margin-bottom:9px;")}>{instructor ?? ""}</div>
-      {actividad && (
-        <div style={s("display:flex;align-items:center;justify-content:flex-end;font-size:13px;")}>
-          <span style={s("font:700 14px Space Grotesk,sans-serif;color:#0E2A47;")}>${actividad.precio.toLocaleString("es-AR")}</span>
+      {/* El importe que mostramos es el que esta persona pagó por ESTA clase, no el precio
+          de lista actual de la actividad: si el instructor lo cambió después, el de la
+          actividad ya no es lo que dice el comprobante. `pago` sólo falta en una
+          preinscripción, que todavía no cobró nada — ahí sí vale el precio de lista. */}
+      {(item.pago || actividad) && (
+        <div style={s("display:flex;align-items:center;justify-content:flex-end;gap:6px;font-size:13px;")}>
+          {!item.pago && <span style={s("font-size:11.5px;color:#9AAABA;font-weight:600;")}>estimado</span>}
+          <span style={s("font:700 14px Space Grotesk,sans-serif;color:#0E2A47;")}>
+            ${(item.pago?.monto ?? actividad!.precio).toLocaleString("es-AR")}
+          </span>
         </div>
       )}
     </div>

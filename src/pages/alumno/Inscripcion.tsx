@@ -244,7 +244,7 @@ export default function AlumnoInscripcion() {
                     `width:100%;background:#009EE3;color:#fff;border:none;border-radius:12px;padding:15px;font:700 15.5px Manrope,sans-serif;cursor:pointer;box-shadow:0 8px 18px rgba(0,158,227,.28);opacity:${enviando ? ".7" : "1"};`,
                   )}
                 >
-                  {enviando ? "Procesando…" : `Pagar $${actividad.precio.toLocaleString("es-AR")} con MercadoPago`}
+                  {enviando ? "Procesando…" : `Pagar $${clase.precio.toLocaleString("es-AR")} con MercadoPago`}
                 </button>
               </div>
             ) : (
@@ -255,7 +255,7 @@ export default function AlumnoInscripcion() {
                     Tu inscripción queda <strong>con pago pendiente</strong> hasta el inicio de la clase.
                   </EfectivoStep>
                   <EfectivoStep n={2}>
-                    Llegá <strong>10 minutos antes</strong> y aboná los ${actividad.precio.toLocaleString("es-AR")} directamente al
+                    Llegá <strong>10 minutos antes</strong> y aboná los ${clase.precio.toLocaleString("es-AR")} directamente al
                     instructor.
                   </EfectivoStep>
                   <EfectivoStep n={3}>El instructor confirma tu asistencia y tu inscripción queda completa.</EfectivoStep>
@@ -297,7 +297,10 @@ export default function AlumnoInscripcion() {
             <div style={s("border-top:1px solid #EEF2F6;padding-top:14px;display:flex;flex-direction:column;gap:9px;")}>
               <div style={s("display:flex;justify-content:space-between;font-size:13.5px;")}>
                 <span style={s("color:#7A8C9E;font-weight:600;")}>Subtotal</span>
-                <span style={s("font-weight:700;color:#0E2A47;")}>${actividad.precio.toLocaleString("es-AR")}</span>
+                {/* `clase.precio`, no `actividad.precio`: es lo que va a cobrar el backend
+                    (V23). Con el precio de lista, el resumen prometía un importe distinto
+                    del que después aparecía en Mis pagos. */}
+                <span style={s("font-weight:700;color:#0E2A47;")}>${clase.precio.toLocaleString("es-AR")}</span>
               </div>
               <div style={s("display:flex;justify-content:space-between;font-size:13.5px;")}>
                 <span style={s("color:#7A8C9E;font-weight:600;")}>Cargo de servicio</span>
@@ -305,7 +308,7 @@ export default function AlumnoInscripcion() {
               </div>
               <div style={s("display:flex;justify-content:space-between;align-items:baseline;margin-top:6px;")}>
                 <span style={s("font:700 15px Manrope,sans-serif;color:#0E2A47;")}>Total</span>
-                <span style={s("font:700 24px Space Grotesk,sans-serif;color:#0E2A47;")}>${actividad.precio.toLocaleString("es-AR")}</span>
+                <span style={s("font:700 24px Space Grotesk,sans-serif;color:#0E2A47;")}>${clase.precio.toLocaleString("es-AR")}</span>
               </div>
             </div>
           </div>

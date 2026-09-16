@@ -404,12 +404,16 @@ export default function InstructorActividadDetalle() {
           <div
             className="ah-grid-5"
             style={s(
-              "display:grid;grid-template-columns:1.3fr 1.3fr 1fr 1fr 170px;padding:11px 22px;background:#F7FAFC;border-bottom:1px solid #EEF2F6;font:700 11.5px Manrope;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;",
+              "display:grid;grid-template-columns:1.2fr 1.1fr .8fr .9fr 1fr 170px;padding:11px 22px;background:#F7FAFC;border-bottom:1px solid #EEF2F6;font:700 11.5px Manrope;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;",
             )}
           >
             <span>Fecha</span>
             <span>Horario</span>
             <span>Cupos</span>
+            {/* Cada clase tiene su propio precio (V23): las congeladas conservan el viejo
+                cuando se edita el de la actividad, así que una sola columna en el encabezado
+                de la actividad no alcanzaba para saber a cuánto se está vendiendo cada una. */}
+            <span>Precio</span>
             <span>Estado</span>
             <span>Acciones</span>
           </div>
@@ -423,13 +427,23 @@ export default function InstructorActividadDetalle() {
               key={c.id}
               className="ah-grid-5"
               style={s(
-                "display:grid;grid-template-columns:1.3fr 1.3fr 1fr 1fr 170px;padding:13px 22px;border-bottom:1px solid #F1F4F8;align-items:center;",
+                "display:grid;grid-template-columns:1.2fr 1.1fr .8fr .9fr 1fr 170px;padding:13px 22px;border-bottom:1px solid #F1F4F8;align-items:center;",
               )}
             >
               <span style={s("font:700 13.5px Manrope;color:#0E2A47;")}>{formatFecha(c.fechaHora)}</span>
               <span style={s("font-size:13px;color:#65788C;font-weight:600;")}>{formatHora(c.fechaHora)}</span>
               <span style={s("font-size:13px;color:#41566B;font-weight:700;")}>
                 {c.cuposOcupados}/{c.cuposMax}
+              </span>
+              <span
+                title={
+                  c.precio !== actividad.precio
+                    ? `Congelado: la actividad hoy figura a $${actividad.precio.toLocaleString("es-AR")}.`
+                    : undefined
+                }
+                style={s(`font:700 13px Space Grotesk;color:${c.precio !== actividad.precio ? "#B9741A" : "#41566B"};`)}
+              >
+                ${c.precio.toLocaleString("es-AR")}
               </span>
               <StatusBadge type={claseStatusType(c.estado)} />
               <div style={s("display:flex;gap:6px;")}>

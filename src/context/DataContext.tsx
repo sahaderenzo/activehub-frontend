@@ -69,6 +69,8 @@ interface ClaseResp {
   estado: string;
   cuposMax: number;
   cuposOcupados: number;
+  /** Precio congelado de la clase (V23). Es el que se cobra, no el de la actividad. */
+  precio: number;
 }
 
 interface ClaseDetalleResp extends ClaseResp {
@@ -103,6 +105,8 @@ export interface ClaseInstructorAdmin {
   estado: EstadoClase;
   cuposMax: number;
   cuposOcupados: number;
+  /** Precio congelado de la clase (V23), no el actual de la actividad. */
+  precio: number;
 }
 
 export interface DocumentoInstructor {
@@ -121,6 +125,8 @@ export interface ClaseAdmin {
   estado: EstadoClase;
   cuposMax: number;
   cuposOcupados: number;
+  /** Precio congelado de la clase (V23), no el actual de la actividad. */
+  precio: number;
 }
 
 export interface MiInscripcion {
@@ -241,6 +247,8 @@ export interface SancionSuspension {
 
 export interface RosterClase {
   claseId: string;
+  /** Precio congelado de la clase (V23): es lo que pagó cada uno de estos alumnos. */
+  precio: number;
   cuposMax: number;
   cuposOcupados: number;
   cuposLibres: number;
@@ -258,6 +266,13 @@ export interface ReseniaActividad {
   /** Opcional: una reseña puede ser solo estrellas. */
   comentario: string | null;
   createdAt: string;
+  /**
+   * Respuesta pública del instructor (E2I-HU11 crit. 4). Null mientras no haya respondido.
+   * El detalle de la actividad es el único lugar donde el alumno la lee: sin esto, el
+   * instructor respondía y la respuesta no aparecía en ningún lado más que su propia pantalla.
+   */
+  respuestaInstructor: string | null;
+  respuestaInstructorAt: string | null;
 }
 
 export interface MiResenia {
@@ -485,6 +500,7 @@ function aplanarClase(r: ClaseResp | ClaseDetalleResp): Clase {
     cuposMax: r.cuposMax,
     cuposOcupados: r.cuposOcupados,
     cantidadPreInscripcion: "cantidadPreInscripcion" in r ? r.cantidadPreInscripcion : undefined,
+    precio: Number(r.precio),
   };
 }
 
@@ -833,9 +849,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return actualizada;
   }, []);
 
+  // La baja arrastra los tipos de la categoría (el backend los da de baja en cascada), así
+  // que hay que sacarlos también del estado local: si no, quedan tipos huérfanos apuntando a
+  // una categoría que ya no existe y la tabla los muestra con categoría "—".
   const eliminarCategoria = useCallback(async (id: string) => {
     await api.delete(`/api/admin/categorias/${id}`);
     setCategorias((prev) => prev.filter((c) => c.id !== id));
+    setTiposActividad((prev) => prev.filter((t) => t.categoriaId !== id));
   }, []);
 
   // E4Ad-HU05. Los niveles vuelven a leerse enteros despues de cada alta/baja porque la

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { s } from "../lib/style";
 import { FAQS, buscarFaq } from "../lib/faqs";
@@ -11,12 +12,33 @@ import { FAQS, buscarFaq } from "../lib/faqs";
  * <p>Se monta una sola vez desde `AlumnoNav` en vez de pantalla por pantalla, así ninguna
  * se lo olvida al agregarse.
  *
+ * <h2>Va en un portal a `document.body`, y no es opcional</h2>
+ *
+ * El widget quedaba clavado al **final de la página** en vez de seguir al viewport: había que
+ * scrollear hasta el fondo de todo para encontrarlo. Es exactamente la trampa que ya está
+ * documentada en `components/Modal.tsx`: `.ah-screen`, el contenedor raíz de cada pantalla,
+ * tiene `animation: ahFade` y esa animación anima `transform`. **Un elemento con una animación
+ * de `transform` crea un containing block para sus descendientes `position:fixed`**, así que
+ * `bottom:24px` dejaba de medirse contra la ventana y pasaba a medirse contra el alto completo
+ * del documento. Sacarlo del `<header>` (que tiene `backdrop-filter`, el mismo problema) no
+ * alcanzaba: el `.ah-screen` de la pantalla lo seguía capturando un nivel más arriba.
+ *
+ * <p>Con el portal el widget no tiene ningún ancestro de la pantalla, así que ninguna propiedad
+ * futura puede volver a capturarlo — y acompaña el scroll hasta llegar al pie, como cualquier
+ * burbuja de soporte.
+ *
+ * <h2>Arranca colapsado</h2>
+ *
+ * Es una burbuja chica pegada al borde derecho que dice "¿Dudas?". Desplegado tapa 340px de
+ * ancho por casi media pantalla de alto, y sobre la grilla de actividades del alumno eso es
+ * justo lo que vino a mirar. El cuadro completo aparece recién al hacer click.
+ *
  * <p>Las respuestas salen de `lib/faqs.ts` por coincidencia de palabras, no de un modelo: el
  * chatbot con IA es el ítem 11 del roadmap y depende de credenciales de Groq. El copy no
  * promete IA en ningún lado, y cuando no encuentra respuesta deriva a la pantalla de Ayuda.
  */
 
-const ETIQUETA = "¿Dudas? Chateá";
+const ETIQUETA = "¿Dudas?";
 
 interface Mensaje {
   de: "bot" | "yo";
@@ -57,14 +79,19 @@ export default function ChatbotWidget() {
     setBorrador("");
   };
 
-  return (
+  return createPortal(
     <>
+      {/* Colapsada: burbuja angosta pegada al borde derecho, con el ícono y "¿Dudas?".
+          Abierta: sólo la cruz, para no repetir el título que ya trae el encabezado. */}
       <button
         className="ah-btn"
         onClick={() => setAbierto((v) => !v)}
         aria-expanded={abierto}
+        aria-label={abierto ? "Cerrar el asistente" : "Abrir el asistente de ayuda"}
         style={s(
-          `position:fixed;right:24px;bottom:24px;z-index:70;display:flex;align-items:center;gap:9px;background:#0E2A47;color:#fff;border:none;border-radius:99px;padding:13px 20px;font:700 14px Manrope,sans-serif;cursor:pointer;box-shadow:0 10px 26px rgba(14,42,71,.3);`,
+          `position:fixed;right:0;bottom:26px;z-index:70;display:flex;align-items:center;gap:8px;background:#0E2A47;color:#fff;border:none;border-radius:${
+            abierto ? "99px" : "99px 0 0 99px"
+          };padding:${abierto ? "12px" : "12px 16px 12px 18px"};font:700 13.5px Manrope,sans-serif;cursor:pointer;box-shadow:0 10px 26px rgba(14,42,71,.3);margin-right:${abierto ? "24px" : "0"};`,
         )}
       >
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2}>
@@ -74,13 +101,13 @@ export default function ChatbotWidget() {
             <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
           )}
         </svg>
-        {ETIQUETA}
+        {!abierto && ETIQUETA}
       </button>
 
       {abierto && (
         <div
           style={s(
-            "position:fixed;right:24px;bottom:82px;z-index:70;width:340px;max-width:calc(100vw - 48px);background:#fff;border:1px solid #E7EDF3;border-radius:18px;box-shadow:0 16px 40px rgba(14,42,71,.2);display:flex;flex-direction:column;overflow:hidden;",
+            "position:fixed;right:24px;bottom:84px;z-index:70;width:340px;max-width:calc(100vw - 48px);background:#fff;border:1px solid #E7EDF3;border-radius:18px;box-shadow:0 16px 40px rgba(14,42,71,.2);display:flex;flex-direction:column;overflow:hidden;",
           )}
         >
           <div style={s("background:linear-gradient(135deg,#0FB8A9,#12B5A5);padding:16px 18px;color:#fff;")}>
@@ -168,6 +195,7 @@ export default function ChatbotWidget() {
           </button>
         </div>
       )}
-    </>
+    </>,
+    document.body,
   );
 }

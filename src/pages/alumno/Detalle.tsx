@@ -632,6 +632,22 @@ export default function AlumnoDetalle() {
                       </div>
                     </div>
                     <p style={s("font-size:14.5px;line-height:1.6;color:#54697E;margin:0;")}>{rv.comentario?.trim() ? rv.comentario : <span style={s("color:#9AAABA;font-style:italic;")}>Sin comentario</span>}</p>
+                    {/* La respuesta pública del instructor (E2I-HU11 crit. 4). Se guardaba
+                        desde hacía rato pero acá no se pedía ni se mostraba, así que el
+                        alumno —el único destinatario— nunca la veía. */}
+                    {rv.respuestaInstructor?.trim() && (
+                      <div
+                        style={s(
+                          "margin-top:13px;padding:12px 14px;background:#F6F9FC;border-left:3px solid #12B5A5;border-radius:0 11px 11px 0;",
+                        )}
+                      >
+                        <div style={s("font:700 12.5px Manrope,sans-serif;color:#0C8576;margin-bottom:5px;")}>
+                          Respuesta de {instructorNombreCompleto ?? "el instructor"}
+                          {rv.respuestaInstructorAt ? ` · ${formatFecha(rv.respuestaInstructorAt)}` : ""}
+                        </div>
+                        <p style={s("font-size:13.5px;line-height:1.55;color:#54697E;margin:0;")}>{rv.respuestaInstructor}</p>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -729,7 +745,12 @@ function BookingPanel({
     <div style={s("position:sticky;top:88px;")}>
       <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:22px;padding:24px;box-shadow:0 14px 40px rgba(14,42,71,.10);")}>
         <div style={s("display:flex;align-items:baseline;gap:6px;margin-bottom:4px;")}>
-          <span style={s("font:700 34px Space Grotesk,sans-serif;color:#0E2A47;")}>${actividad.precio.toLocaleString("es-AR")}</span>
+          {/* Con una fecha elegida mandamos el precio de ESA clase (V23) — es el que va a
+              cobrar el backend. Sin fecha todavía no hay clase, así que se muestra el precio
+              de lista de la actividad, igual que en el catálogo. */}
+          <span style={s("font:700 34px Space Grotesk,sans-serif;color:#0E2A47;")}>
+            ${(selectedClase?.precio ?? actividad.precio).toLocaleString("es-AR")}
+          </span>
           <span style={s("font-size:14px;color:#90A1B2;font-weight:600;")}>/ clase</span>
         </div>
         <div style={s("font-size:13px;color:#7A8C9E;font-weight:600;margin-bottom:18px;")}>

@@ -155,7 +155,14 @@ export default function InstructorGestionClase() {
                 📅 {formatFecha(clase.fechaHora)} · {formatHora(clase.fechaHora)} hs
               </span>
               <span>📍 {actividad.ubicacion}</span>
-              <span>💵 ${actividad.precio.toLocaleString("es-AR")} / clase</span>
+              {/* Precio de ESTA clase (V23), no el de lista de la actividad: si la clase ya
+                  tiene inscriptos quedó congelada y sigue valiendo lo que pagaron. */}
+              <span>💵 ${clase.precio.toLocaleString("es-AR")} / clase</span>
+              {clase.precio !== actividad.precio && (
+                <span style={s("color:#B9741A;")}>
+                  (la actividad hoy figura a ${actividad.precio.toLocaleString("es-AR")})
+                </span>
+              )}
             </div>
           </div>
           <div style={s("display:flex;gap:9px;flex:none;")}>

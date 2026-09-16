@@ -126,18 +126,23 @@ export default function InstructorCrearActividad() {
 
   const [tipoActividadId, setTipoActividadId] = useState(existing?.tipoActividadId ?? "");
   // Sin default fijo: los niveles son un ABM (E4Ad-HU05) y "Física media" puede no existir.
-  // Al alta se preselecciona el primero del catálogo, ya cargado o cuando termine de llegar.
-  const [nivelIntensidadId, setNivelIntensidadId] = useState(existing?.nivelIntensidadId ?? "");
+  // El estado guarda SOLO lo que el instructor eligió a mano; vacío = "todavía no tocó nada".
+  const [nivelElegido, setNivelElegido] = useState(existing?.nivelIntensidadId ?? "");
   const [photoTint] = useState(
     () => existing?.photoTint ?? DEFAULT_TINTS[Math.floor(Math.random() * DEFAULT_TINTS.length)],
   );
-  // El catálogo de niveles llega por fetch, así que en el primer render puede estar vacío
-  // y el alta quedaría sin nada seleccionado. Se preselecciona el primero cuando aparece.
-  useEffect(() => {
-    if (!nivelIntensidadId && data.nivelesIntensidad.length > 0) {
-      setNivelIntensidadId(data.nivelesIntensidad[0].id);
-    }
-  }, [data.nivelesIntensidad, nivelIntensidadId]);
+  /**
+   * El nivel efectivo se **deriva**, no se sincroniza con un efecto.
+   *
+   * <p>Antes esto era un `useEffect` que llamaba a `setNivelIntensidadId` cuando el catálogo
+   * terminaba de llegar, y era el único error de `react-hooks/set-state-in-effect` del repo.
+   * La regla tenía razón: el catálogo no es un sistema externo que haya que espejar —es estado
+   * de React que ya tenemos a mano—, así que el default sale de una expresión y listo. De paso
+   * se cierra el hueco que tenía el efecto: en el primer render, con el catálogo ya cargado,
+   * el formulario se pintaba una vez **sin ningún nivel marcado** antes de que el efecto
+   * corriera. Ahora nace preseleccionado.
+   */
+  const nivelIntensidadId = nivelElegido || data.nivelesIntensidad[0]?.id || "";
 
   const [draftId, setDraftId] = useState<string | undefined>(undefined);
   const [savedMsg, setSavedMsg] = useState("");
@@ -418,7 +423,7 @@ export default function InstructorCrearActividad() {
                       key={nivel.id}
                       title={nivel.descripcion}
                       className="ah-btn"
-                      onClick={() => setNivelIntensidadId(nivel.id)}
+                      onClick={() => setNivelElegido(nivel.id)}
                       style={s(
                         `cursor:pointer;padding:8px 12px;border-radius:9px;font:700 12.5px Manrope;background:${
                           on ? "#FBEAEB" : "#fff"

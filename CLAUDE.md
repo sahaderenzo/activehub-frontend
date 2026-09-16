@@ -57,6 +57,8 @@ Cinco cosas cambiaron de forma y rompen cualquier código viejo que las asuma:
 
 `enModeracion` = el admin todavía no la aprobó. `denunciada` = el instructor la reportó. La pantalla pintaba **toda reseña nueva** con un cartel rojo "Reportada · en revisión", así que al instructor le parecía que cada reseña que recibía venía denunciada. Ahora son dos badges distintos (ámbar "Pendiente de moderación" / rojo "Denunciada · en revisión") más "Oculta" y "Respondida".
 
+**La respuesta del instructor se ve en el detalle de la actividad.** Se guardaba desde hacía rato, pero `GET /api/actividades/{id}/resenas` no la devolvía y `alumno/Detalle.tsx` no la renderizaba: el instructor respondía, lo veía en su propia pantalla y el destinatario —el alumno— no la veía nunca. Hoy `ReseniaActividad` trae `respuestaInstructor` / `respuestaInstructorAt` y cada reseña la muestra en un bloque citado debajo del comentario, con el nombre del instructor y la fecha.
+
 Responder y denunciar **pegan a la API** (`responderResenia` / `denunciarResenia`); antes eran `useState` locales y se perdían al recargar. No se puede responder una reseña en moderación ni una oculta (el backend rechaza), así que el botón se deshabilita con el motivo en el `title`.
 
 ## Galería de imágenes de la actividad
@@ -79,11 +81,38 @@ Dos reglas que salieron de este barrido:
 
 ## Chatbot flotante (`components/ChatbotWidget.tsx`)
 
-Botón flotante abajo a la derecha con la etiqueta "¿Dudas? Chateá". **Solo se ve en las pantallas del alumno** (criterio 1 de E3A-HU01/02/03/06/08/12): el soporte es para quien usa la plataforma como cliente, no para quien la opera. Instructor y admin lo tenían montado desde `DashLayout` y además tenían un ítem "Ayuda"/"Soporte" en el sidebar hacia `/ayuda`; ambas cosas se sacaron. `/ayuda` sigue siendo pública y accesible desde la Landing.
+Burbuja flotante abajo a la derecha, **colapsada por defecto**, con la etiqueta "¿Dudas?". **Solo se ve en las pantallas del alumno** (criterio 1 de E3A-HU01/02/03/06/08/12): el soporte es para quien usa la plataforma como cliente, no para quien la opera. Instructor y admin lo tenían montado desde `DashLayout` y además tenían un ítem "Ayuda"/"Soporte" en el sidebar hacia `/ayuda`; ambas cosas se sacaron. `/ayuda` sigue siendo pública y accesible desde la Landing.
 
-Se monta **una sola vez** en `AlumnoNav`, no pantalla por pantalla, para que ninguna se lo olvide al agregarse. En `AlumnoNav` va **fuera** del `<header>`: ese header tiene `backdrop-filter`, que crea un containing block para `position:fixed` — adentro, el widget se posicionaría contra el header en vez de contra el viewport.
+Se monta **una sola vez** en `AlumnoNav`, no pantalla por pantalla, para que ninguna se lo olvide al agregarse.
+
+**Va en un portal a `document.body`, igual que `Modal`, y no es opcional.** El widget quedaba clavado al **final de la página** en vez de seguir al viewport: había que scrollear hasta el fondo de todo para encontrarlo. Es la misma trampa del `containing block` ya documentada para los modales: `.ah-screen` tiene `animation: ahFade`, esa animación anima `transform`, y **un elemento con una animación de `transform` crea un containing block para sus descendientes `position:fixed`** — así que `bottom:24px` dejaba de medirse contra la ventana y pasaba a medirse contra el alto completo del documento. Sacarlo del `<header>` (que tiene `backdrop-filter`, el mismo efecto) era necesario pero **no alcanzaba**: el `.ah-screen` de la pantalla lo capturaba un nivel más arriba. Con el portal no le queda ningún ancestro de la pantalla y acompaña el scroll hasta el pie.
+
+**Arranca colapsado a propósito.** Desplegado ocupa 340px de ancho por casi media pantalla de alto, justo encima de la grilla de actividades — que es lo que el alumno vino a mirar. Colapsado es una burbuja angosta pegada al borde derecho (`right:0`, con la esquina redondeada sólo del lado interno); el cuadro completo aparece al hacer click, y ahí el botón pasa a ser sólo la cruz de cerrar.
 
 Las respuestas salen de `lib/faqs.ts` por coincidencia de palabras, **no de un modelo**: el chatbot con Groq es el ítem 11 del roadmap y depende de credenciales. El copy no promete IA en ningún lado. `lib/faqs.ts` es la misma fuente que usa la pantalla pública de Ayuda: estaban duplicadas y se iban a desincronizar.
+
+## El chip de usuario del `AlumnoNav` es un menú, no un link
+
+Hacer click en el nombre navegaba directo a `/alumno/perfil`. Ahora despliega un menú con **Mi perfil**, **Mis reseñas** y **Cerrar sesión**: las dos últimas eran acciones de un click que obligaban a entrar al Perfil —una pantalla entera— para llegar a ellas.
+
+- **"Mis reseñas" se muestra sólo con `resenias.escribir`**, el mismo permiso con el que `App.tsx` gatea esa ruta. Es la regla de siempre: un atajo a un 403 es peor que no tener el atajo.
+- Cierra al hacer click afuera (`mousedown` en `document`) y con Escape. Sin eso quedaba abierto tapando contenido mientras el usuario seguía navegando.
+- `logout()` viene de `AuthContext` y después se navega a `/`, la landing pública.
+
+## Resolver una denuncia: el modal de Suspender está en las DOS pantallas
+
+`resolverDenuncia` con `SUSPENDER` exige `diasSuspension` (mínimo 15) y acepta `montoMulta`. `admin/Gestion.tsx` ya pedía las dos cosas en un modal, pero **`admin/Auditoria.tsx` mandaba la acción pelada**: el botón "Suspender instructor denunciado" devolvía *"Indicá cuántos días dura la suspensión."* sin que hubiera ningún lado donde indicarlo. Estaba roto de punta a punta.
+
+Hoy `Auditoria.tsx` tiene el mismo formulario (días + multa, con `MIN_DIAS_SUSPENSION = 15`, espejo de `VentanaPenalizacion` del backend). **Si el mínimo cambia, son tres lugares**: las dos pantallas y la constante del backend. Las otras tres resoluciones siguen siendo un click directo.
+
+## Baja de categoría: cascada, con confirmación que dice qué se lleva puesto
+
+La pantalla bloqueaba con un `window.alert` apenas la categoría tenía **un** tipo, así que borrar una categoría con tipos vacíos significaba borrarlos a mano uno por uno. El backend cambió la regla (ver su CLAUDE.md) y `admin/Taxonomia.tsx` la acompaña con un `Modal` en vez de `alert`/`confirm`:
+
+- **Con actividades publicadas detrás** (`c.n > 0`, el conteo que ya calculaba `catStats`): el modal explica cuántas son y sólo ofrece "Entendido". No se manda el request.
+- **Sin actividades**: pide confirmación diciendo **cuántos tipos se van a eliminar junto con la categoría**. Una cascada silenciosa es lo peor de los dos mundos.
+- **`DataContext.eliminarCategoria` también saca los tipos del estado local.** El backend los da de baja en cascada; si el cliente sólo quitaba la categoría, quedaban tipos huérfanos en la tabla mostrando categoría "—".
+- El mensaje de error del 409 lo escribe el backend (nombra los tipos en uso) y la pantalla lo muestra tal cual.
 
 ## Roles y permisos ya no es maqueta
 
@@ -297,6 +326,7 @@ El `tsconfig.json` de la raíz es sólo un archivo de referencias (`"files": []`
 El repo estaba con 38 errores de base; hoy `npx eslint src` da **0 errores** (quedan warnings de directivas `eslint-disable` sobrantes, preexistentes). Dos patrones que hay que respetar para que no vuelvan:
 
 - **`react-hooks/set-state-in-effect`:** la función `cargar` de una pantalla **no toca estado de forma síncrona**. El "limpiar el error" va dentro del `.then(...)` y el "prender el spinner" arranca en `useState(true)` o lo hace el handler del botón "Reintentar" (un evento sí puede). Ojo: con `async/await` la regla igual se queja — el setState tiene que estar dentro de un callback (`.then`/`.catch`/`.finally`), por eso `refrescarCatalogo` y el `cargar` de Roles están escritos como cadena de promesas.
+  - **Un valor por defecto que sale de otro estado se DERIVA, no se sincroniza con un efecto.** `CrearActividad.tsx` preseleccionaba el primer nivel de intensidad con un `useEffect` que llamaba al setter cuando el catálogo terminaba de llegar: era el único error de esta regla que quedaba en el repo. El catálogo no es un sistema externo que haya que espejar —es estado de React que ya está a mano—, así que hoy el estado guarda **sólo la elección explícita** del usuario (`nivelElegido`) y el valor efectivo es una expresión: `nivelElegido || data.nivelesIntensidad[0]?.id || ""`. De paso se cerró un hueco real: con el efecto, si el catálogo ya estaba cargado, el formulario se pintaba una vez **sin ningún nivel marcado** antes de que el efecto corriera. **El `eslint-disable` es para sincronizar con algo externo de verdad (la geolocalización, el mapa), no para un default que se puede calcular.**
 - **`react-hooks/purity`:** nada de `Date.now()` durante el render. Para "faltan X días" / "ya pasó" se usa el hook `lib/ahora.ts` (`useAhora()`), que congela el reloj al montar. En un handler (submit, click) `Date.now()` está bien.
 - **`react-hooks/preserve-manual-memoization`:** el error dice "Compilation Skipped" y apunta a un `useMemo` que en realidad está bien — el culpable suele ser **otro**. Dos causas vistas en `admin/Reportes.tsx`: un `useMemo` leído desde un closure declarado **antes** que él (mover la función abajo lo arregla), y un segundo `useMemo` que devuelve objetos literales desde un `switch` (si el cálculo es barato, sacarle el `useMemo` y dejarlo como `const x = (() => { … })()`: el compilador memoiza solo).
 
@@ -312,6 +342,21 @@ El avatar de `AlumnoNav` **no** sube foto: es identidad, no un control. El únic
 - **Mínimo 15 días** de suspensión, validado en el cliente y en el servidor (`MIN_DIAS_SUSPENSION`, espejo de `VentanaPenalizacion` del backend).
 - El listado muestra monto, vigencia y **cuántos días dura**, y viene ordenado de la más antigua a la más reciente.
 - **"Suspender al instructor" ya no se resuelve con un `prompt`**: abre un modal que pide días (mínimo 15) y monto de multa (puede ser 0 = solo suspensión). Eso viaja como `resolverDenuncia(id, "SUSPENDER", detalle, { montoMulta, diasSuspension })`.
+
+## El precio es de la CLASE, no de la actividad
+
+`Clase.precio` (V23 del backend) existía en la base y en un solo endpoint; ahora viaja en **todos** los DTO de clase y las pantallas lo usan. La regla, que vale para cualquier pantalla nueva:
+
+> **`actividad.precio` es el precio de lista del catálogo. En cuanto hay una clase concreta en pantalla, el importe es `clase.precio`.**
+
+Por qué importa: una clase con al menos un inscripto queda **congelada** y un cambio de precio de la actividad no la alcanza (`actualizaractividad` sólo propaga a las no congeladas). Mientras las pantallas leían `actividad.precio`, el resumen de inscripción prometía un importe y `inscribirse` cobraba otro — y el que aparecía después en "Mis pagos" era el tercero en discordia.
+
+Dónde quedó aplicado:
+- **Alumno** — `Detalle.tsx` (el panel de reserva usa `selectedClase?.precio`, y cae al de la actividad sólo cuando todavía no hay fecha elegida), `Inscripcion.tsx` (botón de pago, instrucciones de efectivo, subtotal y total), `PreInscripcion.tsx` (sigue diciendo "estimado": una clase sin inscriptos no está congelada y todavía puede cambiar), `Calendario.tsx` (muestra **`item.pago.monto`**, lo que esa persona pagó de verdad; el precio de lista sólo cuando es una preinscripción que no cobró nada).
+- **Instructor** — `ActividadDetalle.tsx` tiene ahora una columna **Precio** por clase en la grilla (en ámbar, con `title`, cuando difiere del de la actividad: es la señal visible de que esa clase quedó congelada), y `GestionClase.tsx` muestra el de la clase aclarando a cuánto figura hoy la actividad si no coinciden. `HistorialClases.tsx` ya lo hacía.
+- **Admin** — `ClaseAdmin` y `ClaseInstructorAdmin` lo traen. El listado de actividades de `Gestion.tsx` sigue mostrando `act.precio`, que ahí es lo correcto: es el precio de lista de la actividad, no el de una clase.
+
+`lib/types.ts` → `Clase.precio` es obligatorio, así que cualquier objeto `Clase` que se construya (incluido el catálogo de demo de `mockData.ts`) tiene que setearlo.
 
 ## Convención de lenguaje: nunca "Reserva"
 

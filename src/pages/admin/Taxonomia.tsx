@@ -40,6 +40,18 @@ interface NivelFormState {
   descripcion: string;
 }
 
+/**
+ * Confirmación de la baja de una categoría. Lleva el conteo de tipos y de actividades porque
+ * la decisión depende de los dos: con actividades detrás no se puede borrar nada, y con tipos
+ * vacíos hay que avisar que se van a dar de baja junto con la categoría.
+ */
+interface BajaCategoria {
+  id: string;
+  nombre: string;
+  tipos: number;
+  actividades: number;
+}
+
 export default function AdminTaxonomia() {
   const navigate = useNavigate();
   const params = useParams<{ tab?: string }>();
@@ -62,6 +74,8 @@ export default function AdminTaxonomia() {
   const [form, setForm] = useState<TipoFormState | null>(null);
   const [catForm, setCatForm] = useState<CategoriaFormState | null>(null);
   const [nivelForm, setNivelForm] = useState<NivelFormState | null>(null);
+  const [bajaCat, setBajaCat] = useState<BajaCategoria | null>(null);
+  const [borrandoCat, setBorrandoCat] = useState(false);
   const [nivelTocado, setNivelTocado] = useState(false);
   const nivelFormCompleto = !!nivelForm?.nombre.trim() && !!nivelForm?.descripcion.trim();
   const [error, setError] = useState<string | null>(null);
@@ -155,13 +169,24 @@ export default function AdminTaxonomia() {
     }
   };
 
-  const eliminarCat = async (id: string, nombre: string) => {
-    if (window.confirm(`¿Quitar la categoría "${nombre}"?`)) {
-      try {
-        await eliminarCategoria(id);
-      } catch (err) {
-        setError(err instanceof ApiError ? err.message : "No pudimos quitar la categoría.");
-      }
+  /**
+   * La baja es en cascada sobre los tipos de la categoría (lo hace el backend en una sola
+   * transacción). La pantalla ya no bloquea por tener tipos —eso obligaba a borrarlos a mano
+   * uno por uno— sino por lo único que de verdad lo impide: que alguno de esos tipos tenga
+   * actividades publicadas. El backend valida lo mismo y es quien manda.
+   */
+  const confirmarBajaCat = async () => {
+    if (!bajaCat) return;
+    setError(null);
+    setBorrandoCat(true);
+    try {
+      await eliminarCategoria(bajaCat.id);
+      setBajaCat(null);
+    } catch (err) {
+      setBajaCat(null);
+      setError(err instanceof ApiError ? err.message : "No pudimos quitar la categoría.");
+    } finally {
+      setBorrandoCat(false);
     }
   };
 
@@ -241,13 +266,7 @@ export default function AdminTaxonomia() {
                     </button>
                     <button
                       className="ah-btn"
-                      onClick={() => {
-                        if (c.tiposCount > 0) {
-                          window.alert("No se puede quitar una categoría que tiene tipos de actividad asociados.");
-                          return;
-                        }
-                        eliminarCat(c.id, c.nombre);
-                      }}
+                      onClick={() => setBajaCat({ id: c.id, nombre: c.nombre, tipos: c.tiposCount, actividades: c.n })}
                       style={s("flex:1;background:rgba(190,58,62,.18);border:1px solid rgba(243,210,211,.3);border-radius:8px;padding:7px 10px;font:700 12px Manrope,sans-serif;color:#FF9A9D;cursor:pointer;")}
                     >
                       Quitar
@@ -482,6 +501,67 @@ export default function AdminTaxonomia() {
               >
                 Guardar
               </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {bajaCat && (
+        <Modal onClose={() => !borrandoCat && setBajaCat(null)}>
+          <div style={s("width:100%;max-width:440px;background:#fff;border-radius:16px;padding:24px;box-shadow:0 26px 64px rgba(0,0,0,.3);")}>
+            <div style={s("font:700 17px Space Grotesk,sans-serif;color:#0E2A47;margin-bottom:10px;")}>
+              {bajaCat.actividades > 0 ? "No se puede eliminar" : `¿Eliminar la categoría "${bajaCat.nombre}"?`}
+            </div>
+
+            {bajaCat.actividades > 0 ? (
+              <p style={s("font-size:13.5px;line-height:1.6;color:#65788C;margin:0 0 20px;")}>
+                La categoría <strong>{bajaCat.nombre}</strong> tiene {bajaCat.tipos}{" "}
+                {bajaCat.tipos === 1 ? "tipo de actividad" : "tipos de actividad"} y entre ellos hay{" "}
+                <strong>
+                  {bajaCat.actividades} {bajaCat.actividades === 1 ? "actividad publicada" : "actividades publicadas"}
+                </strong>
+                . Dá de baja esas actividades antes de eliminar la categoría.
+              </p>
+            ) : (
+              <p style={s("font-size:13.5px;line-height:1.6;color:#65788C;margin:0 0 20px;")}>
+                {bajaCat.tipos === 0 ? (
+                  <>
+                    No tiene tipos de actividad asociados. Esta acción es una baja lógica: la categoría deja de estar
+                    disponible en el catálogo.
+                  </>
+                ) : (
+                  <>
+                    Se van a eliminar también sus{" "}
+                    <strong>
+                      {bajaCat.tipos} {bajaCat.tipos === 1 ? "tipo de actividad" : "tipos de actividad"}
+                    </strong>
+                    , que no tienen ninguna actividad asociada. ¿Confirmás?
+                  </>
+                )}
+              </p>
+            )}
+
+            <div style={s("display:flex;gap:10px;")}>
+              <button
+                className="ah-btn"
+                onClick={() => setBajaCat(null)}
+                disabled={borrandoCat}
+                style={s("flex:1;background:#F4F7FA;color:#41566B;border:none;border-radius:10px;padding:11px;font:700 13.5px Manrope,sans-serif;cursor:pointer;")}
+              >
+                {bajaCat.actividades > 0 ? "Entendido" : "Cancelar"}
+              </button>
+              {bajaCat.actividades === 0 && (
+                <button
+                  className="ah-btn"
+                  onClick={confirmarBajaCat}
+                  disabled={borrandoCat}
+                  style={s(
+                    `flex:1;background:${borrandoCat ? "#D89A9C" : "#BE3A3E"};color:#fff;border:none;border-radius:10px;padding:11px;font:700 13.5px Manrope,sans-serif;cursor:${borrandoCat ? "wait" : "pointer"};`,
+                  )}
+                >
+                  {borrandoCat ? "Eliminando…" : "Sí, eliminar"}
+                </button>
+              )}
             </div>
           </div>
         </Modal>

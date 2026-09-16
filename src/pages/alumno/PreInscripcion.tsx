@@ -135,7 +135,10 @@ export default function AlumnoPreInscripcion() {
                   bg="#EFEAFB"
                   stroke="#7A52D9"
                   label="Precio estimado"
-                  value={`$${actividad.precio.toLocaleString("es-AR")} (al inscribirte)`}
+                  // El precio de la clase (V23), no el de lista. Todavía puede cambiar: una
+                  // clase sin inscriptos no está congelada y un cambio de la actividad la
+                  // alcanza — por eso sigue diciendo "estimado".
+                  value={`$${clase.precio.toLocaleString("es-AR")} (al inscribirte)`}
                 >
                   <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
                 </InfoTile>
