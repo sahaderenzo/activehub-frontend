@@ -1,39 +1,82 @@
+import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { s } from "../../lib/style";
+import { normalizar } from "../../lib/texto";
 import Logo from "../../components/Logo";
 import ActivityCard from "../../components/ActivityCard";
-import {
-  actividades,
-  categorias,
-  clases,
-  disponibilidad,
-  getClasesDeActividad,
-  getTipoActividad,
-  getUsuario,
-} from "../../lib/mockData";
+import { CargandoSeccion } from "../../components/Cargando";
+import { useData } from "../../context/DataContext";
+import type { Actividad } from "../../lib/types";
 
+/**
+ * La Landing muestra el catálogo REAL.
+ *
+ * <p>Reportado: "aparecen actividades que no existen, sin fotos, y cantidades falsas (más de
+ * 160 actividades es falso)". Era literal: esta pantalla era la última que seguía leyendo el
+ * dataset de demo de `lib/mockData.ts`. De ahí los tres síntomas juntos —
+ *
+ * <ul>
+ *   <li>las tarjetas eran actividades inventadas que no están en la base, así que hacerles
+ *       click llevaba a un detalle inexistente;</li>
+ *   <li>no tenían foto porque `ActivityPhoto` las pide por id contra la API y esos ids no
+ *       existen, así que siempre caía al placeholder "FOTO · nombre";</li>
+ *   <li>el contador decía <code>actividades.length * 20</code> — ocho actividades de demo
+ *       multiplicadas por veinte, un número puesto para que la maqueta se viera poblada.</li>
+ * </ul>
+ *
+ * <p>Ahora todo sale de `useData()`, el mismo catálogo público que usan Home y Explorar, y
+ * **los números son cuentas sobre esos datos**: si no hay actividades publicadas, la Landing
+ * lo dice en vez de inventar. Los dos que no se pueden derivar del catálogo (una calificación
+ * media sin reseñas, por ejemplo) directamente no se muestran.
+ */
+
+/**
+ * Ícono por NOMBRE de categoría, no por id: las categorías son un ABM (el admin crea y borra)
+ * y sus ids son UUID de la base, así que un `Record` por id no podía funcionar contra datos
+ * reales. Lo que no está en la lista usa el ícono neutro — misma regla que `lib/nivelStyle.ts`.
+ */
 const CAT_ICONS: Record<string, { bg: string; stroke: string; path: string }> = {
-  "cat-bienestar": {
+  bienestar: {
     bg: "#E7F8F5",
     stroke: "#12B5A5",
     path: "M20.8 8.6c0 5.2-8.8 10.6-8.8 10.6S3.2 13.8 3.2 8.6a5 5 0 0 1 9-3 5 5 0 0 1 8.6 3Z",
   },
-  "cat-aventura": {
+  aventura: {
     bg: "#FFF3E0",
     stroke: "#F5A623",
     path: "m3 20 6-11 4 7 3-5 5 9Z",
   },
-  "cat-formacion": {
+  "formacion tecnica": {
     bg: "#EAF1FE",
     stroke: "#3A6FF0",
     path: "m2 8 10-5 10 5-10 5Zm0 0v6M6 10.5V16c0 1.7 2.7 3 6 3s6-1.3 6-3v-5.5",
   },
-  "cat-defensa": {
+  "defensa personal": {
     bg: "#FBEAEB",
     stroke: "#E5484D",
     path: "M12 2 4 5v6c0 5 3.4 9 8 11 4.6-2 8-6 8-11V5Z",
   },
 };
+
+const CAT_ICON_NEUTRO = {
+  bg: "#F2F5F9",
+  stroke: "#65788C",
+  path: "M12 2 4 5v6c0 5 3.4 9 8 11 4.6-2 8-6 8-11V5Z",
+};
+
+function iconoDeCategoria(nombre: string) {
+  return CAT_ICONS[normalizar(nombre)] ?? CAT_ICON_NEUTRO;
+}
+
+/** Igual que en Home y Explorar: sale de la próxima clase que trae el catálogo. */
+function disponibilidadDe(a: Actividad): { label: string; type: "disponible" | "ultimos" | "sincupos" } {
+  const p = a.proximaClase;
+  if (!p) return { label: "Disponible", type: "disponible" };
+  const libres = p.cuposMax - p.cuposOcupados;
+  if (libres <= 0) return { label: "Sin cupos", type: "sincupos" };
+  if (libres <= 3) return { label: `${libres} cupos · Últimos`, type: "ultimos" };
+  return { label: "Disponible", type: "disponible" };
+}
 
 const BENEFITS = [
   {
@@ -58,23 +101,50 @@ const BENEFITS = [
   },
 ];
 
-function countActividades(categoriaId: string): number {
-  return actividades.filter((a) => getTipoActividad(a.tipoActividadId)?.categoriaId === categoriaId).length;
-}
-
 export default function Landing() {
   const navigate = useNavigate();
+  const { actividades, categorias, getTipoActividad, instructorNombre, cargandoCatalogo } = useData();
   const goExplorar = () => navigate("/alumno/explorar");
   const scrollToCategorias = () => document.getElementById("categorias")?.scrollIntoView({ behavior: "smooth" });
+  const scrollToComoFunciona = () => document.getElementById("como-funciona")?.scrollIntoView({ behavior: "smooth" });
 
-  const featured = actividades.slice(0, 6).map((a) => {
-    const propias = clases.filter((c) => c.actividadId === a.id);
-    const proxima = propias.sort((x, y) => x.fechaHora.localeCompare(y.fechaHora))[0] ?? getClasesDeActividad(a.id)[0];
-    const disp = proxima ? disponibilidad(proxima) : { label: "Disponible", type: "disponible" as const };
-    const cupColor = disp.type === "sincupos" ? "#BE3A3E" : disp.type === "ultimos" ? "#B9741A" : "#0C8576";
-    const instructor = getUsuario(a.instructorId);
-    return { actividad: a, disp, cupColor, instructorNombre: instructor ? `${instructor.nombre} ${instructor.apellido}` : "" };
-  });
+  const countActividades = (categoriaId: string): number =>
+    actividades.filter((a) => getTipoActividad(a.tipoActividadId)?.categoriaId === categoriaId).length;
+
+  /**
+   * Los tres números del hero, calculados sobre el catálogo real:
+   *
+   * - **Actividades**: las publicadas. Sin multiplicador y sin "+".
+   * - **Instructores**: cuántos tienen al menos una actividad publicada, no un 48 fijo.
+   * - **Calificación media**: el promedio de las actividades **ya calificadas**. Si ninguna
+   *   tiene reseñas todavía no hay promedio que mostrar, así que la tarjeta no aparece —
+   *   antes decía "4.8★" en una plataforma sin una sola reseña.
+   */
+  const metricas = useMemo(() => {
+    const calificadas = actividades.filter((a) => a.rating > 0);
+    return {
+      actividades: actividades.length,
+      instructores: new Set(actividades.map((a) => a.instructorId)).size,
+      rating: calificadas.length
+        ? calificadas.reduce((sum, a) => sum + a.rating, 0) / calificadas.length
+        : null,
+    };
+  }, [actividades]);
+
+  // Las mejor calificadas primero, y entre las que no tienen reseñas las más baratas: es una
+  // vidriera, no el catálogo entero (para eso está "Explorar todas").
+  const featured = useMemo(
+    () =>
+      [...actividades]
+        .sort((a, b) => b.rating - a.rating || a.precio - b.precio)
+        .slice(0, 6)
+        .map((a) => {
+          const disp = disponibilidadDe(a);
+          const cupColor = disp.type === "sincupos" ? "#BE3A3E" : disp.type === "ultimos" ? "#B9741A" : "#0C8576";
+          return { actividad: a, disp, cupColor, instructorNombre: instructorNombre[a.instructorId] ?? "" };
+        }),
+    [actividades, instructorNombre],
+  );
 
   return (
     <div className="ah-screen">
@@ -92,7 +162,9 @@ export default function Landing() {
             <span className="ah-link" style={s("cursor:pointer;")} onClick={scrollToCategorias}>
               Categorías
             </span>
-            <span className="ah-link" style={s("cursor:pointer;")}>
+            {/* Tenía cursor de mano y no hacía nada. "Cómo funciona" es la franja de
+                beneficios de más abajo, así que baja hasta ahí. */}
+            <span className="ah-link" style={s("cursor:pointer;")} onClick={scrollToComoFunciona}>
               Cómo funciona
             </span>
             <span className="ah-link" style={s("cursor:pointer;")} onClick={() => navigate("/ayuda")}>
@@ -134,7 +206,12 @@ export default function Landing() {
             )}
           >
             <span style={s("width:7px;height:7px;border-radius:99px;background:#12B5A5;animation:ahPulse 1.8s infinite;")} />
-            Cupos en tiempo real · +{actividades.length * 20} actividades en Mendoza
+            {/* El número es el conteo real. Mientras el catálogo viaja, la chapa dice sólo la
+                promesa que no depende de datos, en vez de un "0 actividades" transitorio. */}
+            Cupos en tiempo real
+            {!cargandoCatalogo && metricas.actividades > 0 && (
+              <> · {metricas.actividades} {metricas.actividades === 1 ? "actividad" : "actividades"} en Mendoza</>
+            )}
           </div>
           <h1 className="ah-hero-title" style={s("font:700 56px/1.05 Space Grotesk,sans-serif;letter-spacing:-1.5px;margin:0 0 18px;")}>
             Encontrá e inscribite
@@ -193,20 +270,33 @@ export default function Landing() {
               Buscar
             </button>
           </div>
-          <div style={s("display:flex;gap:26px;margin-top:26px;")}>
-            <div>
-              <div style={s("font:700 24px Space Grotesk;color:#0E2A47;")}>+{actividades.length * 20}</div>
-              <div style={s("font-size:13px;color:#7A8C9E;font-weight:600;")}>Actividades</div>
+          {/*
+            Tres cuentas sobre el catálogo real. Antes eran `actividades.length * 20`, un 48
+            escrito a mano y un "4.8★" fijo: los tres números que el usuario reportó como
+            falsos. La calificación media sólo aparece si hay alguna actividad calificada.
+          */}
+          {!cargandoCatalogo && metricas.actividades > 0 && (
+            <div style={s("display:flex;gap:26px;margin-top:26px;")}>
+              <div>
+                <div style={s("font:700 24px Space Grotesk;color:#0E2A47;")}>{metricas.actividades}</div>
+                <div style={s("font-size:13px;color:#7A8C9E;font-weight:600;")}>
+                  {metricas.actividades === 1 ? "Actividad" : "Actividades"}
+                </div>
+              </div>
+              <div>
+                <div style={s("font:700 24px Space Grotesk;color:#0E2A47;")}>{metricas.instructores}</div>
+                <div style={s("font-size:13px;color:#7A8C9E;font-weight:600;")}>
+                  {metricas.instructores === 1 ? "Instructor" : "Instructores"}
+                </div>
+              </div>
+              {metricas.rating !== null && (
+                <div>
+                  <div style={s("font:700 24px Space Grotesk;color:#0E2A47;")}>{metricas.rating.toFixed(1)}★</div>
+                  <div style={s("font-size:13px;color:#7A8C9E;font-weight:600;")}>Calificación media</div>
+                </div>
+              )}
             </div>
-            <div>
-              <div style={s("font:700 24px Space Grotesk;color:#0E2A47;")}>48</div>
-              <div style={s("font-size:13px;color:#7A8C9E;font-weight:600;")}>Instructores</div>
-            </div>
-            <div>
-              <div style={s("font:700 24px Space Grotesk;color:#0E2A47;")}>4.8★</div>
-              <div style={s("font-size:13px;color:#7A8C9E;font-weight:600;")}>Calificación media</div>
-            </div>
-          </div>
+          )}
         </div>
 
         <div style={s("position:relative;")}>
@@ -285,9 +375,15 @@ export default function Landing() {
             Ver todas →
           </span>
         </div>
+        {cargandoCatalogo && <CargandoSeccion seccion="categorías" />}
+        {!cargandoCatalogo && categorias.length === 0 && (
+          <div style={s("background:#fff;border:1px dashed #D6DEE7;border-radius:18px;padding:40px 20px;text-align:center;color:#7A8C9E;font-weight:600;")}>
+            Todavía no hay categorías cargadas.
+          </div>
+        )}
         <div className="ah-grid-4" style={s("display:grid;grid-template-columns:repeat(4,1fr);gap:16px;")}>
-          {categorias.map((c) => {
-            const icon = CAT_ICONS[c.id];
+          {(cargandoCatalogo ? [] : categorias).map((c) => {
+            const icon = iconoDeCategoria(c.nombre);
             return (
               <div
                 key={c.id}
@@ -307,15 +403,17 @@ export default function Landing() {
                   </svg>
                 </div>
                 <div style={s("font:700 16px Manrope;color:#0E2A47;margin-bottom:4px;")}>{c.nombre}</div>
-                <div style={s("font-size:13px;color:#7A8C9E;font-weight:600;")}>{countActividades(c.id)} actividades</div>
+                <div style={s("font-size:13px;color:#7A8C9E;font-weight:600;")}>
+                  {countActividades(c.id)} {countActividades(c.id) === 1 ? "actividad" : "actividades"}
+                </div>
               </div>
             );
           })}
         </div>
       </section>
 
-      {/* BENEFICIOS */}
-      <section style={s("max-width:1200px;margin:0 auto;padding:46px 28px;")}>
+      {/* BENEFICIOS — el destino de "Cómo funciona" del menú. */}
+      <section id="como-funciona" style={s("max-width:1200px;margin:0 auto;padding:46px 28px;")}>
         <div
           className="ah-grid-4"
           style={s(
@@ -353,25 +451,33 @@ export default function Landing() {
             Explorar todas →
           </span>
         </div>
-        <div className="ah-grid-3" style={s("display:grid;grid-template-columns:repeat(3,1fr);gap:22px;")}>
-          {featured.map(({ actividad, disp, cupColor, instructorNombre }) => (
-            <ActivityCard
-              key={actividad.id}
-              id={actividad.id}
-              name={actividad.nombre}
-              catName={getTipoActividad(actividad.tipoActividadId)?.nombre ?? ""}
-              nivel={actividad.nivelIntensidad}
-              photoTint={actividad.photoTint}
-              statusType={disp.type}
-              rating={actividad.rating}
-              location={actividad.ubicacion}
-              instructor={instructorNombre}
-              price={actividad.precio}
-              cupText={disp.label}
-              cupColor={cupColor}
-            />
-          ))}
-        </div>
+        {cargandoCatalogo ? (
+          <CargandoSeccion seccion="actividades" />
+        ) : featured.length === 0 ? (
+          <div style={s("background:#fff;border:1px dashed #D6DEE7;border-radius:18px;padding:40px 20px;text-align:center;color:#7A8C9E;font-weight:600;")}>
+            Todavía no hay actividades publicadas.
+          </div>
+        ) : (
+          <div className="ah-grid-3" style={s("display:grid;grid-template-columns:repeat(3,1fr);gap:22px;")}>
+            {featured.map(({ actividad, disp, cupColor, instructorNombre: instructor }) => (
+              <ActivityCard
+                key={actividad.id}
+                id={actividad.id}
+                name={actividad.nombre}
+                catName={getTipoActividad(actividad.tipoActividadId)?.nombre ?? ""}
+                nivel={actividad.nivelIntensidad}
+                photoTint={actividad.photoTint}
+                statusType={disp.type}
+                rating={actividad.rating}
+                location={actividad.ubicacion}
+                instructor={instructor}
+                price={actividad.precio}
+                cupText={disp.label}
+                cupColor={cupColor}
+              />
+            ))}
+          </div>
+        )}
       </section>
 
       <footer style={s("background:#0A1F36;color:#9DB3C9;")}>
@@ -396,28 +502,45 @@ export default function Landing() {
           </div>
           <div>
             <div style={s("color:#fff;font-weight:700;margin-bottom:12px;font-size:14px;")}>Plataforma</div>
+            {/*
+              Los tres eran texto con cursor de mano y sin `onClick`, como antes lo eran los de
+              "Soporte". "Instructores" además no tenía a dónde ir: no existe un directorio
+              público de instructores, así que en su lugar va el alta, que sí existe.
+            */}
             <div style={s("display:flex;flex-direction:column;gap:9px;font-size:14px;")}>
-              <span className="ah-link" style={s("cursor:pointer;")}>
+              <span className="ah-link" onClick={goExplorar} style={s("cursor:pointer;")}>
                 Explorar
               </span>
-              <span className="ah-link" style={s("cursor:pointer;")}>
+              <span className="ah-link" onClick={scrollToCategorias} style={s("cursor:pointer;")}>
                 Categorías
               </span>
-              <span className="ah-link" style={s("cursor:pointer;")}>
-                Instructores
+              <span className="ah-link" onClick={() => navigate("/registro")} style={s("cursor:pointer;")}>
+                Ser instructor
               </span>
             </div>
           </div>
           <div>
             <div style={s("color:#fff;font-weight:700;margin-bottom:12px;font-size:14px;")}>Soporte</div>
             <div style={s("display:flex;flex-direction:column;gap:9px;font-size:14px;")}>
+              {/* Los tres van a `/ayuda`, que es donde vive cada cosa: las FAQ y el bloque de
+                  contacto son secciones de esa misma pantalla. El `state` le dice a cuál
+                  scrollear. Antes sólo "Ayuda" tenía `onClick`: los otros dos eran texto con
+                  cursor de mano que no hacía nada. */}
               <span className="ah-link" onClick={() => navigate("/ayuda")} style={s("cursor:pointer;")}>
                 Ayuda
               </span>
-              <span className="ah-link" style={s("cursor:pointer;")}>
+              <span
+                className="ah-link"
+                onClick={() => navigate("/ayuda", { state: { seccion: "faqs" } })}
+                style={s("cursor:pointer;")}
+              >
                 Preguntas frecuentes
               </span>
-              <span className="ah-link" style={s("cursor:pointer;")}>
+              <span
+                className="ah-link"
+                onClick={() => navigate("/ayuda", { state: { seccion: "contacto" } })}
+                style={s("cursor:pointer;")}
+              >
                 Contacto
               </span>
             </div>

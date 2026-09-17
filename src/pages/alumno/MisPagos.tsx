@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import AlumnoNav from "../../components/AlumnoNav";
 import StatusBadge from "../../components/StatusBadge";
+import { CargandoSeccion } from "../../components/Cargando";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
@@ -47,12 +48,16 @@ export default function AlumnoMisPagos() {
         <p style={s("font-size:14.5px;color:#7A8C9E;margin:0 0 24px;")}>
           Historial de pagos por tus inscripciones, con su estado y comprobante.
         </p>
-        <div className="ah-grid-3" style={s("display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-bottom:26px;")}>
-          <SummaryTile label="Total pagado" value={`$${totalPagado.toLocaleString("es-AR")}`} color="#0C8576" />
-          <SummaryTile label="Retenido (Mercado Pago)" value={`$${totalRetenido.toLocaleString("es-AR")}`} color="#B9741A" />
-          <SummaryTile label="Reintegrado" value={`$${totalReintegrado.toLocaleString("es-AR")}`} color="#65788C" />
-          <SummaryTile label="Cantidad de pagos" value={`${filas.length}`} color="#0E2A47" />
-        </div>
+        {/* Los KPI tampoco se muestran mientras carga: cuatro totales en $0 dicen algo que no
+            sabemos todavía. Aparecen con la tabla, ya calculados sobre los datos completos. */}
+        {!cargando && (
+          <div className="ah-grid-3" style={s("display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-bottom:26px;")}>
+            <SummaryTile label="Total pagado" value={`$${totalPagado.toLocaleString("es-AR")}`} color="#0C8576" />
+            <SummaryTile label="Retenido (Mercado Pago)" value={`$${totalRetenido.toLocaleString("es-AR")}`} color="#B9741A" />
+            <SummaryTile label="Reintegrado" value={`$${totalReintegrado.toLocaleString("es-AR")}`} color="#65788C" />
+            <SummaryTile label="Cantidad de pagos" value={`${filas.length}`} color="#0E2A47" />
+          </div>
+        )}
 
         {error && (
           <div
@@ -72,9 +77,7 @@ export default function AlumnoMisPagos() {
         )}
 
         {cargando ? (
-          <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:16px;padding:50px 20px;text-align:center;color:#9AAABA;font-weight:600;")}>
-            Cargando tus pagos…
-          </div>
+          <CargandoSeccion seccion="pagos" />
         ) : filas.length === 0 && !error ? (
           <div
             style={s(

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import Logo from "../../components/Logo";
+import { CargandoAccion, CargandoSeccion } from "../../components/Cargando";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
@@ -12,7 +13,8 @@ export default function AlumnoPreInscripcion() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const { clases, actividades, getTipoActividad, getCategoria, instructorNombre, inscribirse } = useData();
+  const { clases, actividades, getTipoActividad, getCategoria, instructorNombre, inscribirse, cargandoCatalogo } =
+    useData();
   const [confirmado, setConfirmado] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
@@ -31,8 +33,18 @@ export default function AlumnoPreInscripcion() {
 
   if (!clase || !actividad) {
     return (
-      <div className="ah-screen" style={s("min-height:100vh;background:#F4F7FA;display:flex;align-items:center;justify-content:center;")}>
-        <p style={s("color:#65788C;font-weight:600;")}>Clase no encontrada.</p>
+      <div
+        className="ah-screen"
+        style={s("min-height:100vh;background:#F4F7FA;display:flex;align-items:center;justify-content:center;padding:28px;")}
+      >
+        {/* "Clase no encontrada" mientras el catálogo viaja es una afirmación falsa. */}
+        {cargandoCatalogo ? (
+          <div style={s("width:100%;max-width:420px;")}>
+            <CargandoSeccion seccion="la clase" />
+          </div>
+        ) : (
+          <p style={s("color:#65788C;font-weight:600;")}>Clase no encontrada.</p>
+        )}
       </div>
     );
   }
@@ -232,6 +244,7 @@ export default function AlumnoPreInscripcion() {
           </div>
         )}
       </div>
+      <CargandoAccion activo={enviando} mensaje="Confirmando tu preinscripción" />
     </div>
   );
 }

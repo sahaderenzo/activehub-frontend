@@ -138,7 +138,7 @@ export default function AlumnoNav({ active }: { active: AlumnoNavKey }) {
               style={s("border:none;outline:none;background:transparent;font-size:13.5px;color:#0E2A47;font-weight:600;width:100%;")}
             />
           </div>
-          <NotificationBell />
+          <NotificationBell area="alumno" />
           <div ref={menuRef} style={s("position:relative;")}>
             <div
               onClick={() => setMenuAbierto((v) => !v)}

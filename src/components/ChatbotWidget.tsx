@@ -45,9 +45,26 @@ interface Mensaje {
   texto: string;
 }
 
-export default function ChatbotWidget() {
+/**
+ * Se puede usar **suelto** (se abre y cierra solo, que es como lo monta `AlumnoNav`) o
+ * **controlado** desde afuera pasando `abierto` + `onAbiertoChange`. Lo segundo existe para
+ * el botón "Iniciar chat" de la pantalla de Ayuda: el widget ya está montado ahí abajo, y ese
+ * botón lo único que necesita es abrirlo.
+ */
+interface ChatbotWidgetProps {
+  abierto?: boolean;
+  onAbiertoChange?: (abierto: boolean) => void;
+}
+
+export default function ChatbotWidget({ abierto: abiertoProp, onAbiertoChange }: ChatbotWidgetProps = {}) {
   const navigate = useNavigate();
-  const [abierto, setAbierto] = useState(false);
+  const [abiertoInterno, setAbiertoInterno] = useState(false);
+  const controlado = abiertoProp !== undefined;
+  const abierto = controlado ? abiertoProp : abiertoInterno;
+  const setAbierto = (siguiente: boolean) => {
+    if (!controlado) setAbiertoInterno(siguiente);
+    onAbiertoChange?.(siguiente);
+  };
   const [borrador, setBorrador] = useState("");
   const [mensajes, setMensajes] = useState<Mensaje[]>([
     {
@@ -85,7 +102,7 @@ export default function ChatbotWidget() {
           Abierta: sólo la cruz, para no repetir el título que ya trae el encabezado. */}
       <button
         className="ah-btn"
-        onClick={() => setAbierto((v) => !v)}
+        onClick={() => setAbierto(!abierto)}
         aria-expanded={abierto}
         aria-label={abierto ? "Cerrar el asistente" : "Abrir el asistente de ayuda"}
         style={s(

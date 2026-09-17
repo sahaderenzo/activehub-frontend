@@ -4,6 +4,7 @@ import { s } from "../../lib/style";
 import { useAhora } from "../../lib/ahora";
 import { siPuede } from "../../lib/cargaParcial";
 import ErrorReintentar from "../../components/ErrorReintentar";
+import { CargandoSeccion } from "../../components/Cargando";
 import GraficoBarras from "../../components/GraficoBarras";
 import Modal from "../../components/Modal";
 import { exportarPdf } from "../../lib/exportPdf";
@@ -61,6 +62,7 @@ export default function AdminReportes() {
   const [penalizaciones, setPenalizaciones] = useState<PenalizacionAdmin[]>([]);
 
   const [errorCarga, setErrorCarga] = useState(false);
+  const [cargando, setCargando] = useState(true);
 
   /**
    * Pestañas visibles. "Reclamos y penalizaciones" sale de dos módulos que no son reportes
@@ -102,7 +104,8 @@ export default function AdminReportes() {
         setPenalizaciones(pen);
         setErrorCarga(false);
       })
-      .catch(() => setErrorCarga(true));
+      .catch(() => setErrorCarga(true))
+      .finally(() => setCargando(false));
   }, [puede, listarDenunciasAdmin, listarUsuariosAdmin, listarInscripcionesAdmin, listarClasesAdmin, listarPenalizaciones]);
 
   useEffect(() => {
@@ -511,7 +514,9 @@ export default function AdminReportes() {
       </div>
 
       <div style={s("padding:24px 32px 50px;")}>
-        {errorCarga && (
+        {/* Un reporte a medias no es un reporte: se espera a las cinco consultas. */}
+        {cargando && <CargandoSeccion seccion="el reporte" />}
+        {!cargando && errorCarga && (
           <div style={s("margin-bottom:20px;")}>
             <ErrorReintentar
               mensaje="No pudimos cargar los datos del reporte. Lo que ves abajo puede estar incompleto."
@@ -520,6 +525,8 @@ export default function AdminReportes() {
             />
           </div>
         )}
+        {!cargando && (
+          <>
         <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:16px;padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;")}>
           <span style={s("font:700 12px Manrope,sans-serif;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;")}>Filtros</span>
           <select
@@ -658,6 +665,8 @@ export default function AdminReportes() {
             </div>
           </div>
         </div>
+          </>
+        )}
       </div>
 
       {modalOpen && (

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
+import { CargandoSeccion } from "../../components/Cargando";
 import StatusBadge from "../../components/StatusBadge";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
@@ -91,8 +92,9 @@ export default function InstructorHistorialClases() {
       </div>
 
       <div style={s("max-width:900px;padding:26px 32px 50px;")}>
+        {/* Los filtros aparecen con sus conteos ya calculados, no en (0). */}
         <div style={s("display:flex;gap:9px;margin-bottom:20px;flex-wrap:wrap;")}>
-          {FILTROS.map((f) => {
+          {(cargando ? [] : FILTROS).map((f) => {
             const on = filtro === f.key;
             return (
               <button
@@ -128,9 +130,7 @@ export default function InstructorHistorialClases() {
           </div>
         )}
 
-        {!errorCarga && cargando && (
-          <div style={s("color:#7A8C9E;font-weight:600;font-size:13.5px;padding:20px 0;")}>Cargando historial…</div>
-        )}
+        {!errorCarga && cargando && <CargandoSeccion seccion="el historial" />}
 
         {!errorCarga && !cargando && visibles.length === 0 && (
           <div

@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AlumnoNav from "../../components/AlumnoNav";
 import StatusBadge from "../../components/StatusBadge";
+import { CargandoAccion, CargandoSeccion } from "../../components/Cargando";
 import { s } from "../../lib/style";
+import { ESTILO_RESALTE, useResaltado } from "../../lib/resaltado";
 import { useAhora } from "../../lib/ahora";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
@@ -34,14 +36,25 @@ export default function AlumnoMisClases() {
   const { getActividad, getTipoActividad, getCategoria, instructorNombre, cancelarInscripcion, crearDenuncia, listarMisInscripciones } =
     useData();
   const [tab, setTab] = useState<TabKey>("todas");
+  // Las dos formas en que una notificación apunta acá: por la inscripción (te confirmaron el
+  // pago, cancelaste) o por la clase (la cancelaron, el profe faltó). La pestaña arranca en
+  // "Todas", así que la fila buscada siempre está a la vista sin tener que cambiarla.
+  const resaltadoInscripcion = useResaltado("inscripcion");
+  const resaltadoClase = useResaltado("clase");
   const [reportadas, setReportadas] = useState<Set<string>>(new Set());
   const [todasFilas, setTodasFilas] = useState<MiInscripcion[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // Arranca en true: con `false`, el primer render mostraría los contadores en 0 y "No hay
+  // clases en esta categoría" — que es el reporte exacto ("veo todo en 0 y creo que no tengo
+  // nada"). No es un vacío, es que todavía no llegó.
+  const [cargando, setCargando] = useState(true);
+  const [cancelando, setCancelando] = useState(false);
 
   const cargar = () => {
     listarMisInscripciones()
       .then((filas) => setTodasFilas([...filas].sort((a, b) => b.claseFechaHora.localeCompare(a.claseFechaHora))))
-      .catch((err) => setError(err instanceof ApiError ? err.message : "No pudimos cargar tus clases."));
+      .catch((err) => setError(err instanceof ApiError ? err.message : "No pudimos cargar tus clases."))
+      .finally(() => setCargando(false));
   };
 
   useEffect(() => {
@@ -84,11 +97,14 @@ export default function AlumnoMisClases() {
 
   const cancelar = async (id: string) => {
     setError(null);
+    setCancelando(true);
     try {
       await cancelarInscripcion(id);
       cargar();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No pudimos cancelar la inscripción.");
+    } finally {
+      setCancelando(false);
     }
   };
 
@@ -125,6 +141,14 @@ export default function AlumnoMisClases() {
           )}
         </div>
 
+        {/*
+          Mientras carga no se muestra NADA del contenido, ni siquiera las pestañas: sus
+          contadores en 0 se leen como "no tenés clases", que es justo la confusión reportada.
+        */}
+        {cargando ? (
+          <CargandoSeccion seccion="clases" />
+        ) : (
+          <>
         <div style={s("display:flex;gap:4px;border-bottom:1px solid #E2E9F0;margin-bottom:24px;flex-wrap:wrap;")}>
           {TABS.map((t) => {
             const on = tab === t.key;
@@ -199,11 +223,15 @@ export default function AlumnoMisClases() {
               const repEnabled = puedeDenunciar && r.estado === "Inscripto" && horasDesdeInicio >= 1 && !yaReportada;
               const repDisabled = puedeDenunciar && r.estado === "Inscripto" && horasDesdeInicio < 1 && !yaReportada;
 
+              const resaltada = resaltadoInscripcion.activo(r.id) || resaltadoClase.activo(r.claseId);
+
               return (
                 <div
                   key={r.id}
+                  ref={resaltadoInscripcion.ref(r.id) ?? resaltadoClase.ref(r.claseId)}
                   style={s(
-                    "background:#fff;border:1px solid #E7EDF3;border-radius:18px;padding:18px 20px;display:flex;align-items:center;gap:18px;box-shadow:0 1px 2px rgba(14,42,71,.04);flex-wrap:wrap;",
+                    "background:#fff;border:1px solid #E7EDF3;border-radius:18px;padding:18px 20px;display:flex;align-items:center;gap:18px;box-shadow:0 1px 2px rgba(14,42,71,.04);flex-wrap:wrap;"
+                      + (resaltada ? ESTILO_RESALTE : ""),
                   )}
                 >
                   <div style={s(`width:88px;height:88px;border-radius:14px;flex:none;background:${actividad?.photoTint ?? "#0E2A47"};position:relative;`)}>
@@ -296,7 +324,10 @@ export default function AlumnoMisClases() {
             })}
           </div>
         )}
+          </>
+        )}
       </div>
+      <CargandoAccion activo={cancelando} mensaje="Cancelando tu inscripción" />
     </div>
   );
 }

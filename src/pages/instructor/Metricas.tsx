@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
+import { CargandoSeccion } from "../../components/Cargando";
 import { s } from "../../lib/style";
 import GraficoBarras from "../../components/GraficoBarras";
 import { useAhora } from "../../lib/ahora";
@@ -46,6 +47,7 @@ export default function InstructorMetricas() {
   const [misClases, setMisClases] = useState<MiClaseInstructor[]>([]);
   const [inscripciones, setInscripciones] = useState<InscripcionMiClase[]>([]);
   const [errorCarga, setErrorCarga] = useState(false);
+  const [cargando, setCargando] = useState(true);
 
   const cargar = useCallback(() => {
     if (!aprobado) return;
@@ -55,7 +57,8 @@ export default function InstructorMetricas() {
         setInscripciones(inscs);
         setErrorCarga(false);
       })
-      .catch(() => setErrorCarga(true));
+      .catch(() => setErrorCarga(true))
+      .finally(() => setCargando(false));
   }, [aprobado, data.listarMisClases, data.listarInscripcionesMisClases]);
 
   useEffect(() => {
@@ -385,8 +388,9 @@ export default function InstructorMetricas() {
             </button>
           </div>
         )}
+        {cargando && <CargandoSeccion seccion="las métricas" />}
         <div className="ah-grid-3" style={s("display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-bottom:24px;")}>
-          {kpis.map((k) => (
+          {(cargando ? [] : kpis).map((k) => (
             <div
               key={k.label}
               style={s("background:#fff;border:1px solid #E7EDF3;border-radius:18px;padding:20px;box-shadow:0 1px 2px rgba(14,42,71,.04);")}
@@ -405,6 +409,8 @@ export default function InstructorMetricas() {
           ))}
         </div>
 
+        {!cargando && (
+          <>
         <div className="ah-grid-side" style={s("display:grid;grid-template-columns:1.6fr 1fr;gap:18px;margin-bottom:24px;")}>
           <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:18px;padding:22px;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
             <div style={s("margin-bottom:18px;")}>
@@ -460,6 +466,8 @@ export default function InstructorMetricas() {
             </div>
           )}
         </div>
+          </>
+        )}
       </div>
     </DashLayout>
   );

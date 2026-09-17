@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import AlumnoNav from "../../components/AlumnoNav";
 import ActivityCard from "../../components/ActivityCard";
+import { CargandoSeccion } from "../../components/Cargando";
 import { s } from "../../lib/style";
+import { incluye } from "../../lib/texto";
 import { useData } from "../../context/DataContext";
 import { haversineKm, useGeolocation } from "../../lib/geo";
 import type { Actividad, Categoria, TipoActividad } from "../../lib/types";
@@ -117,8 +119,10 @@ interface ExplorarNavState {
 }
 
 export default function AlumnoExplorar() {
-  const { actividades, tiposActividad, categorias, nivelesIntensidad, getTipoActividad, getCategoria, instructorNombre } =
-    useData();
+  const {
+    actividades, tiposActividad, categorias, nivelesIntensidad, getTipoActividad, getCategoria, instructorNombre,
+    cargandoCatalogo,
+  } = useData();
   const location = useLocation();
   const [search, setSearch] = useState("");
   const [catSel, setCatSel] = useState<Set<string>>(new Set());
@@ -221,13 +225,12 @@ export default function AlumnoExplorar() {
   }, [actividades]);
 
   const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
+    const term = search.trim();
     let list = actividades.filter((a) => {
       const tipo = getTipoActividad(a.tipoActividadId);
       if (term) {
         const instructor = instructorNombre[a.instructorId] ?? "";
-        const coincide = a.nombre.toLowerCase().includes(term) || instructor.toLowerCase().includes(term);
-        if (!coincide) return false;
+        if (!incluye(a.nombre, term) && !incluye(instructor, term)) return false;
       }
       if (catSel.size > 0 && (!tipo || !catSel.has(tipo.categoriaId))) return false;
       if (tipoSel.size > 0 && !tipoSel.has(a.tipoActividadId)) return false;
@@ -500,7 +503,11 @@ export default function AlumnoExplorar() {
               </div>
             </div>
           </div>
-          {filtered.length === 0 ? (
+          {cargandoCatalogo ? (
+            // Sin esto el catálogo vacío en vuelo se veía igual que "no hay actividades
+            // que coincidan", y encima con los contadores de los filtros en cero.
+            <CargandoSeccion seccion="actividades" />
+          ) : filtered.length === 0 ? (
             <div
               style={s(
                 "background:#fff;border:1px dashed #D6DEE7;border-radius:16px;padding:50px 20px;text-align:center;color:#7A8C9E;font-weight:600;",

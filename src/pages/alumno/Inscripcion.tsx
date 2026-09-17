@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import Logo from "../../components/Logo";
+import { CargandoAccion, CargandoSeccion } from "../../components/Cargando";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
@@ -14,7 +15,8 @@ export default function AlumnoInscripcion() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const { clases, actividades, getTipoActividad, getCategoria, instructorNombre, inscribirse } = useData();
+  const { clases, actividades, getTipoActividad, getCategoria, instructorNombre, inscribirse, cargandoCatalogo } =
+    useData();
   const [metodo, setMetodo] = useState<Metodo>("Mercado Pago");
   const [confirmado, setConfirmado] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,8 +35,18 @@ export default function AlumnoInscripcion() {
 
   if (!clase || !actividad) {
     return (
-      <div className="ah-screen" style={s("min-height:100vh;background:#F4F7FA;display:flex;align-items:center;justify-content:center;")}>
-        <p style={s("color:#65788C;font-weight:600;")}>Clase no encontrada.</p>
+      <div
+        className="ah-screen"
+        style={s("min-height:100vh;background:#F4F7FA;display:flex;align-items:center;justify-content:center;padding:28px;")}
+      >
+        {/* "Clase no encontrada" mientras el catálogo viaja es una afirmación falsa. */}
+        {cargandoCatalogo ? (
+          <div style={s("width:100%;max-width:420px;")}>
+            <CargandoSeccion seccion="la clase" />
+          </div>
+        ) : (
+          <p style={s("color:#65788C;font-weight:600;")}>Clase no encontrada.</p>
+        )}
       </div>
     );
   }
@@ -46,10 +58,13 @@ export default function AlumnoInscripcion() {
   const confirmarPago = async (m: Metodo) => {
     if (!currentUser) return;
     setError(null);
+    // El método se fija ANTES de esperar: es lo que decide el texto del overlay ("Procesando
+    // tu pago" vs. "Confirmando tu inscripción"). Seteándolo después del await, un pago en
+    // efectivo mostraba el cartel de pago con tarjeta durante toda la espera.
+    setMetodo(m);
     setEnviando(true);
     try {
       await inscribirse(clase, currentUser.id, m);
-      setMetodo(m);
       setConfirmado(true);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No pudimos confirmar la inscripción. Intentá de nuevo.");
@@ -314,6 +329,15 @@ export default function AlumnoInscripcion() {
           </div>
         </div>
       </div>
+      {/*
+        Bloquea la pantalla mientras el pago viaja. El botón ya se deshabilitaba, pero acá el
+        doble click cuesta una inscripción y un cobro de más: el overlay no deja llegar ni el
+        segundo click ni un Enter perdido.
+      */}
+      <CargandoAccion
+        activo={enviando}
+        mensaje={metodo === "Mercado Pago" ? "Procesando tu pago" : "Confirmando tu inscripción"}
+      />
     </div>
   );
 }

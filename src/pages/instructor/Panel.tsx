@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
 import StatusBadge from "../../components/StatusBadge";
 import ErrorReintentar from "../../components/ErrorReintentar";
+import { CargandoSeccion } from "../../components/Cargando";
 import { s } from "../../lib/style";
 import GraficoBarras from "../../components/GraficoBarras";
 import { useAuth } from "../../context/AuthContext";
@@ -186,6 +187,10 @@ export default function InstructorPanel() {
         </button>
       </div>
       <div style={s("padding:26px 32px 50px;")}>
+        {/* Nada del panel hasta tenerlo entero: gráficos vacíos y alertas en cero mienten. */}
+        {cargando ? (
+          <CargandoSeccion seccion="el panel" />
+        ) : (
         <div className="ah-grid-2" style={s("display:grid;grid-template-columns:1.5fr 1fr;gap:18px;")}>
           <div
             style={s(
@@ -272,6 +277,7 @@ export default function InstructorPanel() {
             </div>
           </div>
         </div>
+        )}
       </div>
     </DashLayout>
   );

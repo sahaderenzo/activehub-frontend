@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AlumnoNav from "../../components/AlumnoNav";
 import { s } from "../../lib/style";
+import { ESTILO_RESALTE, useResaltado } from "../../lib/resaltado";
 import Modal from "../../components/Modal";
+import { CargandoAccion, CargandoSeccion } from "../../components/Cargando";
 import { useData } from "../../context/DataContext";
 import type { MiInscripcion, MiResenia } from "../../context/DataContext";
 import { formatFecha } from "../../lib/mockData";
@@ -44,6 +46,11 @@ export default function AlumnoMisResenas() {
   const [misResenias, setMisResenias] = useState<MiResenia[]>([]);
   const [form, setForm] = useState<FormState | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // A dónde aterrizan las notificaciones de reseña del alumno: aprobada, ocultada, respondida.
+  const resaltado = useResaltado("resenia");
+  const [cargando, setCargando] = useState(true);
+  /** Qué acción está en vuelo, para el texto del overlay. */
+  const [accion, setAccion] = useState<"guardando" | "eliminando" | null>(null);
 
   // Las inscripciones son de otro módulo (`inscripciones.gestionar`) y sólo alimentan la
   // lista de clases calificables: sin ese permiso las reseñas ya escritas se siguen viendo y
@@ -57,7 +64,8 @@ export default function AlumnoMisResenas() {
         setMisInscripciones(insc);
         setMisResenias(res);
       })
-      .catch((err) => setError(err instanceof ApiError ? err.message : "No pudimos cargar tus reseñas."));
+      .catch((err) => setError(err instanceof ApiError ? err.message : "No pudimos cargar tus reseñas."))
+      .finally(() => setCargando(false));
   }, [puede, data.listarMisInscripciones, data.listarMisResenas]);
 
   useEffect(() => {
@@ -96,6 +104,7 @@ export default function AlumnoMisResenas() {
   const guardar = async () => {
     if (!form || !form.puntaje) return;
     setError(null);
+    setAccion("guardando");
     try {
       // Editar es un PUT, no un borrar+crear: antes, si la creación fallaba después
       // del borrado, la reseña original quedaba perdida sin nada que la reemplazara.
@@ -108,17 +117,22 @@ export default function AlumnoMisResenas() {
       cargar();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No pudimos guardar la reseña.");
+    } finally {
+      setAccion(null);
     }
   };
 
   const eliminar = async (id: string) => {
     if (!window.confirm("¿Eliminar esta reseña? No se puede deshacer.")) return;
     setError(null);
+    setAccion("eliminando");
     try {
       await data.eliminarResenia(id);
       cargar();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No pudimos eliminar la reseña.");
+    } finally {
+      setAccion(null);
     }
   };
 
@@ -142,7 +156,9 @@ export default function AlumnoMisResenas() {
           </div>
         )}
 
-        {pendientes.length > 0 && (
+        {cargando && <CargandoSeccion seccion="reseñas" />}
+
+        {!cargando && pendientes.length > 0 && (
           <>
             <div style={s("font:700 16px Space Grotesk,sans-serif;margin-bottom:14px;")}>Pendientes de reseñar</div>
             <div style={s("display:flex;flex-direction:column;gap:12px;margin-bottom:32px;")}>
@@ -177,15 +193,24 @@ export default function AlumnoMisResenas() {
           </>
         )}
 
-        <div style={s("font:700 16px Space Grotesk,sans-serif;margin-bottom:14px;")}>Reseñas que hiciste</div>
-        {hechas.length === 0 ? (
+        {!cargando && (
+          <div style={s("font:700 16px Space Grotesk,sans-serif;margin-bottom:14px;")}>Reseñas que hiciste</div>
+        )}
+        {cargando ? null : hechas.length === 0 ? (
           <div style={s("background:#fff;border:1px dashed #D6DEE7;border-radius:16px;padding:40px 20px;text-align:center;color:#7A8C9E;font-weight:600;")}>
             Todavía no dejaste ninguna reseña.
           </div>
         ) : (
           <div style={s("display:flex;flex-direction:column;gap:14px;")}>
             {hechas.map((r) => (
-              <div key={r.id} style={s("background:#fff;border:1px solid #E7EDF3;border-radius:16px;padding:18px 20px;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
+              <div
+                key={r.id}
+                ref={resaltado.ref(r.id)}
+                style={s(
+                  "background:#fff;border:1px solid #E7EDF3;border-radius:16px;padding:18px 20px;box-shadow:0 1px 2px rgba(14,42,71,.04);"
+                    + (resaltado.activo(r.id) ? ESTILO_RESALTE : ""),
+                )}
+              >
                 <div style={s("display:flex;align-items:center;gap:11px;margin-bottom:10px;")}>
                   <div style={s("flex:1;")}>
                     <div style={s("font:700 15px Manrope,sans-serif;color:#0E2A47;")}>{r.actividadNombre}</div>
@@ -198,7 +223,28 @@ export default function AlumnoMisResenas() {
                 <p style={s("font-size:14.5px;line-height:1.6;color:#54697E;margin:0 0 12px;")}>
                   {r.comentario?.trim() ? r.comentario : <span style={s("color:#9AAABA;font-style:italic;")}>Sin comentario</span>}
                 </p>
-                <div style={s("display:flex;align-items:center;gap:9px;")}>
+                {/*
+                  La respuesta del instructor. Antes no se mostraba en ningún lado del lado del
+                  alumno: la notificación "El instructor respondió tu reseña" no tenía a dónde
+                  llevar, y el único lugar donde aparecía era la página pública de la actividad.
+                */}
+                {r.respuestaInstructor && (
+                  <div style={s("background:#F4F8FB;border-left:3px solid #12B5A5;border-radius:0 10px 10px 0;padding:11px 14px;margin:0 0 12px;")}>
+                    <div style={s("font:700 11.5px Manrope,sans-serif;color:#0C8576;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;")}>
+                      Respuesta de {r.instructorNombre}
+                    </div>
+                    <div style={s("font-size:13.5px;line-height:1.55;color:#54697E;font-weight:500;")}>{r.respuestaInstructor}</div>
+                  </div>
+                )}
+                <div style={s("display:flex;align-items:center;gap:9px;flex-wrap:wrap;")}>
+                  {/* Ocultada por moderación: sigue acá (no se borra), pero ya no se ve en la
+                      actividad. Sin el cartel, la notificación de "ocultamos tu reseña"
+                      aterrizaba en una fila que se veía igual que el resto. */}
+                  {r.oculta && (
+                    <span style={s("font:700 11px Manrope,sans-serif;background:#FBEAEB;color:#BE3A3E;border:1px solid #F3D2D3;padding:4px 10px;border-radius:99px;")}>
+                      Oculta por moderación
+                    </span>
+                  )}
                   {r.enModeracion && (
                     <span style={s("font:700 11px Manrope,sans-serif;background:#FFF3E0;color:#B9741A;border:1px solid #F6E2C0;padding:4px 10px;border-radius:99px;")}>
                       En moderación
@@ -270,6 +316,11 @@ export default function AlumnoMisResenas() {
           </div>
         </Modal>
       )}
+      {/* Va por encima del modal (z-index 120 vs. 80): la reseña se publica desde adentro. */}
+      <CargandoAccion
+        activo={accion !== null}
+        mensaje={accion === "eliminando" ? "Eliminando tu reseña" : "Publicando tu reseña"}
+      />
     </div>
   );
 }

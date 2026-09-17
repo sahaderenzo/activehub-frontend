@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
+import { CargandoSeccion } from "../../components/Cargando";
 import StatusBadge from "../../components/StatusBadge";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
@@ -116,6 +117,7 @@ export default function InstructorProximasClases() {
             </button>
           </div>
         )}
+        {!errorCarga && cargando && <CargandoSeccion seccion="clases" />}
         {!errorCarga && !cargando && grupos.length === 0 && (
           <div style={s("background:#fff;border:1px dashed #D6DEE7;border-radius:18px;padding:40px;text-align:center;color:#7A8C9E;font-weight:600;")}>
             No tenés clases programadas próximamente.

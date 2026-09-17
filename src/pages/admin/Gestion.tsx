@@ -3,13 +3,16 @@ import { useNavigate, useParams } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
 import StatusBadge from "../../components/StatusBadge";
 import { s } from "../../lib/style";
+import { incluye } from "../../lib/texto";
 import Modal from "../../components/Modal";
+import { CargandoSeccion } from "../../components/Cargando";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import type {
   AccionResolucion,
   DenunciaAdmin,
   InstructorAdmin,
+  ReporteSoporteAdmin,
   ReseniaPendiente,
   ReseniaPublicada,
   UsuarioAdmin,
@@ -20,7 +23,7 @@ import { denunciaStatusType } from "../../lib/status";
 import { formatFecha } from "../../lib/mockData";
 import type { RolNombre } from "../../lib/types";
 
-type Tab = "usuarios" | "instructores" | "actividades" | "reclamos" | "resenas";
+type Tab = "usuarios" | "instructores" | "actividades" | "reclamos" | "resenas" | "soporte";
 
 /**
  * Cada pestaña es un módulo distinto, con su propio permiso — el mismo que exige el
@@ -35,7 +38,18 @@ const TABS: { key: Tab; label: string; requiere: string }[] = [
   { key: "actividades", label: "Actividades", requiere: "actividades.moderar" },
   { key: "reclamos", label: "Reclamos", requiere: "denuncias.resolver" },
   { key: "resenas", label: "Reseñas", requiere: "denuncias.resolver" },
+  { key: "soporte", label: "Soporte", requiere: "soporte.gestionar" },
 ];
+
+/** Lo que dice el cartel de carga de cada pestaña: "Cargando {esto}, por favor espere". */
+const ETIQUETA_TAB: Record<Tab, string> = {
+  usuarios: "usuarios",
+  instructores: "instructores",
+  actividades: "actividades",
+  reclamos: "reclamos",
+  resenas: "reseñas",
+  soporte: "reportes de soporte",
+};
 
 const AVATAR_PALETTE: [string, string][] = [
   ["#E7F8F5", "#0C8576"],
@@ -132,6 +146,8 @@ export default function AdminGestion() {
     eliminarActividad,
     listarDenunciasAdmin,
     resolverDenuncia,
+    listarReportesSoporte,
+    cerrarReporteSoporte,
     instructorNombre,
     getTipoActividad,
     getCategoria,
@@ -148,6 +164,7 @@ export default function AdminGestion() {
     actualizarUsuarioAdmin,
     listarRolesPermisos,
     asignarRolUsuario,
+    cargandoCatalogo,
   } = useData();
   const [query, setQuery] = useState("");
   const [rolFiltro, setRolFiltro] = useState<RolNombre | "todos">("todos");
@@ -179,28 +196,41 @@ export default function AdminGestion() {
   const [guardandoSuspension, setGuardandoSuspension] = useState(false);
   const [guardandoEdicion, setGuardandoEdicion] = useState(false);
   const [errorEdicion, setErrorEdicion] = useState<string | null>(null);
+  /** Bandeja de "Reportar un problema" de /ayuda. Los abiertos vienen primero del backend. */
+  const [reportes, setReportes] = useState<ReporteSoporteAdmin[]>([]);
+  const [errorReportes, setErrorReportes] = useState<string | null>(null);
+  const [cierre, setCierre] = useState<{ reporte: ReporteSoporteAdmin; respuesta: string } | null>(null);
+  const [errorCierre, setErrorCierre] = useState<string | null>(null);
+  const [guardandoCierre, setGuardandoCierre] = useState(false);
 
   const goTab = (t: Tab) => navigate(`/admin/gestion/${t}`);
 
+  // Qué pestañas ya trajeron sus datos. Se guarda el conjunto y no un booleano "cargando"
+  // porque cambiar de pestaña tendría que volver a prenderlo, y prender un estado de forma
+  // síncrona dentro del efecto que dispara la carga es `react-hooks/set-state-in-effect`.
+  // Así el valor se DERIVA: la pestaña está cargando mientras no esté en el conjunto.
+  const [tabsCargados, setTabsCargados] = useState<Set<Tab>>(new Set());
+  const marcarCargado = (t: Tab) => setTabsCargados((prev) => (prev.has(t) ? prev : new Set(prev).add(t)));
+  // "actividades" sale del catálogo del Context, no de un loader propio de esta pantalla.
+  const cargandoTab = tab === "actividades" ? cargandoCatalogo : !tabsCargados.has(tab);
+
   const usuariosFiltrados = useMemo(() => {
-    const q = query.trim().toLowerCase();
     return usuarios.filter((u) => {
-      const coincideQuery = !q || `${u.nombre} ${u.apellido}`.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
+      const coincideQuery = incluye(`${u.nombre} ${u.apellido}`, query) || incluye(u.email, query);
       const coincideRol = rolFiltro === "todos" || u.rol === rolFiltro;
       return coincideQuery && coincideRol;
     });
   }, [usuarios, query, rolFiltro]);
 
   const actividadesFiltradas = useMemo(() => {
-    const q = queryActividades.trim().toLowerCase();
-    if (!q) return actividades;
-    return actividades.filter((a) => a.nombre.toLowerCase().includes(q));
+    return actividades.filter((a) => incluye(a.nombre, queryActividades));
   }, [actividades, queryActividades]);
 
   const cargarInstructores = () => {
     listarInstructores()
       .then(setInstructores)
-      .catch((err) => setErrorInstructores(err instanceof ApiError ? err.message : "No pudimos cargar los instructores."));
+      .catch((err) => setErrorInstructores(err instanceof ApiError ? err.message : "No pudimos cargar los instructores."))
+      .finally(() => marcarCargado("instructores"));
   };
 
   const cargarResenas = () => {
@@ -211,7 +241,8 @@ export default function AdminGestion() {
       .then(setResenasPublicadas)
       .catch((err) =>
         setErrorResenas(err instanceof ApiError ? err.message : "No pudimos cargar las reseñas publicadas."),
-      );
+      )
+      .finally(() => marcarCargado("resenas"));
   };
 
   /**
@@ -242,13 +273,15 @@ export default function AdminGestion() {
   const cargarDenuncias = () => {
     listarDenunciasAdmin()
       .then(setDenuncias)
-      .catch((err) => setErrorDenuncias(err instanceof ApiError ? err.message : "No pudimos cargar los reclamos."));
+      .catch((err) => setErrorDenuncias(err instanceof ApiError ? err.message : "No pudimos cargar los reclamos."))
+      .finally(() => marcarCargado("reclamos"));
   };
 
   const cargarUsuarios = () => {
     listarUsuariosAdmin()
       .then(setUsuarios)
-      .catch((err) => setErrorUsuarios(err instanceof ApiError ? err.message : "No pudimos cargar los usuarios."));
+      .catch((err) => setErrorUsuarios(err instanceof ApiError ? err.message : "No pudimos cargar los usuarios."))
+      .finally(() => marcarCargado("usuarios"));
     // Los roles asignables van con el listado: el modal de edición los necesita para el
     // selector, e incluyen los que el admin creó en "Roles y permisos". Si falla, el selector
     // queda vacío y el resto de la edición sigue funcionando.
@@ -257,11 +290,42 @@ export default function AdminGestion() {
       .catch(() => setRolesAsignables([]));
   };
 
+  // El "limpiar el error" va dentro del `.then`, no en el cuerpo: esta función la llama el
+  // `useEffect` de abajo y un setState síncrono ahí es `react-hooks/set-state-in-effect`.
+  // Mismo patrón que los otros cuatro loaders de la pantalla.
+  const cargarReportes = () => {
+    listarReportesSoporte()
+      .then((rs) => {
+        setReportes(rs);
+        setErrorReportes(null);
+      })
+      .catch((err) =>
+        setErrorReportes(err instanceof ApiError ? err.message : "No pudimos cargar los reportes de soporte."),
+      )
+      .finally(() => marcarCargado("soporte"));
+  };
+
+  const confirmarCierre = async () => {
+    if (!cierre) return;
+    setErrorCierre(null);
+    setGuardandoCierre(true);
+    try {
+      await cerrarReporteSoporte(cierre.reporte.id, cierre.respuesta);
+      setCierre(null);
+      cargarReportes();
+    } catch (err) {
+      setErrorCierre(err instanceof ApiError ? err.message : "No pudimos cerrar el reporte.");
+    } finally {
+      setGuardandoCierre(false);
+    }
+  };
+
   useEffect(() => {
     if (tab === "usuarios") cargarUsuarios();
     if (tab === "instructores") cargarInstructores();
     if (tab === "resenas") cargarResenas();
     if (tab === "reclamos") cargarDenuncias();
+    if (tab === "soporte") cargarReportes();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
@@ -409,7 +473,9 @@ export default function AdminGestion() {
     <DashLayout role="admin" active="gestionadmin">
       <div style={s("background:#fff;border-bottom:1px solid #E7EDF3;padding:18px 32px;")}>
         <h1 style={s("font:700 22px Space Grotesk,sans-serif;margin:0;")}>Gestión administrativa</h1>
-        <p style={s("font-size:13.5px;color:#7A8C9E;margin:3px 0 0;")}>Administrá usuarios, instructores, actividades, reclamos y reseñas.</p>
+        <p style={s("font-size:13.5px;color:#7A8C9E;margin:3px 0 0;")}>
+          Administrá usuarios, instructores, actividades, reclamos, reseñas y soporte.
+        </p>
       </div>
 
       <div style={s("padding:24px 32px 50px;")}>
@@ -482,7 +548,9 @@ export default function AdminGestion() {
           </div>
         )}
 
-        <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:16px;overflow:hidden;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
+        {/* La pestaña entera espera a su consulta: una tabla vacía no es "no hay nada". */}
+        {cargandoTab && <CargandoSeccion seccion={ETIQUETA_TAB[tab]} />}
+        <div style={s(cargandoTab ? "display:none;" : "background:#fff;border:1px solid #E7EDF3;border-radius:16px;overflow:hidden;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
           {tab === "usuarios" && (
             <div style={s("overflow-x:auto;")}>
               {errorUsuarios && (
@@ -1041,8 +1109,162 @@ export default function AdminGestion() {
               </div>
             </div>
           )}
+
+          {tab === "soporte" && (
+            <div style={s("overflow-x:auto;")}>
+              <div style={s("min-width:900px;")}>
+                {errorReportes && (
+                  <div style={s("padding:13px 22px;background:#FBEAEB;border-bottom:1px solid #F3D2D3;")}>
+                    <span style={s("font-size:13px;color:#BE3A3E;font-weight:600;")}>{errorReportes}</span>
+                  </div>
+                )}
+                <div
+                  style={s(
+                    "display:grid;grid-template-columns:1.1fr 1.2fr 2fr 1fr 1fr 130px;padding:12px 22px;background:#F7FAFC;border-bottom:1px solid #EEF2F6;font:700 11.5px Manrope,sans-serif;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;",
+                  )}
+                >
+                  <span>De</span>
+                  <span>Asunto</span>
+                  <span>Detalle</span>
+                  <span>Fecha</span>
+                  <span>Estado</span>
+                  <span>Acciones</span>
+                </div>
+                {reportes.map((r) => (
+                  <div
+                    key={r.id}
+                    style={s(
+                      `display:grid;grid-template-columns:1.1fr 1.2fr 2fr 1fr 1fr 130px;padding:14px 22px;border-bottom:1px solid #F1F4F8;align-items:center;${r.estado === "Cerrado" ? "background:#FBFCFD;" : ""}`,
+                    )}
+                  >
+                    <div style={s("display:flex;flex-direction:column;gap:2px;min-width:0;")}>
+                      {/* La etiqueta del anónimo la decide la pantalla: el backend manda null. */}
+                      <span style={s("font:700 13.5px Manrope,sans-serif;color:#0E2A47;")}>
+                        {r.autorNombre ?? "Sin cuenta"}
+                      </span>
+                      <span style={s("font-size:12px;color:#90A1B2;font-weight:600;overflow:hidden;text-overflow:ellipsis;")}>
+                        {r.email}
+                      </span>
+                    </div>
+                    <span style={s("font-size:13.5px;color:#41566B;font-weight:700;padding-right:10px;")}>{r.asunto}</span>
+                    <div style={s("padding-right:10px;min-width:0;")}>
+                      <span style={s("font-size:13px;color:#65788C;font-weight:600;line-height:1.45;")}>{r.detalle}</span>
+                      {r.respuesta && (
+                        <div
+                          style={s(
+                            "margin-top:7px;padding:8px 10px;background:#F6F9FC;border-left:3px solid #12B5A5;border-radius:0 9px 9px 0;font:600 12.5px Manrope,sans-serif;color:#41566B;line-height:1.45;",
+                          )}
+                        >
+                          <strong style={s("color:#0C8576;")}>Respuesta:</strong> {r.respuesta}
+                        </div>
+                      )}
+                    </div>
+                    <span style={s("font-size:13px;color:#65788C;font-weight:600;")}>{formatFecha(r.createdAt)}</span>
+                    <div style={s("display:flex;flex-direction:column;gap:3px;")}>
+                      <span
+                        style={s(
+                          `justify-self:start;font:700 11.5px Manrope,sans-serif;padding:4px 10px;border-radius:99px;background:${r.estado === "Abierto" ? "#FFF3E0" : "#E7F8F5"};color:${r.estado === "Abierto" ? "#B9741A" : "#0C8576"};`,
+                        )}
+                      >
+                        {r.estado}
+                      </span>
+                      {r.cerradoPorNombre && (
+                        <span style={s("font-size:11px;color:#9AAABA;font-weight:600;")}>por {r.cerradoPorNombre}</span>
+                      )}
+                    </div>
+                    <div>
+                      {r.estado === "Abierto" ? (
+                        <button
+                          className="ah-btn"
+                          onClick={() => {
+                            setErrorCierre(null);
+                            setCierre({ reporte: r, respuesta: "" });
+                          }}
+                          style={s("background:#E7F8F5;border:none;border-radius:8px;padding:7px 12px;font:700 12px Manrope,sans-serif;color:#0C8576;cursor:pointer;")}
+                        >
+                          Cerrar
+                        </button>
+                      ) : (
+                        <span style={s("font-size:12px;color:#9AAABA;font-weight:600;")}>
+                          {r.cerradoAt ? formatFecha(r.cerradoAt) : "—"}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {reportes.length === 0 && !errorReportes && (
+                  <div style={s("padding:40px 22px;text-align:center;color:#90A1B2;font:600 13.5px Manrope,sans-serif;")}>
+                    No hay reportes de soporte.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Cerrar un reporte: la respuesta es opcional y el cierre no se puede deshacer (el
+          backend rechaza volver a cerrar, para no pisar la respuesta y la fecha originales). */}
+      {cierre && (
+        <Modal onClose={() => !guardandoCierre && setCierre(null)} zIndex={60}>
+          <div style={s("background:#fff;border-radius:18px;padding:26px;max-width:480px;width:100%;")}>
+            <div style={s("font:700 18px Space Grotesk,sans-serif;color:#0E2A47;margin-bottom:4px;")}>Cerrar reporte</div>
+            <div style={s("font-size:13.5px;color:#7A8C9E;font-weight:600;margin-bottom:16px;")}>
+              {cierre.reporte.asunto} · {cierre.reporte.email}
+            </div>
+
+            <div
+              style={s(
+                "background:#F6F9FC;border:1px solid #E7EDF3;border-radius:11px;padding:12px 14px;margin-bottom:16px;font:600 13px Manrope,sans-serif;color:#54697E;line-height:1.5;max-height:150px;overflow-y:auto;",
+              )}
+            >
+              {cierre.reporte.detalle}
+            </div>
+
+            <label style={s("display:flex;flex-direction:column;gap:6px;")}>
+              <span style={s("font:700 12.5px Manrope,sans-serif;color:#41566B;")}>Respuesta (opcional)</span>
+              <textarea
+                rows={4}
+                maxLength={2000}
+                value={cierre.respuesta}
+                onChange={(e) => setCierre({ ...cierre, respuesta: e.target.value })}
+                placeholder="Queda registrada junto al reporte."
+                style={s("border:1px solid #E2E9F0;border-radius:10px;padding:11px 12px;font:600 13.5px Manrope,sans-serif;color:#0E2A47;resize:vertical;font-family:Manrope;")}
+              />
+            </label>
+
+            {errorCierre && (
+              <div
+                role="alert"
+                style={s("margin-top:12px;background:#FBEAEB;border:1px solid #F3C6C7;color:#BE3A3E;border-radius:10px;padding:10px 13px;font:600 13px Manrope,sans-serif;")}
+              >
+                {errorCierre}
+              </div>
+            )}
+
+            <div style={s("display:flex;gap:10px;margin-top:18px;")}>
+              <button
+                className="ah-btn"
+                onClick={() => setCierre(null)}
+                disabled={guardandoCierre}
+                style={s("flex:1;background:#fff;border:1px solid #D6DEE7;border-radius:11px;padding:12px;font:700 14px Manrope,sans-serif;color:#41566B;cursor:pointer;")}
+              >
+                Cancelar
+              </button>
+              <button
+                className="ah-btn"
+                onClick={confirmarCierre}
+                disabled={guardandoCierre}
+                style={s(
+                  `flex:1;background:${guardandoCierre ? "#8FC7BF" : "#0C8576"};border:none;border-radius:11px;padding:12px;font:700 14px Manrope,sans-serif;color:#fff;cursor:${guardandoCierre ? "wait" : "pointer"};`,
+                )}
+              >
+                {guardandoCierre ? "Cerrando…" : "Cerrar reporte"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {/* Suspender al instructor: plazo obligatorio (mínimo 15 días) y multa opcional.
           Genera una Penalización de Suspensión temporal y, si el monto es mayor a 0, otra

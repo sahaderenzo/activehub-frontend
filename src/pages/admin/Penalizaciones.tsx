@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import DashLayout from "../../components/DashLayout";
 import { s } from "../../lib/style";
 import Modal from "../../components/Modal";
+import { CargandoSeccion } from "../../components/Cargando";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import type { PenalizacionAdmin, UsuarioAdmin } from "../../context/DataContext";
@@ -59,6 +60,7 @@ export default function AdminPenalizaciones() {
   const [confirmado, setConfirmado] = useState(false);
   const [form, setForm] = useState<FormState>(FORM_VACIO);
   const [error, setError] = useState<string | null>(null);
+  const [cargando, setCargando] = useState(true);
   const [formError, setFormError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
 
@@ -71,7 +73,8 @@ export default function AdminPenalizaciones() {
         setPenalizaciones(lista);
         setError(null);
       })
-      .catch((err) => setError(err instanceof ApiError ? err.message : "No pudimos cargar las penalizaciones."));
+      .catch((err) => setError(err instanceof ApiError ? err.message : "No pudimos cargar las penalizaciones."))
+      .finally(() => setCargando(false));
     // Sin el listado de usuarios el formulario no tiene a quién penalizar, así que un fallo
     // acá también es un error de pantalla y no un select vacío sin explicación.
     //
@@ -208,7 +211,7 @@ export default function AdminPenalizaciones() {
                 <span>Acum.</span>
                 <span>Estado</span>
               </div>
-              {rows.map((p) => {
+              {(cargando ? [] : rows).map((p) => {
                 const [tipoBg, tipoFg, tipoBd] = TIPO_STYLE[p.tipo];
                 return (
                   <div
@@ -281,7 +284,12 @@ export default function AdminPenalizaciones() {
                   </button>
                 </div>
               )}
-              {!error && rows.length === 0 && (
+              {cargando && (
+                <div style={s("padding:22px;")}>
+                  <CargandoSeccion seccion="penalizaciones" />
+                </div>
+              )}
+              {!cargando && !error && rows.length === 0 && (
                 <div style={s("padding:40px 22px;text-align:center;color:#90A1B2;font:600 13.5px Manrope,sans-serif;")}>No hay penalizaciones aplicadas.</div>
               )}
             </div>

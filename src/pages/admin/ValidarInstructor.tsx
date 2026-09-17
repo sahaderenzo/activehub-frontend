@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
+import { CargandoSeccion } from "../../components/Cargando";
 import StatusBadge from "../../components/StatusBadge";
 import { s } from "../../lib/style";
+import { incluye } from "../../lib/texto";
 import { useData } from "../../context/DataContext";
 import type { ClaseInstructorAdmin, DocumentoInstructor, InstructorAdmin } from "../../context/DataContext";
 import { ApiError } from "../../lib/api";
@@ -40,6 +42,7 @@ export default function AdminValidarInstructor() {
   const [documentos, setDocumentos] = useState<DocumentoInstructor[]>([]);
   const [errorDocumentos, setErrorDocumentos] = useState<string | null>(null);
   const [abriendoDocumentoId, setAbriendoDocumentoId] = useState<string | null>(null);
+  const [cargandoClases, setCargandoClases] = useState(true);
 
   const goGestion = () => navigate("/admin/gestion/instructores");
 
@@ -50,7 +53,8 @@ export default function AdminValidarInstructor() {
       .catch(() => setInstructor(null));
     listarClasesInstructor(id)
       .then(setClases)
-      .catch((err) => setErrorClases(err instanceof ApiError ? err.message : "No pudimos cargar las clases."));
+      .catch((err) => setErrorClases(err instanceof ApiError ? err.message : "No pudimos cargar las clases."))
+      .finally(() => setCargandoClases(false));
     listarDocumentosInstructor(id)
       .then(setDocumentos)
       .catch((err) => setErrorDocumentos(err instanceof ApiError ? err.message : "No pudimos cargar los documentos."));
@@ -71,9 +75,8 @@ export default function AdminValidarInstructor() {
   };
 
   const clasesFiltradas = useMemo(() => {
-    const q = queryClases.trim().toLowerCase();
     const filtradas = clases.filter((c) => {
-      const coincideQuery = !q || c.actividadNombre.toLowerCase().includes(q);
+      const coincideQuery = incluye(c.actividadNombre, queryClases);
       const coincideEstado = estadoFiltro === "todos" || c.estado === estadoFiltro;
       return coincideQuery && coincideEstado;
     });
@@ -328,7 +331,12 @@ export default function AdminValidarInstructor() {
                   </span>
                 </div>
               ))}
-              {clasesFiltradas.length === 0 && (
+              {cargandoClases && (
+                <div style={s("padding:18px;")}>
+                  <CargandoSeccion seccion="clases" />
+                </div>
+              )}
+              {!cargandoClases && clasesFiltradas.length === 0 && (
                 <div style={s("padding:30px 20px;text-align:center;color:#90A1B2;font:600 13px Manrope,sans-serif;")}>
                   {clases.length === 0 ? "Este instructor todavía no tiene clases." : "Sin resultados."}
                 </div>

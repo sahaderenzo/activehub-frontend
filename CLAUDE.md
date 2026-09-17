@@ -69,6 +69,22 @@ Responder y denunciar **pegan a la API** (`responderResenia` / `denunciarResenia
 
 `AuthContext` escucha `click`/`keydown`/`scroll`/`focus` y llama a `POST /api/auth/refresh` como mucho cada 5 minutos (`INTERVALO_RENOVACION_MS`). El TTL del token en el backend es de 30 min y **esa es la ventana de inactividad** (E1A-HU02 criterio 3). Si tocás uno de los dos números, mirá el otro: el intervalo del cliente tiene que quedar bastante por debajo del TTL para que una sesión activa nunca venza entre dos renovaciones. Si el refresh falla no se fuerza el logout — la próxima llamada real de la pantalla da 401 y muestra el error que corresponde.
 
+## Estados de carga: `components/Cargando.tsx`, y son DOS
+
+Tercer estado, además de "hay datos" y "falló". Reportado: *"entro a Mis clases siendo alumno y veo todo en 0, creo que no tengo nada"* — la consulta seguía en vuelo. **Un cero y un vacío son afirmaciones, y mientras los datos no llegaron son falsas.** Es la misma regla que ya obligaba a que el error reemplace al estado vacío, extendida a la carga.
+
+- **`<CargandoAccion activo mensaje="…" />` — el usuario apretó algo y hay que esperar.** Overlay que tapa la pantalla con fondo gris y un cartel centrado. Va en **portal a `document.body`** por la misma razón que `Modal` (`.ah-screen` anima `transform` y captura los `position:fixed`), bloquea el scroll del body y **z-index 120, por encima del modal**, porque varias de estas acciones se disparan desde adentro de uno. El mensaje va en gerundio y sin punto: "Procesando tu pago".
+  - Va en **inscripciones, reseñas y pagos**: preinscribirse, inscribirse/pagar, cancelar inscripción, confirmar cobro en efectivo, publicar/editar/eliminar reseña, responder una reseña, enviar una denuncia. Ahí el doble click cuesta una inscripción o un cobro de más, así que **no alcanza con deshabilitar el botón**: el overlay no deja llegar ni el segundo click ni un Enter perdido. Para el resto de las mutaciones (crear una clase, editar una actividad) sigue alcanzando con el botón deshabilitado.
+- **`<CargandoSeccion seccion="clases" />` — la pantalla todavía no tiene los datos.** Cartel "Cargando {sección}, por favor espere" que **reemplaza al contenido**, no lo acompaña. `seccion` va en minúscula y en plural cuando corresponde.
+
+Tres reglas al aplicarlo:
+
+1. **Se oculta TODO lo que se derive de esos datos, no sólo la lista.** Las pestañas de "Mis clases" con sus contadores, los KPI de Mis pagos, los filtros del historial del instructor, los gráficos del panel. Un contador en `(0)` al lado de un cartel de carga es la misma mentira que la lista vacía.
+2. **Con varias consultas en paralelo se espera a la última.** Media pantalla es exactamente el problema que esto viene a resolver.
+3. **El flag arranca en `true` y baja en un `.finally()`.** Nunca con un `setState` síncrono dentro del efecto que dispara la carga — es `react-hooks/set-state-in-effect`. Cuando el estado tiene que "volver a prenderse" (las pestañas de `admin/Gestion.tsx`, que cargan al cambiar de tab) **se deriva en vez de sincronizarse**: ahí se guarda el `Set` de pestañas ya cargadas y `cargandoTab` sale de `!tabsCargados.has(tab)`.
+
+Lo que cuelga del catálogo del Context (`cargandoCatalogo`) usa ese flag y no uno propio: Landing, Home, Explorar, Favoritos, la pestaña Actividades de Gestión y Taxonomía.
+
 ## Estados de error: usar `components/ErrorReintentar.tsx`, no `.catch(() => {})`
 
 `.catch(() => {})` estaba repetido en 16 pantallas. El error se tragaba y quedaba el estado vacío, así que **un backend caído se veía exactamente igual que una plataforma sin datos** — y la spec pide "Reintentar" como criterio de error en casi todas las HU.
@@ -78,6 +94,26 @@ El componente compartido tiene dos variantes: `bloque` (recuadro, cuando la pant
 Dos reglas que salieron de este barrido:
 - **El estado de error reemplaza al estado vacío, no convive con él.** "No tenés clases", "No tenés notificaciones" o "Actividad no encontrada" son afirmaciones falsas cuando la carga falló. Donde había un ternario `length === 0 ? vacío : lista`, ahora va `errorCarga ? <ErrorReintentar/> : length === 0 ? vacío : lista`.
 - **Si la pantalla hace varias consultas que alimentan los mismos números, van juntas en un `Promise.all`.** El Dashboard y Reportes del admin, el Panel del instructor y el Perfil del alumno mostraban KPIs en cero cuando una sola de sus cuatro consultas fallaba.
+
+## Buscar ignora tildes: `lib/texto.ts` en TODOS los filtros
+
+`normalizar(texto)` baja a minúsculas y descompone (NFD) para borrar los diacríticos; `incluye(texto, termino)` es el helper que usan las pantallas. **No volver a escribir `.toLowerCase().includes(...)` en un filtro**: compara code points, así que `ó` y `o` son distintos y buscar "inscripcion" no encontraba "Inscripción". Ya aplicado en Gestión (usuarios y actividades), Trazabilidad, Validar instructor, Explorar, el buscador del Home, las FAQ de Ayuda y el chatbot (`lib/faqs.ts`, que tenía su propia copia de `normalizar` y ahora importa ésta). El espejo del lado del servidor es `ActividadSpecifications.conTexto`, con `translate()` en SQL.
+
+Un término vacío en `incluye` matchea todo, así que el caso "sin búsqueda" no necesita un `if` en cada pantalla.
+
+## La Landing muestra el catálogo real
+
+Era la última pantalla que leía `lib/mockData.ts`, y de ahí salían los tres síntomas que se reportaron juntos: **actividades que no existen** (ids de demo, así que el click llevaba a un detalle inexistente), **sin fotos** (`ActivityPhoto` las pide por id contra la API y esos ids no están, así que siempre caía al placeholder "FOTO · nombre") y **cantidades falsas** — el contador decía `actividades.length * 20`, ocho actividades de demo multiplicadas por veinte para que la maqueta se viera poblada, más un "48 instructores" y un "4.8★" escritos a mano.
+
+Hoy sale todo de `useData()`, el mismo catálogo público que Home y Explorar, y **los números son cuentas sobre esos datos**: actividades publicadas, instructores con al menos una actividad, y el promedio de las actividades **ya calificadas**. Si no hay ninguna calificada la tarjeta de calificación no se muestra — un promedio inventado es peor que no tener promedio. Las destacadas son las seis mejor calificadas.
+
+Dos cosas a respetar si se toca:
+- **Los íconos de categoría se buscan por NOMBRE normalizado, no por id.** Las categorías son un ABM y sus ids son UUID de la base; el `Record` por id (`"cat-bienestar"`) no podía funcionar contra datos reales. Lo que no está en la lista usa el ícono neutro, misma regla que `lib/nivelStyle.ts`.
+- De paso se cablearon los links muertos del menú y del footer ("Cómo funciona", "Explorar", "Categorías"). **"Instructores" pasó a ser "Ser instructor" → `/registro`**: no existe un directorio público de instructores, así que no había a dónde llevarlo.
+
+## El ícono de la pestaña: `public/favicon.svg`
+
+`index.html` apuntaba a `/favicon.svg` y **el archivo no existía** — el navegador recibía un 404 y la pestaña salía sin ícono. Es la "A" del header: mismo gradiente y mismo radio proporcional que el cuadrado de `components/Logo.tsx`. **La letra va como `<path>`, no como `<text>`**: un favicon se dibuja fuera de la página, sin las fuentes de Google cargadas, así que "Space Grotesk" caería a cualquier fuente del sistema y el ícono cambiaría de forma según la máquina.
 
 ## Chatbot flotante (`components/ChatbotWidget.tsx`)
 
@@ -90,6 +126,41 @@ Se monta **una sola vez** en `AlumnoNav`, no pantalla por pantalla, para que nin
 **Arranca colapsado a propósito.** Desplegado ocupa 340px de ancho por casi media pantalla de alto, justo encima de la grilla de actividades — que es lo que el alumno vino a mirar. Colapsado es una burbuja angosta pegada al borde derecho (`right:0`, con la esquina redondeada sólo del lado interno); el cuadro completo aparece al hacer click, y ahí el botón pasa a ser sólo la cruz de cerrar.
 
 Las respuestas salen de `lib/faqs.ts` por coincidencia de palabras, **no de un modelo**: el chatbot con Groq es el ítem 11 del roadmap y depende de credenciales. El copy no promete IA en ningún lado. `lib/faqs.ts` es la misma fuente que usa la pantalla pública de Ayuda: estaban duplicadas y se iban a desincronizar.
+
+**Se puede usar suelto o controlado.** Sin props se abre y cierra solo (así lo monta `AlumnoNav`); con `abierto` + `onAbiertoChange` lo maneja la pantalla. Lo segundo existe para el botón "Iniciar chat" de Ayuda, que necesita abrir un widget que ya está montado.
+
+## Soporte: toda la sección andaba en falso
+
+Reportado: *"toda la sección de Soporte no funciona"*. Era literal — **siete controles muertos** entre el footer de la Landing y `/ayuda`:
+
+| Dónde | Qué pasaba |
+|---|---|
+| Footer Landing | "Preguntas frecuentes" y "Contacto" sin `onClick` |
+| Ayuda | Botón "Buscar" sin handler |
+| Ayuda | Los tres "Ver guía →" sin handler |
+| Ayuda | "Iniciar chat" sin handler |
+| Ayuda | Mail y teléfono en texto plano, sin `mailto:`/`tel:` |
+| Ayuda | **"Reportar un problema" era una maqueta**: `setReportSent(true)` y a otra cosa |
+
+Cómo quedó cada uno:
+
+- **El formulario es real**: `crearReporteSoporte()` → `POST /api/soporte/reportes`, con su estado de envío y el mensaje de error del backend. Ganó un campo **Email** (antes sólo pedía asunto y detalle, así que no había forma de responder) que se precarga con el de la sesión si hay. Ver el CLAUDE.md del backend para por qué el endpoint es público.
+- **El email se deriva, no se sincroniza**: `emailEditado ?? currentUser?.email ?? ""`. Con un `useEffect` que llamara al setter se pisaría lo que la persona ya tipeó cuando `currentUser` termina de llegar — y además rompe `react-hooks/set-state-in-effect`.
+- **Las "Guías rápidas" abren su FAQ.** No existen páginas de guía y la respuesta ya está escrita abajo, así que cada guía declara un `faqId` y el click despliega y scrollea esa pregunta. Para eso `Faq` ganó un **`id` slug estable** en `lib/faqs.ts`; el `<details>` pasó a ser controlado (`open={faqAbierta === f.id}`).
+
+### El `onToggle` de dos `<details>` compite, y por eso las guías "no hacían nada"
+
+Reportado después: *"hago click en las guías rápidas y no hacen nada, no me llevan a ningún lugar"*. El cableado estaba bien y la causa era una carrera.
+
+Abrir una FAQ **cierra la que estaba abierta**, así que el navegador encola **dos** eventos `toggle` — el de la que se abre y el de la que se cierra — y los dispara en **orden de documento**, no en el orden que importa. El handler era `setFaqAbierta(open ? f.id : null)`: si la que se cerraba estaba más abajo en la lista, su `toggle` corría último y el `null` pisaba el id que la guía acababa de poner. La FAQ se abría y se cerraba en el mismo frame. Por eso el primer click parecía funcionar y **el bug sólo aparecía al alternar entre guías**.
+
+El arreglo es una actualización **funcional** que sólo limpia si esa FAQ seguía siendo la anotada: `setFaqAbierta((actual) => (abierto ? f.id : actual === f.id ? null : actual))`. **La misma trampa aplica a cualquier acordeón controlado de un solo panel abierto.**
+
+De yapa, `abrirFaq` resalta la respuesta unos segundos (`ESTILO_RESALTE` de `lib/resaltado.ts`): dos de las tres guías responden con el mismo texto, así que sin feedback la segunda seguía pareciendo muerta aunque ya funcionara.
+- **"Buscar" baja a los resultados.** El filtrado ya ocurría al tipear, pero en pantallas chicas la lista quedaba abajo del pliegue y parecía que el botón no hacía nada.
+- **"Iniciar chat" abre el `ChatbotWidget`**, que ahora se monta también en Ayuda (es un portal, funciona en cualquier pantalla) en modo controlado.
+- **Los links del footer llegan con `state.seccion`** (`faqs` / `contacto`) y la pantalla scrollea a la sección. El efecto sólo hace `scrollIntoView`, no toca estado.
+- **La bandeja del admin es la pestaña "Soporte" de `admin/Gestion.tsx`**, detrás de `soporte.gestionar`. Muestra quién escribió (o **"Sin cuenta"** cuando `autorNombre` viene en null: la etiqueta la pone la pantalla), el detalle, el estado y la respuesta; el modal de cierre pide una respuesta opcional. La clave nueva está en `lib/areas.ts` **en los dos lugares**: en `requiere` del área admin y en el de la pantalla `gestionadmin` — sin lo segundo, alguien con sólo ese permiso abriría el área sin poder entrar a la única pantalla que lo usa.
 
 ## El chip de usuario del `AlumnoNav` es un menú, no un link
 
@@ -416,7 +487,32 @@ El KPI de ingresos cuenta **solo** pagos `Liberado` o `Efectivo` (E2I-HU10 crite
 Los datos ya son reales: la pantalla se alimenta de `listarMisClases()` y `listarInscripcionesMisClases()`, no de la sección mock del contexto.
 
 ## Sistema de notificaciones (campana)
-`NotificationBell.tsx` es compartido por los 3 roles — ya está insertado en `AlumnoNav` (reemplazó un ícono decorativo que no hacía nada) y en `DashSidebar` (instructor/admin, con `variant="dark" align="left"` para que quede bien en el sidebar oscuro y no se salga de pantalla). Si agregás un disparador de notificación nuevo en el backend, del lado frontend no hace falta tocar nada de UI — la campana ya hace polling on-mount vía `listarNotificaciones()` y se re-lee al abrir el dropdown.
+`NotificationBell.tsx` es compartido por los 3 roles — ya está insertado en `AlumnoNav` (reemplazó un ícono decorativo que no hacía nada) y en `DashSidebar` (instructor/admin, con `variant="dark" align="left"` para que quede bien en el sidebar oscuro y no se salga de pantalla). Hace polling on-mount vía `listarNotificaciones()` y se re-lee al abrir el dropdown. Lleva un prop **`area`** obligatorio (`AlumnoNav` pasa `"alumno"`, `DashSidebar` pasa su `role`): sólo desempata a dónde lleva el click.
+
+### Cada notificación es clickeable y lleva al asunto
+
+Antes eran texto muerto: "Nueva inscripción en la clase de Yoga del 12/03" y andá a buscarla. Hoy el backend guarda **el destino ya resuelto** (`destinoTipo` + `destinoId`, ver su CLAUDE.md) y acá se decide **la ruta**, que es lo único que el backend no puede saber: depende de con qué permisos mira quien recibió el aviso. El mismo `CLASE` es "Mis clases" para el alumno y el roster para el instructor.
+
+**`lib/notificaciones.ts` — `rutaNotificacion(n, areaActual, permisos)`** es la única fuente de ese mapeo. Reglas, todas heredadas de `lib/areas.ts`:
+
+- **Se elige por permiso, no por rol** (RN-19). Cada candidata declara el suyo y se toma la primera habilitada.
+- **Hay que pasar las DOS guardas de ruta de `App.tsx`**: `puedeEntrarA(area)` *y* `cumple(requiere)`. Con sólo la segunda, un administrador que no es alumno clickeaba una notificación de actividad y `RequireArea` lo rebotaba al home.
+- **El área desde la que se abrió la campana sólo ordena los candidatos, no los limita.** Un usuario con permisos de alumno y de instructor recibe notificaciones de las dos en la misma campana.
+- **Sin destino (o sin ninguna pantalla a su alcance) la fila se muestra igual, pero sin link** — sin cursor, sin flecha. Un click que rebota al home es peor que ninguno. Eso cubre `NINGUNO` (una penalización, una actividad ya eliminada) y los casos de permisos parciales.
+
+**`lib/resaltado.ts` — `useResaltado(parametro)`** es la otra mitad. Llevar a una lista de treinta filas sin decir cuál es no es haber llegado, así que las rutas de lista viajan con un parámetro (`?clase=`, `?inscripcion=`, `?resenia=`, `?denuncia=`) y la pantalla de destino marca y centra esa fila. El patrón en cada fila es siempre el mismo:
+
+```tsx
+const resaltado = useResaltado("resenia");
+…
+<div ref={resaltado.ref(r.id)} style={s("…" + (resaltado.activo(r.id) ? ESTILO_RESALTE : ""))}>
+```
+
+El resaltado **se apaga solo a los 4 s**: sirve para encontrar la fila al llegar, no para dejarla marcada mientras la persona sigue trabajando. Ya está aplicado en `alumno/MisClases` (por inscripción y por clase), `alumno/MisResenas`, `alumno/MisDenuncias` e `instructor/Resenas`. Esta última además **selecciona la actividad dueña de la reseña**: las reseñas cuelgan de una actividad y la pantalla muestra una sola por vez, así que el resaltado por sí solo no alcanzaba.
+
+**Si agregás un disparador de notificación nuevo en el backend, ahora sí puede hacer falta tocar UI**: si su destino es un tipo nuevo, va una entrada en `CANDIDATAS`; si es una lista, la pantalla tiene que leer su parámetro con `useResaltado`.
+
+De paso, `alumno/MisResenas.tsx` muestra ahora **la respuesta del instructor** y el chip "Oculta por moderación". Ninguna de las dos se veía del lado del alumno (la respuesta sólo aparecía en la página pública de la actividad), así que las notificaciones `RESENIA_RESPONDIDA` y la de reseña ocultada aterrizaban en una fila idéntica al resto.
 
 ## Verificación E2E — patrón de instancia aislada
 Para probar un cambio real contra el backend (no solo `tsc`), el patrón usado en toda la sesión es levantar una instancia aislada, **nunca tocar los procesos del usuario** en 8080/5173:
@@ -438,7 +534,7 @@ Al terminar, siempre: `rm .env.local`, matar los procesos aislados por PID exact
 Ítems 2 a 7 completos (Denuncias, Gestión de usuarios, Auditoría consultable, Dashboard y Reportes reales, Notificar ausencia de profesor + sistema de notificaciones + favoritos reales, ABM de Categoría). Pendientes: 8 (recomendaciones en Explorar — hoy el filtrado es tradicional, incluye el filtro cascada Categoría→Tipo de actividad), 9 (geolocalización, necesita API key de Google Maps), 10 (imágenes en la nube, necesita cuenta de Supabase — la galería local ya funciona contra el disco del backend), 11 (IA real, necesita credenciales de Groq — el chatbot flotante ya existe y responde por coincidencia de palabras, y el "Asistente de beneficios" de `Detalle.tsx` sigue simulado con `setTimeout`), 12 (Mercado Pago real, al final). Sin Redis ni deploy todavía.
 
 ### Qué sigue siendo mock (queda poco, y está acotado)
-Los tres dashboards, los intereses del alumno y las listas de inscripciones/pagos/penalizaciones **ya son reales**. Lo único mock que queda:
+Los tres dashboards, los intereses del alumno, las listas de inscripciones/pagos/penalizaciones **y la Landing** ya son reales. Lo único mock que queda:
 - `AuthContext.users` / `updateUsuario`: el "directorio" de usuarios en `localStorage`, que sobrevive porque la API no expone un listado público de personas. Las pantallas admin ya usan `listarUsuariosAdmin()`.
 - El catálogo de demo de `lib/mockData.ts` (`actividades`, `clases`, `usuarios`, `perfiles*`), que alimenta ese directorio. Sus **helpers de formato** (`formatFecha`, `formatHora`, `disponibilidad`, `tipoIngreso`…) no son mock y se usan en todas las pantallas.
 - El "Asistente de beneficios" de `Detalle.tsx`, simulado con `setTimeout` hasta que exista el ítem 11 (IA real).

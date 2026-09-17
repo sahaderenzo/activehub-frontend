@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import AlumnoNav from "../../components/AlumnoNav";
 import ActivityCard from "../../components/ActivityCard";
 import ErrorReintentar from "../../components/ErrorReintentar";
+import { CargandoSeccion } from "../../components/Cargando";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
@@ -46,11 +47,15 @@ function cardProps(
 
 export default function AlumnoFavoritos() {
   const { currentUser } = useAuth();
-  const { actividades, listarMisFavoritos, quitarFavorito, getTipoActividad, getCategoria, instructorNombre } = useData();
+  const { actividades, listarMisFavoritos, quitarFavorito, getTipoActividad, getCategoria, instructorNombre, cargandoCatalogo } =
+    useData();
 
   const [favoritoIds, setFavoritoIds] = useState<string[]>([]);
 
   const [errorCarga, setErrorCarga] = useState(false);
+  // También espera al catálogo: los favoritos son ids y sin las actividades cargadas la lista
+  // se resuelve vacía, que se lee como "no tenés favoritos".
+  const [cargandoFavoritos, setCargandoFavoritos] = useState(true);
 
   const cargar = useCallback(() => {
     if (!currentUser) return;
@@ -59,7 +64,8 @@ export default function AlumnoFavoritos() {
         setFavoritoIds(ids);
         setErrorCarga(false);
       })
-      .catch(() => setErrorCarga(true));
+      .catch(() => setErrorCarga(true))
+      .finally(() => setCargandoFavoritos(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser]);
 
@@ -101,7 +107,9 @@ export default function AlumnoFavoritos() {
           inscribe.
         </p>
 
-        {errorCarga ? (
+        {cargandoFavoritos || cargandoCatalogo ? (
+          <CargandoSeccion seccion="favoritos" />
+        ) : errorCarga ? (
           <ErrorReintentar mensaje="No pudimos cargar tus favoritos." onReintentar={cargar} />
         ) : misFavoritas.length === 0 ? (
           <div style={s("background:#fff;border:1px dashed #D6DEE7;border-radius:16px;padding:50px 20px;text-align:center;color:#7A8C9E;font-weight:600;")}>

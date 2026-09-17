@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import AlumnoNav from "../../components/AlumnoNav";
 import StatusBadge from "../../components/StatusBadge";
 import ErrorReintentar from "../../components/ErrorReintentar";
+import { CargandoSeccion } from "../../components/Cargando";
 import { s } from "../../lib/style";
 import { useAhora } from "../../lib/ahora";
 import { useAuth } from "../../context/AuthContext";
@@ -36,6 +37,7 @@ export default function AlumnoCalendario() {
   const [diaSeleccionado, setDiaSeleccionado] = useState<string>(() => diaKey(new Date()));
 
   const [errorCarga, setErrorCarga] = useState(false);
+  const [cargando, setCargando] = useState(true);
 
   const cargar = useCallback(() => {
     if (!currentUser) return;
@@ -44,7 +46,8 @@ export default function AlumnoCalendario() {
         setInscripciones(lista);
         setErrorCarga(false);
       })
-      .catch(() => setErrorCarga(true));
+      .catch(() => setErrorCarga(true))
+      .finally(() => setCargando(false));
   }, [currentUser, listarMisInscripciones]);
 
   useEffect(() => {
@@ -138,7 +141,9 @@ export default function AlumnoCalendario() {
           </div>
         </div>
 
-        {errorCarga && (
+        {cargando && <CargandoSeccion seccion="clases" />}
+
+        {!cargando && errorCarga && (
           <div style={s("margin-bottom:18px;")}>
             <ErrorReintentar
               mensaje="No pudimos cargar tus clases."
@@ -147,7 +152,7 @@ export default function AlumnoCalendario() {
           </div>
         )}
 
-        {proximas.length === 0 && !errorCarga && (
+        {!cargando && proximas.length === 0 && !errorCarga && (
           <div
             style={s(
               "background:#fff;border:1px dashed #D6DEE7;border-radius:16px;padding:50px 20px;text-align:center;color:#7A8C9E;font-weight:600;",

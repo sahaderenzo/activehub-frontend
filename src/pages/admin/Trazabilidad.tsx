@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import DashLayout from "../../components/DashLayout";
+import { CargandoSeccion } from "../../components/Cargando";
 import Modal from "../../components/Modal";
 import { s } from "../../lib/style";
+import { incluye } from "../../lib/texto";
 import { useData } from "../../context/DataContext";
 import type { AuditoriaEntry } from "../../context/DataContext";
 import { ApiError } from "../../lib/api";
@@ -93,11 +95,13 @@ export default function AdminTrazabilidad() {
   const [editandoPagina, setEditandoPagina] = useState(false);
   const [paginaInput, setPaginaInput] = useState("");
   const [confirmarExport, setConfirmarExport] = useState(false);
+  const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
     listarAuditoria()
       .then(setAuditLog)
-      .catch((err) => setError(err instanceof ApiError ? err.message : "No pudimos cargar la auditoría."));
+      .catch((err) => setError(err instanceof ApiError ? err.message : "No pudimos cargar la auditoría."))
+      .finally(() => setCargando(false));
   }, [listarAuditoria]);
 
   const accionesUnicas = useMemo(() => Array.from(new Set(auditLog.map((e) => e.accion))).sort(), [auditLog]);
@@ -113,17 +117,16 @@ export default function AdminTrazabilidad() {
   );
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
     return entries.filter((e) => {
       if (rolFiltro !== "TODOS" && e.rol !== rolFiltro) return false;
       if (accFiltro !== "TODAS" && e.accion !== accFiltro) return false;
-      if (!q) return true;
+      if (!query.trim()) return true;
       return (
-        e.nombre.toLowerCase().includes(q) ||
-        e.entidad.toLowerCase().includes(q) ||
-        e.accion.toLowerCase().includes(q) ||
-        e.entidadId.toLowerCase().includes(q) ||
-        (e.metadata ?? "").toLowerCase().includes(q)
+        incluye(e.nombre, query) ||
+        incluye(e.entidad, query) ||
+        incluye(e.accion, query) ||
+        incluye(e.entidadId, query) ||
+        incluye(e.metadata, query)
       );
     });
   }, [entries, query, rolFiltro, accFiltro]);
@@ -600,7 +603,12 @@ export default function AdminTrazabilidad() {
                   </div>
                 );
               })}
-              {visibles.length === 0 && (
+              {cargando && (
+                <div style={s("padding:22px;")}>
+                  <CargandoSeccion seccion="la auditoría" />
+                </div>
+              )}
+              {!cargando && visibles.length === 0 && (
                 <div style={s("padding:46px 22px;text-align:center;")}>
                   <div style={s("font:700 15px Space Grotesk,sans-serif;color:#0E2A47;margin-bottom:4px;")}>Sin resultados</div>
                   <div style={s("font-size:13px;color:#90A1B2;font-weight:600;")}>No se encontraron operaciones con esos criterios de búsqueda.</div>

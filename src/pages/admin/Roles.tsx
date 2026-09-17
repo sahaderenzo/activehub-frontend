@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import DashLayout from "../../components/DashLayout";
 import ErrorReintentar from "../../components/ErrorReintentar";
+import { CargandoSeccion } from "../../components/Cargando";
 import { s } from "../../lib/style";
 import { useData, type PermisoAdmin, type RolAdmin, type UsuarioAdmin } from "../../context/DataContext";
 import { useAuth } from "../../context/AuthContext";
@@ -92,6 +93,7 @@ export default function AdminRoles() {
   const [borrador, setBorrador] = useState<Record<string, string[]>>({});
   const [rolSeleccionado, setRolSeleccionado] = useState<string>("");
   const [errorCarga, setErrorCarga] = useState(false);
+  const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
@@ -110,7 +112,8 @@ export default function AdminRoles() {
           resp.roles.some((r) => r.id === actual) ? actual : resp.roles[0]?.id ?? "",
         );
       })
-      .catch(() => setErrorCarga(true));
+      .catch(() => setErrorCarga(true))
+      .finally(() => setCargando(false));
   }, [data]);
 
   /**
@@ -297,7 +300,8 @@ export default function AdminRoles() {
       </div>
 
       <div style={s("padding:20px 32px 0;")}>
-        {errorCarga && <ErrorReintentar variant="bloque" onReintentar={cargar} />}
+        {cargando && <CargandoSeccion seccion="roles y permisos" />}
+        {!cargando && errorCarga && <ErrorReintentar variant="bloque" onReintentar={cargar} />}
         {error && (
           <div style={s("background:#FBEAEB;border:1px solid #F3D2D3;border-radius:11px;padding:11px 14px;font:600 13px Manrope,sans-serif;color:#BE3A3E;margin-bottom:12px;")}>
             {error}
@@ -310,7 +314,7 @@ export default function AdminRoles() {
         )}
       </div>
 
-      {!errorCarga && seccion === "usuarios" && (
+      {!cargando && !errorCarga && seccion === "usuarios" && (
         <div style={s("padding:6px 32px 50px;max-width:680px;")}>
           <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:18px;padding:22px;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
             <label
@@ -407,7 +411,7 @@ export default function AdminRoles() {
         </div>
       )}
 
-      {!errorCarga && seccion === "permisos" && (
+      {!cargando && !errorCarga && seccion === "permisos" && (
         <div style={s("padding:6px 32px 50px;max-width:920px;")}>
           {/* Selector de rol + su ficha. Reemplaza a la columna fija de tarjetas. */}
           <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:18px;padding:18px 22px;box-shadow:0 1px 2px rgba(14,42,71,.04);margin-bottom:18px;")}>

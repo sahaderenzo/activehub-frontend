@@ -84,6 +84,7 @@ export const AREAS: AreaDef[] = [
       "auditoria.ver",
       "reportes.ver",
       "actividades.moderar",
+      "soporte.gestionar",
     ],
     pantallas: [
       // El panel resume usuarios, instructores, reclamos e inscripciones: con alguno de esos
@@ -96,7 +97,13 @@ export const AREAS: AreaDef[] = [
       {
         key: "gestionadmin",
         path: "/admin/gestion",
-        requiere: ["usuarios.gestionar", "instructores.validar", "denuncias.resolver", "actividades.moderar"],
+        requiere: [
+          "usuarios.gestionar", "instructores.validar", "denuncias.resolver", "actividades.moderar",
+          // La bandeja de Soporte es una pestaña más de esta pantalla: sin la clave acá, alguien
+          // que SOLO tenga `soporte.gestionar` abriría el área y no podría entrar a la única
+          // pantalla que su permiso habilita.
+          "soporte.gestionar",
+        ],
       },
       { key: "taxonomia", path: "/admin/taxonomia", requiere: "taxonomia.gestionar" },
       { key: "roles", path: "/admin/roles", requiere: "roles.configurar" },

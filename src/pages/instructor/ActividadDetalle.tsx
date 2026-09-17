@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
+import { CargandoSeccion } from "../../components/Cargando";
 import StatusBadge from "../../components/StatusBadge";
 import ActivityPhoto from "../../components/ActivityPhoto";
 import { s } from "../../lib/style";
@@ -45,8 +46,11 @@ export default function InstructorActividadDetalle() {
     }
   }, [actividad, currentUser, navigate]);
 
+  // Declarado ANTES del efecto que lo usa: al revés es un TDZ y el lint lo marca.
+  const [cargandoClases, setCargandoClases] = useState(true);
+
   useEffect(() => {
-    if (id) data.cargarDetalleActividad(id).catch(() => {});
+    if (id) data.cargarDetalleActividad(id).catch(() => {}).finally(() => setCargandoClases(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
@@ -417,7 +421,12 @@ export default function InstructorActividadDetalle() {
             <span>Estado</span>
             <span>Acciones</span>
           </div>
-          {clases.length === 0 && (
+          {cargandoClases && (
+            <div style={s("padding:22px;")}>
+              <CargandoSeccion seccion="clases" />
+            </div>
+          )}
+          {!cargandoClases && clases.length === 0 && (
             <div style={s("padding:30px 22px;color:#90A1B2;font-weight:600;font-size:13.5px;")}>
               Todavía no creaste ninguna clase para esta actividad.
             </div>

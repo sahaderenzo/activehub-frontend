@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
+import { CargandoAccion, CargandoSeccion } from "../../components/Cargando";
 import StatusBadge from "../../components/StatusBadge";
 import { s } from "../../lib/style";
 import { useAhora } from "../../lib/ahora";
@@ -41,13 +42,16 @@ export default function InstructorGestionClase() {
   const [error, setError] = useState<string | null>(null);
   const [cancelando, setCancelando] = useState(false);
   const [notificando, setNotificando] = useState(false);
+  const [cargandoRoster, setCargandoRoster] = useState(true);
+  const [confirmandoCobro, setConfirmandoCobro] = useState(false);
 
   const cargarRoster = () => {
     if (!id) return;
     data
       .listarRosterClase(id)
       .then(setRoster)
-      .catch((err) => setError(err instanceof ApiError ? err.message : "No pudimos cargar el listado de alumnos."));
+      .catch((err) => setError(err instanceof ApiError ? err.message : "No pudimos cargar el listado de alumnos."))
+      .finally(() => setCargandoRoster(false));
   };
 
   useEffect(() => {
@@ -72,11 +76,14 @@ export default function InstructorGestionClase() {
 
   const confirmarCobro = async (inscripcionId: string) => {
     setError(null);
+    setConfirmandoCobro(true);
     try {
       await data.confirmarCobroEfectivo(inscripcionId);
       cargarRoster();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No pudimos confirmar el cobro.");
+    } finally {
+      setConfirmandoCobro(false);
     }
   };
 
@@ -259,7 +266,12 @@ export default function InstructorGestionClase() {
             <span>Estado inscripción</span>
             <span>Pago efectivo</span>
           </div>
-          {alumnos.length === 0 && (
+          {cargandoRoster && (
+            <div style={s("padding:22px;")}>
+              <CargandoSeccion seccion="el listado de alumnos" />
+            </div>
+          )}
+          {!cargandoRoster && alumnos.length === 0 && (
             <div style={s("padding:26px 22px;color:#90A1B2;font-weight:600;font-size:13.5px;")}>
               Todavía no hay alumnos inscriptos en esta clase.
             </div>
@@ -308,6 +320,8 @@ export default function InstructorGestionClase() {
           })}
         </div>
       </div>
+      {/* Confirmar un cobro mueve plata: el doble click no puede llegar. */}
+      <CargandoAccion activo={confirmandoCobro} mensaje="Confirmando el cobro" />
     </DashLayout>
   );
 }

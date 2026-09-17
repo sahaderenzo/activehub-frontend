@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ActiveHub">
+  <!--
+    La "A" del header, como ícono de pestaña. El archivo no existía: `index.html` apuntaba a
+    /favicon.svg y el navegador recibía un 404, así que la pestaña salía sin ícono.
+
+    Mismo gradiente y mismo radio proporcional que el cuadrado del logo
+    (`components/Logo.tsx`), escalados de 38px a 64px. La letra va como <path> y no como
+    <text>: un favicon se dibuja fuera de la página, sin las fuentes de Google cargadas, así
+    que "Space Grotesk" caería a cualquier fuente del sistema y el ícono cambiaría de forma
+    según la máquina.
+  -->
+  <defs>
+    <linearGradient id="ah" x1="0" y1="0" x2="0.72" y2="1">
+      <stop offset="0" stop-color="#0E2A47" />
+      <stop offset="1" stop-color="#12B5A5" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="18" fill="url(#ah)" />
+  <!--
+    A mayúscula, simétrica respecto de x=32: contorno + el hueco del triángulo interior como
+    segundo subpath, recortado con `evenodd` (con la regla por defecto se rellenaría también).
+  -->
+  <path
+    fill="#fff"
+    fill-rule="evenodd"
+    d="M28 13h8l16 38h-8l-2.6-7.2H22.6L20 51h-8L28 13Zm4 11l-5.4 14h10.8L32 24Z"
+  />
+</svg>

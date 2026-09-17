@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
+import { CargandoAccion, CargandoSeccion } from "../../components/Cargando";
 import { s } from "../../lib/style";
+import { ESTILO_RESALTE, useResaltado } from "../../lib/resaltado";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import type { ReseniaInstructor } from "../../context/DataContext";
@@ -39,6 +41,7 @@ export default function InstructorResenas() {
 
   const [misResenias, setMisResenias] = useState<ReseniaInstructor[]>([]);
   const [errorCarga, setErrorCarga] = useState(false);
+  const [cargando, setCargando] = useState(true);
 
   const cargar = useCallback(() => {
     if (!aprobado) return;
@@ -48,7 +51,8 @@ export default function InstructorResenas() {
         setMisResenias(rs);
         setErrorCarga(false);
       })
-      .catch(() => setErrorCarga(true));
+      .catch(() => setErrorCarga(true))
+      .finally(() => setCargando(false));
   }, [aprobado, data.listarResenasInstructor]);
 
   useEffect(() => {
@@ -65,6 +69,14 @@ export default function InstructorResenas() {
     [misActividades, misResenias],
   );
 
+  // "Recibiste una nueva reseña" / "se resolvió tu denuncia sobre una reseña" caen acá. Las
+  // reseñas cuelgan de una actividad y la pantalla muestra una sola por vez, así que el
+  // resaltado no alcanza: también hay que seleccionar la actividad dueña de esa reseña.
+  const resaltado = useResaltado("resenia");
+  const actividadDeLaResenia = resaltado.id
+    ? misResenias.find((r) => r.id === resaltado.id)?.actividadId
+    : undefined;
+
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [respondiendo, setRespondiendo] = useState<Record<string, string>>({});
   const [accionError, setAccionError] = useState<string | null>(null);
@@ -73,6 +85,12 @@ export default function InstructorResenas() {
   /* eslint-disable react-hooks/set-state-in-effect -- elige la actividad por defecto cuando
      llega la lista del backend. */
   useEffect(() => {
+    // Si se llegó desde una notificación, manda la actividad de esa reseña por encima de
+    // cualquier selección previa: es lo que el usuario pidió ver al hacer click.
+    if (actividadDeLaResenia && actividadDeLaResenia !== selectedId) {
+      setSelectedId(actividadDeLaResenia);
+      return;
+    }
     if (selectedId && misActividades.some((a) => a.id === selectedId)) return;
     if (misActividades.length > 0) {
       const conResenias = sidebar.find((s2) => s2.total > 0);
@@ -81,7 +99,7 @@ export default function InstructorResenas() {
       setSelectedId(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [misActividades]);
+  }, [misActividades, actividadDeLaResenia]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   if (!currentUser || !aprobado) return null;
@@ -166,7 +184,12 @@ export default function InstructorResenas() {
           inscriptos en clases finalizadas.
         </p>
       </div>
-      {misActividades.length === 0 ? (
+      {cargando ? (
+        // "Todavía no tenés actividades publicadas" mientras carga el catálogo es falso.
+        <div style={s("padding:26px 32px 50px;")}>
+          <CargandoSeccion seccion="reseñas" />
+        </div>
+      ) : misActividades.length === 0 ? (
         <div style={s("padding:26px 32px 50px;")}>
           <div style={s("background:#fff;border:1px dashed #D6DEE7;border-radius:18px;padding:40px;text-align:center;color:#7A8C9E;font-weight:600;")}>
             Todavía no tenés actividades publicadas.
@@ -277,8 +300,10 @@ export default function InstructorResenas() {
                 return (
                   <div
                     key={rv.id}
+                    ref={resaltado.ref(rv.id)}
                     style={s(
-                      `background:#fff;border:1px solid ${rv.denunciada || rv.oculta ? "#F3D2D3" : rv.enModeracion ? "#F6E2C0" : "#E7EDF3"};border-radius:16px;padding:18px 20px;box-shadow:0 1px 2px rgba(14,42,71,.04);`,
+                      `background:#fff;border:1px solid ${rv.denunciada || rv.oculta ? "#F3D2D3" : rv.enModeracion ? "#F6E2C0" : "#E7EDF3"};border-radius:16px;padding:18px 20px;box-shadow:0 1px 2px rgba(14,42,71,.04);`
+                        + (resaltado.activo(rv.id) ? ESTILO_RESALTE : ""),
                     )}
                   >
                     <div style={s("display:flex;align-items:center;gap:11px;margin-bottom:10px;")}>
@@ -428,6 +453,7 @@ export default function InstructorResenas() {
           </div>
         </div>
       )}
+      <CargandoAccion activo={enviando !== null} mensaje="Publicando tu respuesta" />
     </DashLayout>
   );
 }

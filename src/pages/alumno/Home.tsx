@@ -3,7 +3,9 @@ import { useNavigate } from "react-router-dom";
 import AlumnoNav from "../../components/AlumnoNav";
 import ActivityCard from "../../components/ActivityCard";
 import ErrorReintentar from "../../components/ErrorReintentar";
+import { CargandoSeccion } from "../../components/Cargando";
 import { s } from "../../lib/style";
+import { incluye } from "../../lib/texto";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import { haversineKm, useGeolocation } from "../../lib/geo";
@@ -148,6 +150,7 @@ export default function AlumnoHome() {
     getCategoria,
     instructorNombre,
     errorCatalogo,
+    cargandoCatalogo,
     refrescarCatalogo,
   } = useData();
   const [search, setSearch] = useState("");
@@ -176,16 +179,15 @@ export default function AlumnoHome() {
   const termino = search.trim();
   const sugerencias = useMemo(() => {
     if (termino.length < MIN_BUSQUEDA) return [];
-    const q = termino.toLowerCase();
     return actividades
       .filter((a) => {
         const tipo = getTipoActividad(a.tipoActividadId);
         const instructor = instructorNombre[a.instructorId] ?? "";
         return (
-          a.nombre.toLowerCase().includes(q) ||
-          (tipo?.nombre ?? "").toLowerCase().includes(q) ||
-          a.ubicacion.toLowerCase().includes(q) ||
-          instructor.toLowerCase().includes(q)
+          incluye(a.nombre, termino) ||
+          incluye(tipo?.nombre, termino) ||
+          incluye(a.ubicacion, termino) ||
+          incluye(instructor, termino)
         );
       })
       .slice(0, 6);
@@ -429,6 +431,15 @@ export default function AlumnoHome() {
           })}
         </div>
 
+        {/*
+          Las tres secciones de abajo salen del mismo catálogo, así que esperan juntas. Antes
+          se pintaban los tres títulos con las grillas vacías: "Recomendado para vos" sin nada
+          debajo se lee como "no hay nada recomendado para vos".
+        */}
+        {cargandoCatalogo ? (
+          <CargandoSeccion seccion="actividades" />
+        ) : (
+          <>
         {errorCatalogo && (
           <div style={s("margin-bottom:26px;")}>
             <ErrorReintentar
@@ -530,6 +541,8 @@ export default function AlumnoHome() {
             <ActivityCard key={a.id} {...cardProps(a, getTipoActividad, getCategoria, instructorNombre, geolocation.coords)} />
           ))}
         </div>
+          </>
+        )}
       </div>
     </div>
   );

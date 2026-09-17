@@ -6,6 +6,7 @@ import LeafletMap from "../../components/LeafletMap";
 import Avatar from "../../components/Avatar";
 import ActivityPhoto from "../../components/ActivityPhoto";
 import ErrorReintentar from "../../components/ErrorReintentar";
+import { CargandoSeccion } from "../../components/Cargando";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
@@ -93,6 +94,7 @@ export default function AlumnoDetalle() {
     cargarDetalleActividad,
     listarMisInscripciones,
     listarResenasActividad,
+    cargandoCatalogo,
   } = useData();
 
   const actividad = actividades.find((a) => a.id === id);
@@ -107,6 +109,10 @@ export default function AlumnoDetalle() {
   const [reviewsActividad, setReviewsActividad] = useState<ReseniaActividad[]>([]);
   const [misFavoritos, setMisFavoritos] = useState<string[]>([]);
   const [errorDetalle, setErrorDetalle] = useState(false);
+  // Tercer estado, además de "está" y "falló": todavía no llegó. Sin esto la pantalla decía
+  // "Actividad no encontrada" durante el viaje de ida de la consulta.
+  const [cargandoDetalle, setCargandoDetalle] = useState(true);
+  const [cargandoResenas, setCargandoResenas] = useState(true);
 
   // Se distingue "no existe" de "no pudimos cargarla": con el backend caído la pantalla
   // decía "Actividad no encontrada", que es una afirmación falsa y sin salida.
@@ -114,7 +120,8 @@ export default function AlumnoDetalle() {
     if (!id) return;
     cargarDetalleActividad(id)
       .then(() => setErrorDetalle(false))
-      .catch(() => setErrorDetalle(true));
+      .catch(() => setErrorDetalle(true))
+      .finally(() => setCargandoDetalle(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
@@ -133,7 +140,7 @@ export default function AlumnoDetalle() {
   }, [currentUser, id]);
 
   useEffect(() => {
-    if (id) listarResenasActividad(id).then(setReviewsActividad).catch(() => {});
+    if (id) listarResenasActividad(id).then(setReviewsActividad).catch(() => {}).finally(() => setCargandoResenas(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
@@ -153,7 +160,9 @@ export default function AlumnoDetalle() {
       <div className="ah-screen" style={s("min-height:100vh;background:#F4F7FA;")}>
         <AlumnoNav active="explorar" />
         <div style={s("max-width:640px;margin:0 auto;padding:80px 28px;text-align:center;")}>
-          {errorDetalle ? (
+          {cargandoCatalogo || cargandoDetalle ? (
+            <CargandoSeccion seccion="la actividad" />
+          ) : errorDetalle ? (
             <ErrorReintentar
               mensaje="No pudimos cargar esta actividad. Puede ser un problema de conexión."
               onReintentar={cargarDetalle}
@@ -572,6 +581,17 @@ export default function AlumnoDetalle() {
             </div>
 
             <h2 style={s("font:700 20px Space Grotesk,sans-serif;margin:0 0 18px;")}>Opiniones de alumnos</h2>
+            {/*
+              Hasta que llegan, ni el promedio ni "Todavía no hay opiniones": las dos cosas son
+              afirmaciones sobre datos que todavía no tenemos, y la segunda es la que más
+              confunde — una actividad con reseñas se veía como una actividad sin ninguna.
+            */}
+            {cargandoResenas ? (
+              <div style={s("margin-bottom:34px;")}>
+                <CargandoSeccion seccion="comentarios" />
+              </div>
+            ) : (
+              <>
             <div
               className="ah-grid-side-alt"
               style={s(
@@ -652,6 +672,8 @@ export default function AlumnoDetalle() {
                 );
               })}
             </div>
+              </>
+            )}
 
             <h2 style={s("font:700 20px Space Grotesk,sans-serif;margin:0 0 16px;")}>Preguntas frecuentes</h2>
             <div style={s("display:flex;flex-direction:column;gap:11px;")}>

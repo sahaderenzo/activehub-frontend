@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import DashLayout from "../../components/DashLayout";
 import Modal from "../../components/Modal";
 import StatusBadge from "../../components/StatusBadge";
+import { CargandoSeccion } from "../../components/Cargando";
 import { s } from "../../lib/style";
 import { useData } from "../../context/DataContext";
 import type { AccionResolucion, DenunciaAdmin } from "../../context/DataContext";
@@ -61,11 +62,13 @@ export default function AdminAuditoria() {
    */
   const [suspension, setSuspension] = useState<SuspensionEnCurso | null>(null);
   const [errorSuspension, setErrorSuspension] = useState<string | null>(null);
+  const [cargando, setCargando] = useState(true);
 
   const cargar = useCallback(() => {
     listarDenunciasAdmin()
       .then(setDenuncias)
-      .catch((err) => setError(err instanceof ApiError ? err.message : "No pudimos cargar las denuncias."));
+      .catch((err) => setError(err instanceof ApiError ? err.message : "No pudimos cargar las denuncias."))
+      .finally(() => setCargando(false));
   }, [listarDenunciasAdmin]);
 
   useEffect(() => {
@@ -169,7 +172,7 @@ export default function AdminAuditoria() {
               <span>Instructor denunciado</span>
               <span>Estado</span>
             </div>
-            {denuncias.map((d) => (
+            {(cargando ? [] : denuncias).map((d) => (
               <div
                 key={d.id}
                 className="ah-row"
@@ -188,7 +191,12 @@ export default function AdminAuditoria() {
                 <StatusBadge type={denunciaStatusType(d.estado)} />
               </div>
             ))}
-            {denuncias.length === 0 && (
+            {cargando && (
+              <div style={s("padding:22px;")}>
+                <CargandoSeccion seccion="denuncias" />
+              </div>
+            )}
+            {!cargando && denuncias.length === 0 && (
               <div style={s("padding:40px 22px;text-align:center;color:#90A1B2;font:600 13.5px Manrope,sans-serif;")}>No hay denuncias registradas.</div>
             )}
           </div>

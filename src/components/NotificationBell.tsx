@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { s } from "../lib/style";
 import ErrorReintentar from "./ErrorReintentar";
+import { rutaNotificacion } from "../lib/notificaciones";
+import type { Area } from "../lib/areas";
+import { useAuth } from "../context/AuthContext";
 import { useData } from "../context/DataContext";
 import type { Notificacion } from "../context/DataContext";
 
@@ -14,11 +18,18 @@ interface NotificationBellProps {
   variant?: "light" | "dark";
   /** Desde qué borde de la campana cuelga el dropdown, para no salirse de la pantalla. */
   align?: "left" | "right";
+  /**
+   * Desde qué área se abrió la campana. Sólo desempata a dónde lleva el click cuando el
+   * usuario tiene las dos pantallas que muestran ese destino (ver `lib/notificaciones.ts`).
+   */
+  area: Area;
 }
 
 /** Campana de notificaciones, compartida por los 3 roles (alumno/instructor/admin). */
-export default function NotificationBell({ variant = "light", align = "right" }: NotificationBellProps) {
+export default function NotificationBell({ variant = "light", align = "right", area }: NotificationBellProps) {
   const { listarNotificaciones, marcarNotificacionesLeidas } = useData();
+  const { permisos } = useAuth();
+  const navigate = useNavigate();
   const [notificaciones, setNotificaciones] = useState<Notificacion[]>([]);
   const [open, setOpen] = useState(false);
 
@@ -48,6 +59,11 @@ export default function NotificationBell({ variant = "light", align = "right" }:
         .then(() => setNotificaciones((prev) => prev.map((n) => ({ ...n, leida: true }))))
         .catch(() => {});
     }
+  };
+
+  const abrir = (ruta: string) => {
+    setOpen(false);
+    navigate(ruta);
   };
 
   return (
@@ -97,26 +113,50 @@ export default function NotificationBell({ variant = "light", align = "right" }:
                 No tenés notificaciones.
               </div>
             ) : (
-              notificaciones.map((n) => (
-                <div
-                  key={n.id}
-                  style={s(
-                    `padding:12px 16px;border-bottom:1px solid #F5F7FA;display:flex;gap:9px;align-items:flex-start;background:${n.leida ? "transparent" : "#F7FBFA"};`,
-                  )}
-                >
-                  <span
+              notificaciones.map((n) => {
+                // Sin destino (o sin permiso para la pantalla que lo muestra) la fila se
+                // muestra igual, pero como texto: un click que rebota al home es peor que
+                // ninguno. Ver `lib/notificaciones.ts`.
+                const ruta = rutaNotificacion(n, area, permisos);
+                return (
+                  <div
+                    key={n.id}
+                    className={ruta ? "ah-btn" : undefined}
+                    role={ruta ? "link" : undefined}
+                    tabIndex={ruta ? 0 : undefined}
+                    onClick={ruta ? () => abrir(ruta) : undefined}
+                    onKeyDown={ruta ? (e) => { if (e.key === "Enter" || e.key === " ") abrir(ruta); } : undefined}
                     style={s(
-                      `width:8px;height:8px;border-radius:99px;margin-top:5px;flex:none;background:${n.leida ? "transparent" : "#12B5A5"};`,
+                      `padding:12px 16px;border-bottom:1px solid #F5F7FA;display:flex;gap:9px;align-items:flex-start;background:${n.leida ? "transparent" : "#F7FBFA"};cursor:${ruta ? "pointer" : "default"};`,
                     )}
-                  />
-                  <div style={s("min-width:0;")}>
-                    <div style={s("font-size:13px;color:#33485E;font-weight:600;line-height:1.4;")}>{n.mensaje}</div>
-                    <div style={s("font-size:11px;color:#90A1B2;font-weight:600;margin-top:4px;")}>
-                      {formatFechaHora(n.createdAt)}
+                  >
+                    <span
+                      style={s(
+                        `width:8px;height:8px;border-radius:99px;margin-top:5px;flex:none;background:${n.leida ? "transparent" : "#12B5A5"};`,
+                      )}
+                    />
+                    <div style={s("min-width:0;flex:1;")}>
+                      <div style={s("font-size:13px;color:#33485E;font-weight:600;line-height:1.4;")}>{n.mensaje}</div>
+                      <div style={s("font-size:11px;color:#90A1B2;font-weight:600;margin-top:4px;")}>
+                        {formatFechaHora(n.createdAt)}
+                      </div>
                     </div>
+                    {ruta && (
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="#C2CEDA"
+                        strokeWidth={2.4}
+                        style={s("flex:none;margin-top:4px;")}
+                      >
+                        <path d="m9 18 6-6-6-6" />
+                      </svg>
+                    )}
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </>

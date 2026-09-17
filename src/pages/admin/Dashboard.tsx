@@ -6,6 +6,7 @@ import { useAhora } from "../../lib/ahora";
 import { siPuede } from "../../lib/cargaParcial";
 import { useAuth } from "../../context/AuthContext";
 import ErrorReintentar from "../../components/ErrorReintentar";
+import { CargandoSeccion } from "../../components/Cargando";
 import GraficoBarras from "../../components/GraficoBarras";
 import { useData } from "../../context/DataContext";
 import type { InscripcionAdmin, UsuarioAdmin } from "../../context/DataContext";
@@ -74,6 +75,7 @@ export default function AdminDashboard() {
   const [inscripciones, setInscripciones] = useState<InscripcionAdmin[]>([]);
 
   const [errorCarga, setErrorCarga] = useState(false);
+  const [cargando, setCargando] = useState(true);
   const [periodoDias, setPeriodoDias] = useState(30);
   const periodoLabel = PERIODOS.find((p) => p.dias === periodoDias)?.label ?? "Todo el histórico";
 
@@ -97,7 +99,8 @@ export default function AdminDashboard() {
         setInscripciones(insc);
         setErrorCarga(false);
       })
-      .catch(() => setErrorCarga(true));
+      .catch(() => setErrorCarga(true))
+      .finally(() => setCargando(false));
   }, [puede, listarUsuariosAdmin, listarInstructores, listarDenunciasAdmin, listarInscripcionesAdmin]);
 
   useEffect(() => {
@@ -256,7 +259,9 @@ export default function AdminDashboard() {
       </div>
 
       <div style={s("padding:26px 32px 50px;")}>
-        {errorCarga && (
+        {/* El panel entero espera: cuatro KPI en cero y dos gráficos vacíos no son un panel. */}
+        {cargando && <CargandoSeccion seccion="el panel" />}
+        {!cargando && errorCarga && (
           <div style={s("margin-bottom:20px;")}>
             <ErrorReintentar
               mensaje="No pudimos cargar los datos del panel. Los números de abajo pueden estar incompletos."
@@ -265,6 +270,8 @@ export default function AdminDashboard() {
             />
           </div>
         )}
+        {!cargando && (
+          <>
         <div className="ah-grid-4" style={s("display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-bottom:24px;")}>
           {kpis.filter((k) => puede(k.requiere)).map((k) => (
             <div
@@ -357,7 +364,8 @@ export default function AdminDashboard() {
             </div>
           </div>
         )}
-
+          </>
+        )}
       </div>
     </DashLayout>
   );

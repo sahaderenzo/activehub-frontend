@@ -3,6 +3,8 @@ import AlumnoNav from "../../components/AlumnoNav";
 import StatusBadge from "../../components/StatusBadge";
 import ErrorReintentar from "../../components/ErrorReintentar";
 import { s } from "../../lib/style";
+import { ESTILO_RESALTE, useResaltado } from "../../lib/resaltado";
+import { CargandoAccion, CargandoSeccion } from "../../components/Cargando";
 import Modal from "../../components/Modal";
 import { useAhora } from "../../lib/ahora";
 import { useAuth } from "../../context/AuthContext";
@@ -33,6 +35,10 @@ export default function AlumnoMisDenuncias() {
   const [motivo, setMotivo] = useState("");
 
   const [errorCarga, setErrorCarga] = useState(false);
+  // Destino de la notificación "se resolvió tu denuncia".
+  const resaltado = useResaltado("denuncia");
+  const [cargando, setCargando] = useState(true);
+  const [enviando, setEnviando] = useState(false);
 
   // Las clases reportables alimentan el select de "Nueva denuncia": si no cargan, el
   // formulario queda vacío sin decir por qué.
@@ -53,7 +59,8 @@ export default function AlumnoMisDenuncias() {
         setError(null);
         setErrorCarga(false);
       })
-      .catch(() => setErrorCarga(true));
+      .catch(() => setErrorCarga(true))
+      .finally(() => setCargando(false));
   }, [currentUser, puede, listarMisDenuncias, listarMisInscripciones]);
 
   useEffect(() => {
@@ -63,6 +70,7 @@ export default function AlumnoMisDenuncias() {
   const enviar = async () => {
     if (!currentUser || !claseId || !motivo.trim()) return;
     setError(null);
+    setEnviando(true);
     try {
       await crearDenuncia(claseId, motivo.trim());
       setShowForm(false);
@@ -71,6 +79,8 @@ export default function AlumnoMisDenuncias() {
       cargar();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No pudimos enviar la denuncia.");
+    } finally {
+      setEnviando(false);
     }
   };
 
@@ -109,7 +119,9 @@ export default function AlumnoMisDenuncias() {
           </div>
         )}
 
-        {errorCarga ? (
+        {cargando ? (
+          <CargandoSeccion seccion="denuncias" />
+        ) : errorCarga ? (
           <ErrorReintentar mensaje="No pudimos cargar tus denuncias." onReintentar={cargar} />
         ) : misDenuncias.length === 0 ? (
           <div style={s("background:#fff;border:1px dashed #D6DEE7;border-radius:16px;padding:40px 20px;text-align:center;color:#7A8C9E;font-weight:600;")}>
@@ -118,7 +130,14 @@ export default function AlumnoMisDenuncias() {
         ) : (
           <div style={s("display:flex;flex-direction:column;gap:14px;")}>
             {misDenuncias.map((d) => (
-              <div key={d.id} style={s("background:#fff;border:1px solid #E7EDF3;border-radius:16px;padding:18px 20px;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
+              <div
+                key={d.id}
+                ref={resaltado.ref(d.id)}
+                style={s(
+                  "background:#fff;border:1px solid #E7EDF3;border-radius:16px;padding:18px 20px;box-shadow:0 1px 2px rgba(14,42,71,.04);"
+                    + (resaltado.activo(d.id) ? ESTILO_RESALTE : ""),
+                )}
+              >
                 <div style={s("display:flex;align-items:center;gap:12px;margin-bottom:10px;")}>
                   <span style={s("width:40px;height:40px;border-radius:11px;background:#FBEAEB;display:flex;align-items:center;justify-content:center;flex:none;")}>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#BE3A3E" strokeWidth={2}>
@@ -214,6 +233,7 @@ export default function AlumnoMisDenuncias() {
           </div>
         </Modal>
       )}
+      <CargandoAccion activo={enviando} mensaje="Enviando tu denuncia" />
     </div>
   );
 }

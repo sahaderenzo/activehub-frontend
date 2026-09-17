@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
 import ActivityPhoto from "../../components/ActivityPhoto";
 import ErrorReintentar from "../../components/ErrorReintentar";
+import { CargandoSeccion } from "../../components/Cargando";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
@@ -26,13 +27,16 @@ export default function InstructorMisActividades() {
 
   const [error, setError] = useState<string | null>(null);
   const [errorCarga, setErrorCarga] = useState(false);
+  const [cargando, setCargando] = useState(true);
+  const cargandoCatalogo = data.cargandoCatalogo;
 
   // El detalle de cada actividad es lo que trae sus clases: si falla, las tarjetas muestran
   // "0 clases", que es indistinguible de una actividad realmente vacía.
   const cargarDetalles = useCallback(() => {
     Promise.all(misActividades.map((a) => data.cargarDetalleActividad(a.id)))
       .then(() => setErrorCarga(false))
-      .catch(() => setErrorCarga(true));
+      .catch(() => setErrorCarga(true))
+      .finally(() => setCargando(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, data.actividades.length]);
 
@@ -97,7 +101,9 @@ export default function InstructorMisActividades() {
             />
           </div>
         )}
-        {misActividades.length === 0 ? (
+        {cargando || cargandoCatalogo ? (
+          <CargandoSeccion seccion="actividades" />
+        ) : misActividades.length === 0 ? (
           <div
             style={s(
               "background:#fff;border:1px dashed #D6DEE7;border-radius:18px;padding:40px;text-align:center;color:#7A8C9E;font-weight:600;",

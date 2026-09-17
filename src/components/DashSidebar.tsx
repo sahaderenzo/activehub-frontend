@@ -197,7 +197,7 @@ export default function DashSidebar({ role, active }: DashSidebarProps) {
           <span style={s("font:700 20px Space Grotesk,sans-serif;color:#fff;")}>ActiveHub</span>
         </div>
         <div style={s("margin-left:auto;")}>
-          <NotificationBell variant="dark" align="left" />
+          <NotificationBell variant="dark" align="left" area={role} />
         </div>
       </div>
       <div

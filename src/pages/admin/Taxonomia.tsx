@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
+import { CargandoSeccion } from "../../components/Cargando";
 import { s } from "../../lib/style";
 import Modal from "../../components/Modal";
 import { useData } from "../../context/DataContext";
@@ -60,6 +61,7 @@ export default function AdminTaxonomia() {
     tiposActividad,
     actividades,
     categorias,
+    cargandoCatalogo,
     crearTipoActividad,
     actualizarTipoActividad,
     eliminarTipoActividad,
@@ -224,7 +226,8 @@ export default function AdminTaxonomia() {
           ))}
         </div>
 
-        {tab === "tipos" && (
+        {cargandoCatalogo && <CargandoSeccion seccion="la taxonomía" />}
+        {!cargandoCatalogo && tab === "tipos" && (
           <>
             <div style={s("display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;")}>
               <div>
@@ -351,7 +354,7 @@ export default function AdminTaxonomia() {
           </>
         )}
 
-        {tab === "niveles" && (
+        {!cargandoCatalogo && tab === "niveles" && (
           <>
             <div style={s("display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;")}>
               <div>

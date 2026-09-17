@@ -17,6 +17,7 @@ import type {
   TipoActividad,
   TipoPenalizacion,
 } from "../lib/types";
+import type { DestinoNotificacion } from "../lib/notificaciones";
 import { api } from "../lib/api";
 
 /**
@@ -258,6 +259,34 @@ export interface RosterClase {
   alumnos: RosterAlumno[];
 }
 
+/**
+ * Reporte del formulario "Reportar un problema" de `/ayuda`, visto desde la bandeja del admin
+ * (GET /api/admin/soporte/reportes).
+ *
+ * `autorNombre`/`autorId` vienen en **null** cuando lo mandó un visitante sin cuenta: la
+ * pantalla pública no exige sesión a propósito, así que el caso anónimo es normal. La etiqueta
+ * ("Sin cuenta") la pone la pantalla; el backend manda null.
+ */
+export interface ReporteSoporteAdmin {
+  id: string;
+  email: string;
+  asunto: string;
+  detalle: string;
+  estado: "Abierto" | "Cerrado";
+  autorNombre: string | null;
+  autorId: string | null;
+  respuesta: string | null;
+  cerradoPorNombre: string | null;
+  cerradoAt: string | null;
+  createdAt: string;
+}
+
+export interface CrearReporteSoporteInput {
+  email: string;
+  asunto: string;
+  detalle: string;
+}
+
 export interface ReseniaActividad {
   id: string;
   claseId: string;
@@ -286,6 +315,11 @@ export interface MiResenia {
   /** Opcional: una reseña puede ser solo estrellas. */
   comentario: string | null;
   enModeracion: boolean;
+  /** Bajada por un administrador: sigue en la lista, pero ya no se ve en la actividad. */
+  oculta: boolean;
+  /** La respuesta del instructor, si contestó. Es a lo que lleva `RESENIA_RESPONDIDA`. */
+  respuestaInstructor: string | null;
+  respuestaInstructorAt: string | null;
   createdAt: string;
 }
 
@@ -369,7 +403,15 @@ export interface Notificacion {
   id: string;
   tipo: string;
   mensaje: string;
+  /** El registro que originó el aviso. Su significado depende del tipo: sirve para trazar. */
   entidadId: string | null;
+  /**
+   * A qué pantalla lleva el click, ya resuelto por el backend (`"NINGUNO"` = sin link). El
+   * mapeo destino → ruta, que depende de los permisos de quien mira, vive en
+   * `lib/notificaciones.ts`.
+   */
+  destinoTipo: DestinoNotificacion;
+  destinoId: string | null;
   leida: boolean;
   createdAt: string;
 }
@@ -658,6 +700,13 @@ interface DataContextValue {
 
   // inscripciones/pagos de la plataforma (admin) real
   listarInscripcionesAdmin: () => Promise<InscripcionAdmin[]>;
+
+  // soporte (E: "Reportar un problema" de /ayuda)
+  /** Endpoint PÚBLICO: funciona con o sin sesión. Ver `SecurityConfig` del backend. */
+  crearReporteSoporte: (input: CrearReporteSoporteInput) => Promise<void>;
+  listarReportesSoporte: () => Promise<ReporteSoporteAdmin[]>;
+  /** `respuesta` es opcional: se puede cerrar sin escribirle nada a quien lo mandó. */
+  cerrarReporteSoporte: (id: string, respuesta?: string) => Promise<void>;
 
   // favoritos reales
   listarMisFavoritos: () => Promise<string[]>;
@@ -1133,6 +1182,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return api.get<InscripcionAdmin[]>("/api/admin/inscripciones");
   }, []);
 
+  // Soporte. El alta es pública (la pantalla de Ayuda lo es); las otras dos piden
+  // `soporte.gestionar`, igual que el @PreAuthorize de sus endpoints.
+  const crearReporteSoporte = useCallback(async (input: CrearReporteSoporteInput) => {
+    await api.post("/api/soporte/reportes", input);
+  }, []);
+
+  const listarReportesSoporte = useCallback(async () => {
+    return api.get<ReporteSoporteAdmin[]>("/api/admin/soporte/reportes");
+  }, []);
+
+  const cerrarReporteSoporte = useCallback(async (id: string, respuesta?: string) => {
+    await api.post(`/api/admin/soporte/reportes/${id}/cerrar`, { respuesta: respuesta?.trim() || undefined });
+  }, []);
+
   const listarMisFavoritos = useCallback(async () => {
     return api.get<string[]>("/api/alumno/favoritos");
   }, []);
@@ -1232,6 +1295,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       actualizarEstadoUsuario,
       listarAuditoria,
       listarInscripcionesAdmin,
+      crearReporteSoporte,
+      listarReportesSoporte,
+      cerrarReporteSoporte,
       listarMisFavoritos,
       agregarFavorito,
       quitarFavorito,
@@ -1321,6 +1387,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       actualizarEstadoUsuario,
       listarAuditoria,
       listarInscripcionesAdmin,
+      crearReporteSoporte,
+      listarReportesSoporte,
+      cerrarReporteSoporte,
       listarMisFavoritos,
       agregarFavorito,
       quitarFavorito,
