@@ -1,18 +1,20 @@
 # CLAUDE.md — ActiveHub Frontend (Vite + React)
 
-Convenciones de este repositorio. Leer **antes** de escribir código. Repo hermano `activehub-api` (Spring Boot) es el único backend — su propio `CLAUDE.md` tiene el detalle de endpoints y reglas de negocio.
+Convenciones de este repositorio. Leer **antes** de escribir código. Repo hermano `activehub-backend` (Spring Boot) es el único backend — su propio `CLAUDE.md` tiene el detalle de endpoints y reglas de negocio.
 
 ## Qué es
 SPA de ActiveHub para los 3 roles (Alumno, Instructor, Administrador). React 19 + TypeScript + Vite, **sin librería de UI** (ni Tailwind ni Material, etc.) — todo con estilos inline vía el helper `s()` de `src/lib/style.ts`, que parsea un string CSS literal (`"display:flex;gap:10px;"`) a un objeto de React, cacheado. Se sigue así en todo el proyecto, no introducir una librería de estilos nueva a mitad de camino.
 
 ## Estructura
 - `src/pages/<rol>/Pantalla.tsx` — una pantalla por archivo, sin sub-carpetas de componentes por pantalla.
-- `src/components/` — compartidos entre pantallas (`DashLayout`/`DashSidebar` para instructor/admin, `AlumnoNav` para alumno, `NotificationBell`, `ActivityCard`, `StatusBadge`, `RequireArea`, `Logo`).
-- `src/context/AuthContext.tsx` — sesión real (JWT en `localStorage`, login/logout/registro).
-- `src/context/DataContext.tsx` — el context grande: catálogo + todas las funciones que llaman a la API real, más una sección explícita al final ("fuera de alcance: mock puro, sin tocar") para lo que sigue simulado. **Leer el comentario de esa sección antes de asumir que algo es mock o real** — se mantiene actualizado a mano.
-- `src/lib/api.ts` — cliente HTTP (`api.get/post/put/delete<T>(path, body?)`), lanza `ApiError(code, message, status, fieldErrors)` en no-2xx.
+- `src/components/` — compartidos entre pantallas. Navegación y sesión: `DashLayout`/`DashSidebar` (instructor/admin), `AlumnoNav` (alumno), `NotificationBell`, `Logo`, `Avatar`, `BotonGoogle`, `CambiarEmailCard`. Guardas: `RequireArea`, `RequirePermiso`, `RequireEmailVerificado`, `RequirePerfilCompleto`. Piezas de UI: `ActivityCard`, `ActivityPhoto`, `StatusBadge`, `Modal`, `Cargando`, `ErrorReintentar`, `GraficoBarras`, `LeafletMap`, `ChatbotWidget`.
+- `src/context/AuthContext.tsx` — sesión real (JWT en `localStorage`, login/logout/registro, permisos, perfil propio).
+- `src/context/DataContext.tsx` — el context grande: catálogo + todas las funciones que llaman a la API real. **Ya no tiene sección mock**: los arrays `inscripciones`/`pagos`/`penalizaciones` que vivían acá se borraron y las pantallas que los leían pasaron a la API.
+- `src/lib/api.ts` — cliente HTTP (`api.get/post/put/delete<T>(path, body?)` + `api.postForm` para multipart), lanza `ApiError(code, message, status, fieldErrors)` en no-2xx.
 - `src/lib/types.ts` — tipos de dominio compartidos.
-- `src/lib/mockData.ts` — dataset mock (Mendoza-flavored) + helpers de formato de fecha/hora (`formatFecha`, `formatHora`, `diasHastaClase`, etc. — estos helpers son de formato, no de datos, y se siguen usando aunque la pantalla ya sea 100% real).
+- `src/lib/areas.ts` — **fuente de verdad de la navegación**: áreas, pantallas y el permiso que exige cada una. Ver "Permisos en el frontend".
+- `src/lib/mockData.ts` — catálogo de demostración + helpers de formato de fecha/hora (`formatFecha`, `formatHora`, `diasHastaClase`, `disponibilidad`, `tipoIngreso`…). **Los helpers son de formato, no de datos**, y se usan en todas las pantallas aunque ya sean 100% reales.
+- Resto de `src/lib/`: `texto.ts` (búsqueda sin tildes), `geo.ts` + `nominatim.ts` (distancias y direcciones), `photos.ts`, `nivelStyle.ts`, `status.ts`, `notificaciones.ts`, `resaltado.ts`, `cargaParcial.ts`, `perfil.ts`, `faqs.ts`, `ahora.ts`, `exportCsv.ts`, `exportPdf.ts`, `style.ts`.
 
 ## Patrón establecido para cablear una pantalla a datos reales
 1. En `DataContext.tsx`: agregar la interfaz de respuesta (`XxxResp`/`Xxx`), la función (`useCallback`) que llama a `api.get/post/put/delete`, agregarla a `DataContextValue` y a **los dos lugares** del `useMemo` final (el objeto `value` y su array de deps — es fácil olvidar el segundo).
@@ -64,6 +66,24 @@ Responder y denunciar **pegan a la API** (`responderResenia` / `denunciarResenia
 ## Galería de imágenes de la actividad
 
 `actividad.imagenes` (ids) viene **solo del detalle** (`cargarDetalleActividad`), no del listado. Se sirven por `${BASE_URL}/api/fotos/actividad/imagen/{id}` — endpoint público, como el resto del catálogo. La portada sigue siendo `subirFotoActividad` + el componente `ActivityPhoto`; la galería usa `agregarImagenActividad` / `eliminarImagenActividad`, con tope de 6. La primera imagen que se sube cuando no hay portada pasa a serlo (lo hace el backend).
+
+## Mapas y distancias: OpenStreetMap, no Google Maps
+
+Se descartó Google Maps Platform porque exige una cuenta de facturación con tarjeta incluso dentro de sus topes gratuitos. El reemplazo es **Leaflet + tiles de OpenStreetMap + Nominatim**, sin clave de API y sin cuota facturable. Son tres piezas y conviene no confundirlas:
+
+- **`components/LeafletMap.tsx` — mostrar un punto.** Único componente de mapa del proyecto; lo usan `alumno/Detalle.tsx` (ubicación de la actividad) e `instructor/CrearActividad.tsx` (confirmar la ubicación al publicar). Dos cosas que hay que respetar si se toca:
+  - **Los íconos por defecto de Leaflet se reasignan a nivel de módulo.** Leaflet arma las URL de sus marcadores asumiendo rutas relativas al HTML, no al build, así que con cualquier bundler salen rotas. El `mergeOptions` con los assets ya resueltos por Vite corre **una sola vez, fuera del componente**: no lo muevas adentro.
+  - **El mapa se crea una sola vez y después se actualiza.** `lat`/`lng` quedan fuera de las dependencias del efecto de creación a propósito (la última posición conocida vive en un ref); un segundo efecto mueve la vista y el marcador. Meter las coordenadas en las deps del primer efecto re-crea el mapa entero en cada cambio.
+  - Sin coordenadas no renderiza el mapa sino el `placeholderText`. Una actividad sin ubicación cargada es un caso normal, no un error.
+
+- **`lib/nominatim.ts` — buscar una dirección.** `searchAddress(query)` devuelve hasta cinco resultados con sus coordenadas. **La política de uso de Nominatim pide explícitamente no autocompletar mientras se tipea**, así que se llama sólo al click del botón "Buscar" (o Enter en el campo), nunca en el `onChange`. No agregar debounce y llamar por tecla: no es un problema de performance, es un término de uso.
+
+- **`lib/geo.ts` — calcular distancias.** `haversineKm` + `formatDistanciaKm` + el hook `useGeolocation`. Todo el cálculo de cercanía ocurre **en el cliente**, contra la geolocalización del navegador: no hay consulta espacial en el backend ni PostGIS, y no hace falta (es la misma convención de "el backend devuelve todo sin paginar y el frontend agrega/filtra/ordena"). Alimenta tres cosas:
+  - "Cerca de tu ubicación" del Home,
+  - el orden "Cercanas" y el **filtro por radio** de Explorar (`RADIOS`: cualquier distancia · menos de 2 km · 2 · 5 · 8 · 10 · más de 10 km),
+  - la línea "A X de tu ubicación" del detalle y el `distanceKm` de `ActivityCard`.
+
+  `useGeolocation` es **a demanda y no automático**: arranca en `idle` y sólo pide el permiso cuando la pantalla llama a `request()`. Distingue `denied` de `unsupported` porque son dos mensajes distintos para el usuario. **Sin coordenadas propias, la distancia es `undefined` y el filtro de radio no afirma nada**: `dentroDelRadio` devuelve false para una actividad sin distancia calculable, porque no se puede sostener que esté dentro de un radio que no se pudo medir.
 
 ## Sesión: se renueva sola mientras usás la app
 
@@ -438,7 +458,7 @@ El `tsconfig.json` de la raíz es sólo un archivo de referencias (`"files": []`
 
 ## Lint: cero errores, y cómo mantenerlo
 
-El repo estaba con 38 errores de base; hoy `npx eslint src` da **0 errores** (quedan warnings de directivas `eslint-disable` sobrantes, preexistentes). Dos patrones que hay que respetar para que no vuelvan:
+El repo estaba con 38 errores de base; hoy `npx eslint src` da **0 errores y 12 warnings**. Los 12 son: 11 de `react-hooks/exhaustive-deps` por dependencias omitidas a propósito (casi todas el objeto `data` del context, que cambia de identidad en cada render y volvería a disparar la carga en bucle) y 1 directiva `eslint-disable` sobrante. **Ninguno es un error de comportamiento**; si agregás una dependencia omitida, verificá que no reintroduzcas el bucle de recarga. Dos patrones que hay que respetar para que no vuelvan los errores:
 
 - **`react-hooks/set-state-in-effect`:** la función `cargar` de una pantalla **no toca estado de forma síncrona**. El "limpiar el error" va dentro del `.then(...)` y el "prender el spinner" arranca en `useState(true)` o lo hace el handler del botón "Reintentar" (un evento sí puede). Ojo: con `async/await` la regla igual se queja — el setState tiene que estar dentro de un callback (`.then`/`.catch`/`.finally`), por eso `refrescarCatalogo` y el `cargar` de Roles están escritos como cadena de promesas.
   - **Un valor por defecto que sale de otro estado se DERIVA, no se sincroniza con un efecto.** `CrearActividad.tsx` preseleccionaba el primer nivel de intensidad con un `useEffect` que llamaba al setter cuando el catálogo terminaba de llegar: era el único error de esta regla que quedaba en el repo. El catálogo no es un sistema externo que haya que espejar —es estado de React que ya está a mano—, así que hoy el estado guarda **sólo la elección explícita** del usuario (`nivelElegido`) y el valor efectivo es una expresión: `nivelElegido || data.nivelesIntensidad[0]?.id || ""`. De paso se cerró un hueco real: con el efecto, si el catálogo ya estaba cargado, el formulario se pintaba una vez **sin ningún nivel marcado** antes de que el efecto corriera. **El `eslint-disable` es para sincronizar con algo externo de verdad (la geolocalización, el mapa), no para un default que se puede calcular.**
@@ -446,6 +466,12 @@ El repo estaba con 38 errores de base; hoy `npx eslint src` da **0 errores** (qu
 - **`react-hooks/preserve-manual-memoization`:** el error dice "Compilation Skipped" y apunta a un `useMemo` que en realidad está bien — el culpable suele ser **otro**. Dos causas vistas en `admin/Reportes.tsx`: un `useMemo` leído desde un closure declarado **antes** que él (mover la función abajo lo arregla), y un segundo `useMemo` que devuelve objetos literales desde un `switch` (si el cálculo es barato, sacarle el `useMemo` y dejarlo como `const x = (() => { … })()`: el compilador memoiza solo).
 
 Donde el efecto sincroniza con algo externo de verdad (la navegación en Explorar, la geolocalización en CrearActividad, el mapa de Leaflet, la actividad por defecto en Reseñas del instructor) va un `eslint-disable` **de bloque** con el motivo escrito.
+
+### El workflow de CI existe pero NO está en la rama de integración
+
+`.github/workflows/eslint.yml` corre `npm ci` + `npm run lint` en cada push y PR contra `main` y `develop`, sube el reporte como artefacto y **falla el job si hay errores**. Se escribió y se verificó corriendo en GitHub Actions (commits `1d9a723` y `75eebe2`), pero vive sólo en `origin/FabriVersion2`: **no está ni en `main` ni en `integracion`**, así que hoy no se ejecuta sobre nada.
+
+Consecuencia práctica: **no asumas que el lint lo valida el CI.** Corré `npx eslint src` y `npx tsc -b` a mano antes de dar un cambio por terminado. Antes del cierre de la etapa hay que recuperar ese archivo en la rama de integración (y ajustar los nombres de rama del `on:` si el modelo de ramas queda como está — ver la nota de versionado del informe).
 
 ## Foto de perfil: solo desde Perfil, y en modo edición
 
@@ -574,8 +600,20 @@ Si el cambio es puramente de frontend (no tocaste backend), se puede ahorrar el 
 
 Al terminar, siempre: `rm .env.local`, matar los procesos aislados por PID exacto (`netstat -ano | grep :8091`/`:5180`), y confirmar que los PIDs de 8080/5173 del usuario siguen siendo los mismos que al principio.
 
-## Estado actual del roadmap (mismos ítems que `activehub-api/CLAUDE.md`)
-Ítems 2 a 7 completos (Denuncias, Gestión de usuarios, Auditoría consultable, Dashboard y Reportes reales, Notificar ausencia de profesor + sistema de notificaciones + favoritos reales, ABM de Categoría). Pendientes: 8 (recomendaciones en Explorar — hoy el filtrado es tradicional, incluye el filtro cascada Categoría→Tipo de actividad), 9 (geolocalización, necesita API key de Google Maps), 10 (imágenes en la nube, necesita cuenta de Supabase — la galería local ya funciona contra el disco del backend), 11 (IA real, necesita credenciales de Groq — el chatbot flotante ya existe y responde por coincidencia de palabras, y el "Asistente de beneficios" de `Detalle.tsx` sigue simulado con `setTimeout`), 12 (Mercado Pago real, al final). Sin Redis ni deploy todavía.
+## Estado actual del roadmap (mismos ítems que `activehub-backend/CLAUDE.md`)
+
+Ítems 2 a 7 completos (Denuncias, Gestión de usuarios, Auditoría consultable, Dashboard y Reportes reales, Notificar ausencia de profesor + sistema de notificaciones + favoritos reales, ABM de Categoría).
+
+**Ítem 9 (geolocalización): HECHO**, con OpenStreetMap en lugar de Google Maps — ver la sección propia más abajo. **Ítem 10 (imágenes): la galería y las fotos funcionan** contra el disco del backend; lo pendiente es sólo mudar el almacenamiento a Supabase Storage, que no toca ninguna pantalla.
+
+Pendientes de verdad:
+- **8** — recomendaciones en Explorar. Hoy el filtrado es tradicional (texto sin tildes, categoría, tipo en cascada, nivel, precio, cupos, fecha, franja horaria, radio de cercanía, orden) y el "Recomendado para vos" del Home cruza los intereses declarados contra el `tipoActividadId`, pero nada aprende del comportamiento.
+- **11** — IA real, necesita credenciales de Groq. El chatbot flotante ya existe y responde por coincidencia de palabras contra `lib/faqs.ts`, y el "Asistente de beneficios" de `Detalle.tsx` genera el texto con plantillas por nivel. **El copy no promete IA en ningún lado**; si se enchufa el modelo, revisar que eso siga siendo cierto hasta que funcione.
+- **12** — Mercado Pago real, al final.
+- **Deploy** (Vercel) — el build de producción sale limpio y la URL del backend es `VITE_API_URL`, pero no se desplegó.
+- **Recuperar contraseña** — el enlace "¿Olvidaste tu contraseña?" de `Login.tsx` es un `span` sin `onClick`: no hay flujo detrás y nunca tuvo HU. Si se implementa, es pantalla nueva; el cambio de contraseña y el de correo del usuario autenticado sí existen.
+
+Redis quedó **descartado** (no diferido): el control de cupos se resolvió en la base.
 
 ### Qué sigue siendo mock (queda poco, y está acotado)
 Los tres dashboards, los intereses del alumno, las listas de inscripciones/pagos/penalizaciones **y la Landing** ya son reales. Lo único mock que queda:
