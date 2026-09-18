@@ -1,6 +1,7 @@
 import { useState } from "react";
 import DashLayout from "../../components/DashLayout";
 import Avatar from "../../components/Avatar";
+import CambiarEmailCard from "../../components/CambiarEmailCard";
 import { s } from "../../lib/style";
 import { useAuth, passwordStrength } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
@@ -192,7 +193,8 @@ export default function InstructorPerfil() {
           <div className="ah-grid-2" style={s("display:grid;grid-template-columns:1fr 1fr;gap:0 18px;")}>
             {campo("Nombre", nombre, setNombre)}
             {campo("Apellido", apellido, setApellido)}
-            {campo("Correo electrónico", email, setEmail, "email")}
+            {/* El correo NO se edita acá: es la credencial verificada y se cambia con un
+                código desde su propia tarjeta (`CambiarEmailCard`). */}
             {campo("Teléfono", telefono, setTelefono)}
           </div>
           {editando && (
@@ -208,6 +210,9 @@ export default function InstructorPerfil() {
             </button>
           )}
         </div>
+
+        {/* Ver `CambiarEmailCard`: el correo es credencial, no un dato más del formulario. */}
+        <CambiarEmailCard />
 
         <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:18px;padding:24px;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
           <div style={s("font:700 16px Space Grotesk,sans-serif;margin-bottom:6px;")}>Seguridad de la cuenta</div>

@@ -4,15 +4,23 @@ import { useNavigate } from "react-router-dom";
 import { s } from "../../lib/style";
 import { ApiError, useAuth } from "../../context/AuthContext";
 import { homeDe } from "../../lib/areas";
+import BotonGoogle from "../../components/BotonGoogle";
+import { perfilIncompleto } from "../../lib/perfil";
+import { CargandoAccion } from "../../components/Cargando";
 
 export default function Login() {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, ingresarConGoogle } = useAuth();
   // Correo o DNI: el backend acepta las dos credenciales.
   const [identificador, setIdentificador] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Correo de Google que no tiene cuenta acá. No es un error: es el desvío hacia el registro,
+   * y por eso se muestra con su propio botón en vez de como un cartel rojo sin salida.
+   */
+  const [sinCuenta, setSinCuenta] = useState<string | null>(null);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -26,6 +34,38 @@ export default function Login() {
     } catch (err) {
       if (err instanceof ApiError) setError(err.message);
       else setError("Ocurrió un error inesperado. Intentá de nuevo.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /**
+   * "Iniciar sesión con Google": **sin rol**, así que el backend no crea ninguna cuenta. Si el
+   * correo no tiene cuenta responde `SIN_CUENTA` y se lo manda a registrarse, en vez de
+   * fabricarle una cuenta vacía desde una pantalla que dice "iniciar sesión".
+   */
+  const ingresarConGoogleLogin = async (idToken: string) => {
+    setError(null);
+    setSinCuenta(null);
+    setLoading(true);
+    try {
+      const respuesta = await ingresarConGoogle(idToken);
+      if (respuesta.modo === "SIN_CUENTA") {
+        // Estado propio y no `setError`: esto no es un error del usuario, es un desvío, y
+        // necesita su propia salida. Con un texto suelto quedaba en un callejón: decía
+        // "creá tu cuenta" y no había dónde hacerlo más que buscando el link del pie.
+        setSinCuenta(respuesta.identidad?.email ?? null);
+        return;
+      }
+      // Cuenta de Google con datos a medias: a terminar el registro, no al panel. El guardián
+      // de rutas hace lo mismo, pero navegar directo evita el parpadeo.
+      if (perfilIncompleto(respuesta.sesion ?? null)) {
+        navigate("/completar-registro", { replace: true });
+        return;
+      }
+      navigate(homeDe(respuesta.sesion?.permisos ?? []));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos ingresar con Google. Intentá de nuevo.");
     } finally {
       setLoading(false);
     }
@@ -127,6 +167,31 @@ export default function Login() {
             </div>
           )}
 
+          {sinCuenta && (
+            <div
+              style={s(
+                "background:#EAF1FE;border:1px solid #D5E2FB;border-radius:12px;padding:14px 16px;margin-bottom:18px;",
+              )}
+            >
+              <div style={s("font:700 13.5px Manrope;color:#2D5BC8;line-height:1.5;margin-bottom:4px;")}>
+                Todavía no tenés cuenta con {sinCuenta}
+              </div>
+              <div style={s("font-size:13px;line-height:1.5;color:#41566B;font-weight:600;margin-bottom:12px;")}>
+                Creala en un paso: elegís si sos alumno o instructor y seguís con la misma cuenta de Google.
+              </div>
+              <button
+                type="button"
+                className="ah-btn"
+                onClick={() => navigate("/registro")}
+                style={s(
+                  "background:#2D5BC8;color:#fff;border:none;border-radius:10px;padding:10px 18px;font:700 13.5px Manrope;cursor:pointer;",
+                )}
+              >
+                Crear mi cuenta
+              </button>
+            </div>
+          )}
+
           <label style={s("display:block;font:700 13px Manrope;color:#41566B;margin-bottom:7px;")}>
             Correo electrónico o DNI
           </label>
@@ -185,23 +250,15 @@ export default function Login() {
             <div style={s("flex:1;height:1px;background:#E1E8EF;")} />
           </div>
 
-          <button
-            type="button"
-            disabled
-            title="Próximamente"
-            className="ah-btn"
-            style={s(
-              "width:100%;background:#fff;color:#0E2A47;border:1px solid #D9E1EA;border-radius:12px;padding:13px;font:700 15px Manrope;cursor:not-allowed;opacity:.6;display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:26px;",
-            )}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24">
-              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1Z" />
-              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23Z" />
-              <path fill="#FBBC05" d="M5.84 14.1a6.6 6.6 0 0 1 0-4.2V7.06H2.18a11 11 0 0 0 0 9.88l3.66-2.84Z" />
-              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84C6.71 7.3 9.14 5.38 12 5.38Z" />
-            </svg>
-            Continuar con Google (próximamente)
-          </button>
+          {/*
+            Acá es sólo para ENTRAR: va sin rol, y si no hay cuenta con ese correo el backend
+            no crea ninguna (`SIN_CUENTA`). Quien aprieta "Iniciar sesión con Google" espera
+            entrar a su cuenta, no que le aparezca una nueva a medio llenar — el alta con
+            Google vive en la pantalla de registro, después de elegir alumno o instructor.
+          */}
+          <div style={s("margin-bottom:24px;")}>
+            <BotonGoogle texto="signin_with" onCredencial={ingresarConGoogleLogin} />
+          </div>
 
           <div style={s("text-align:center;font-size:14.5px;color:#65788C;font-weight:600;")}>
             ¿No tenés cuenta?{" "}
@@ -211,6 +268,7 @@ export default function Login() {
           </div>
         </form>
       </div>
+      <CargandoAccion activo={loading} mensaje="Ingresando a tu cuenta" />
     </div>
   );
 }

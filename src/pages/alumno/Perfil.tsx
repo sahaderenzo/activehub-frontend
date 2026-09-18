@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import AlumnoNav from "../../components/AlumnoNav";
 import StatusBadge from "../../components/StatusBadge";
 import Avatar from "../../components/Avatar";
+import CambiarEmailCard from "../../components/CambiarEmailCard";
 import ErrorReintentar from "../../components/ErrorReintentar";
 import ActivityPhoto from "../../components/ActivityPhoto";
 import { s } from "../../lib/style";
@@ -375,7 +376,8 @@ export default function AlumnoPerfil() {
                 <div style={s("display:flex;flex-direction:column;gap:12px;")}>
                   <Field label="Nombre" value={nombre} onChange={setNombre} />
                   <Field label="Apellido" value={apellido} onChange={setApellido} />
-                  <Field label="Email" value={email} onChange={setEmail} type="email" />
+                  {/* El correo no se edita acá: es la credencial verificada y se cambia con
+                      un código desde su propia tarjeta (`CambiarEmailCard`). */}
                   <Field label="Teléfono" value={telefono} onChange={setTelefono} />
                   <Field label="Fecha de nacimiento" value={fechaNacimiento} onChange={setFechaNacimiento} type="date" />
                   {errorPerfil && <Aviso tono="error" texto={errorPerfil} />}
@@ -499,6 +501,12 @@ export default function AlumnoPerfil() {
                   </div>
                 ))}
               </div>
+            </div>
+
+            {/* El correo va aparte del formulario de datos: es la credencial de acceso y su
+                cambio exige confirmar un código (ver `CambiarEmailCard`). */}
+            <div style={s("margin-bottom:18px;")}>
+              <CambiarEmailCard />
             </div>
 
             <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:18px;padding:24px;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>

@@ -2,6 +2,8 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { DataProvider } from "./context/DataContext";
 import RequireArea from "./components/RequireArea";
+import RequireEmailVerificado from "./components/RequireEmailVerificado";
+import RequirePerfilCompleto from "./components/RequirePerfilCompleto";
 import RequirePermiso from "./components/RequirePermiso";
 import { permisosDePantalla } from "./lib/areas";
 
@@ -10,6 +12,8 @@ import Ayuda from "./pages/public/Ayuda";
 import Errores from "./pages/public/Errores";
 import Login from "./pages/auth/Login";
 import Registro from "./pages/auth/Registro";
+import VerificarEmail from "./pages/auth/VerificarEmail";
+import CompletarRegistro from "./pages/auth/CompletarRegistro";
 
 import AlumnoHome from "./pages/alumno/Home";
 import AlumnoExplorar from "./pages/alumno/Explorar";
@@ -64,8 +68,21 @@ function AppRoutes() {
           <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />
           <Route path="/registro" element={<Registro />} />
+          {/* Fuera de RequireArea: se llega con sesion pero sin el correo confirmado, y la
+              pantalla tiene que ser alcanzable por cualquier rol. */}
+          <Route path="/verificar-email" element={<VerificarEmail />} />
+          {/* Fuera de las guardas por la misma razon que la anterior: se llega con sesion
+              pero con el perfil a medias, y aplica a cualquier rol. */}
+          <Route path="/completar-registro" element={<CompletarRegistro />} />
           <Route path="/ayuda" element={<Ayuda />} />
 
+          {/* Envuelve a las TRES areas: sin el correo confirmado no se navega a ningun lado.
+              El backend hace lo mismo por su cuenta (`EmailVerificadoFilter`); esto evita
+              que el usuario vea pantallas llenandose de 403. */}
+          <Route element={<RequireEmailVerificado />}>
+          {/* Despues de verificar el correo: primero se confirma quien es, despues se
+              completan los datos que Google no da. */}
+          <Route element={<RequirePerfilCompleto />}>
           <Route element={<RequireArea area="alumno" />}>
             <Route path="/alumno" element={<AlumnoHome />} />
             <Route path="/alumno/explorar" element={<AlumnoExplorar />} />
@@ -151,6 +168,8 @@ function AppRoutes() {
               <Route path="/admin/auditoria" element={<AdminAuditoria />} />
               <Route path="/admin/trazabilidad" element={<AdminTrazabilidad />} />
             </Route>
+          </Route>
+          </Route>
           </Route>
 
           <Route path="/404" element={<Errores />} />

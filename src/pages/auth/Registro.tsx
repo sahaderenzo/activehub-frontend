@@ -3,8 +3,11 @@ import type { ChangeEvent, DragEvent, FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { s } from "../../lib/style";
 import { ApiError, passwordStrength, useAuth } from "../../context/AuthContext";
+import type { IdentidadGoogle } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
-import type { RolNombre } from "../../lib/types";
+import BotonGoogle from "../../components/BotonGoogle";
+import { perfilIncompleto } from "../../lib/perfil";
+import { homeDe } from "../../lib/areas";
 
 type Rol = "ALUMNO" | "INSTRUCTOR";
 
@@ -43,7 +46,6 @@ const HOY_ISO = new Date().toISOString().slice(0, 10);
 const TIPOS_DOCUMENTO_PERMITIDOS = ["application/pdf", "image/jpeg", "image/png"];
 const TAMANIO_MAX_DOCUMENTO = 5 * 1024 * 1024;
 
-const HOME_BY_ROL: Record<RolNombre, string> = { ALUMNO: "/alumno", INSTRUCTOR: "/instructor", ADMIN: "/admin" };
 
 function formatTamanio(bytes: number): string {
   return bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`;
@@ -52,7 +54,7 @@ function formatTamanio(bytes: number): string {
 export default function Registro() {
   const navigate = useNavigate();
   const data = useData();
-  const { registerAlumno, registerInstructor } = useAuth();
+  const { registerAlumno, registerInstructor, ingresarConGoogle } = useAuth();
 
   const [rol, setRol] = useState<Rol>("ALUMNO");
   const [form, setForm] = useState<FormState>(EMPTY);
@@ -65,6 +67,13 @@ export default function Registro() {
   const [subiendo, setSubiendo] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  /**
+   * Identidad confirmada por Google cuando el alta de INSTRUCTOR arrancó con ese botón. Su
+   * presencia cambia tres cosas: el correo pasa a ser de sólo lectura (lo fija Google, y el
+   * backend rechaza cualquier otro), la contraseña deja de pedirse, y el `idToken` viaja con
+   * el alta para que el backend lo vuelva a verificar.
+   */
+  const [identidadGoogle, setIdentidadGoogle] = useState<IdentidadGoogle | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((f) => ({ ...f, [key]: value }));
@@ -114,10 +123,13 @@ export default function Registro() {
     // Opcional, pero si se carga tiene que ser un DNI válido: es la credencial
     // alternativa de login y clave de unicidad de la cuenta junto al correo.
     if (form.dni.trim() && !/^[0-9]{7,8}$/.test(form.dni.trim())) e.dni = "El DNI debe tener 7 u 8 dígitos.";
-    if (!form.password || !passwordStrength(form.password).ok)
-      e.password = "La contraseña necesita al menos 8 caracteres, una mayúscula y un número.";
-    if (!confirmPassword) e.confirmPassword = "Confirmá tu contraseña.";
-    else if (form.password !== confirmPassword) e.confirmPassword = "Las contraseñas no coinciden.";
+    // Con Google no hay contraseña que validar: la cuenta no va a tener una utilizable.
+    if (!identidadGoogle) {
+      if (!form.password || !passwordStrength(form.password).ok)
+        e.password = "La contraseña necesita al menos 8 caracteres, una mayúscula y un número.";
+      if (!confirmPassword) e.confirmPassword = "Confirmá tu contraseña.";
+      else if (form.password !== confirmPassword) e.confirmPassword = "Las contraseñas no coinciden.";
+    }
     if (rol === "ALUMNO" && !form.fechaNacimiento) {
       e.fechaNacimiento = "Este campo es obligatorio.";
     }
@@ -131,6 +143,43 @@ export default function Registro() {
     return e;
   };
 
+  /**
+   * "Continuar con Google". Nunca pasa por el código: Google ya verificó el correo.
+   *
+   * <p>Dos desenlaces, y los decide el **rol elegido** — por eso el botón vive después del
+   * selector y no antes:
+   *
+   * <ul>
+   *   <li><b>Alumno</b>: el backend crea la cuenta y entra.</li>
+   *   <li><b>Instructor</b>: no se crea nada. El alta de instructor exige documentación
+   *       (RN-12), así que vuelve sólo la identidad y se usa para precargar el formulario.
+   *       La cuenta se crea al enviarlo, con los archivos.</li>
+   * </ul>
+   */
+  const registrarConGoogle = async (idToken: string) => {
+    setErrors({});
+    try {
+      const respuesta = await ingresarConGoogle(idToken, rol);
+      if (respuesta.modo === "COMPLETAR_INSTRUCTOR" && respuesta.identidad) {
+        const { email, nombre, apellido } = respuesta.identidad;
+        setIdentidadGoogle(respuesta.identidad);
+        setForm((f) => ({ ...f, email, nombre: nombre || f.nombre, apellido: apellido || f.apellido }));
+        return;
+      }
+      // Google no da teléfono ni fecha de nacimiento: la cuenta recién creada está a medias.
+      // A terminar el registro, no al panel. El guardián de rutas hace lo mismo, pero navegar
+      // directo evita el parpadeo de entrar y salir de la home.
+      if (perfilIncompleto(respuesta.sesion ?? null)) {
+        navigate("/completar-registro", { replace: true });
+        return;
+      }
+      navigate(homeDe(respuesta.sesion?.permisos ?? []));
+    } catch (err) {
+      setErrors({ email: err instanceof ApiError ? err.message : "No pudimos crear tu cuenta con Google." });
+      setSubmitAttempted(true);
+    }
+  };
+
   const submit = async (ev: FormEvent) => {
     ev.preventDefault();
     setSubmitAttempted(true);
@@ -141,7 +190,7 @@ export default function Registro() {
     }
     try {
       if (rol === "ALUMNO") {
-        const user = await registerAlumno({
+        await registerAlumno({
           nombre: form.nombre,
           apellido: form.apellido,
           email: form.email,
@@ -153,13 +202,15 @@ export default function Registro() {
           condicionSalud: form.condicionSalud.trim() || undefined,
           aceptaTerminos: form.aceptaTerminos,
         });
-        navigate(HOME_BY_ROL[user.rol]);
+        // Al codigo, no al panel: la cuenta existe pero su correo todavia no esta confirmado
+        // y hasta que lo confirme sigue disponible para otra persona.
+        navigate("/verificar-email", { replace: true });
       } else {
         // Los archivos van en el mismo request que los datos: si la subida falla, el
         // backend hace rollback y NO queda ninguna cuenta creada (E1A-HU04 criterio 9).
         setSubiendo(true);
         try {
-          const user = await registerInstructor(
+          await registerInstructor(
             {
               nombre: form.nombre,
               apellido: form.apellido,
@@ -172,10 +223,12 @@ export default function Registro() {
               aniosExperiencia: form.aniosExperiencia ? Number(form.aniosExperiencia) : undefined,
               descripcion: form.descripcion || undefined,
               aceptaTerminos: form.aceptaTerminos,
+              // El backend lo vuelve a verificar; acá sólo se reenvía.
+              googleIdToken: identidadGoogle?.idToken,
             },
             archivos,
           );
-          navigate(HOME_BY_ROL[user.rol]);
+          navigate("/verificar-email", { replace: true });
         } finally {
           setSubiendo(false);
         }
@@ -190,10 +243,11 @@ export default function Registro() {
   const errorCount = Object.keys(errors).length;
   const showErrors = submitAttempted && errorCount > 0;
 
-  const inputStyle = (field: string) =>
-    s(
-      `width:100%;border:1px solid ${errors[field] ? "#E5484D" : "#D9E1EA"};background:${errors[field] ? "#FBEAEB" : "#fff"};border-radius:11px;padding:12px 14px;font:600 14.5px Manrope;color:#0E2A47;outline:none;`,
-    );
+  /** El CSS como texto, para poder concatenarle overrides (ej. el correo fijado por Google). */
+  const inputStyleRaw = (field: string) =>
+    `width:100%;border:1px solid ${errors[field] ? "#E5484D" : "#D9E1EA"};background:${errors[field] ? "#FBEAEB" : "#fff"};border-radius:11px;padding:12px 14px;font:600 14.5px Manrope;color:#0E2A47;outline:none;`;
+
+  const inputStyle = (field: string) => s(inputStyleRaw(field));
 
   const passwordInputStyle = (field: string) =>
     s(
@@ -230,11 +284,11 @@ export default function Registro() {
 
       <form style={s("max-width:760px;margin:0 auto;padding:40px 28px 70px;")} onSubmit={submit}>
         <h1 style={s("font:700 32px Space Grotesk;letter-spacing:-.8px;margin:0 0 8px;")}>Crear tu cuenta</h1>
-        <p style={s("color:#65788C;font-size:15.5px;margin:0 0 28px;")}>
+        <p style={s("color:#65788C;font-size:15.5px;margin:0 0 22px;")}>
           Elegí cómo querés usar ActiveHub. Podés cambiar tus datos más tarde.
         </p>
 
-        <div className="ah-grid-2" style={s("display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:30px;")}>
+        <div className="ah-grid-2" style={s("display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:22px;")}>
           <div
             onClick={() => setRol("ALUMNO")}
             className="ah-btn"
@@ -297,6 +351,40 @@ export default function Registro() {
           </div>
         </div>
 
+        {/*
+          Google va DESPUÉS de elegir el rol, no antes: qué hace el botón depende de qué
+          eligió la persona. Como alumno crea la cuenta y entra (Google ya verificó el correo,
+          así que se saltea el código); como instructor **no crea nada** — el alta exige
+          documentación (RN-12) — y precarga este formulario con la identidad confirmada.
+        */}
+        {!identidadGoogle && (
+          <div style={s("max-width:392px;margin-bottom:26px;")}>
+            <div style={s("margin-bottom:10px;")}>
+              <BotonGoogle texto="signup_with" onCredencial={registrarConGoogle} />
+            </div>
+            <div style={s("display:flex;align-items:center;gap:14px;color:#9AAABA;font-size:13px;font-weight:600;")}>
+              <div style={s("flex:1;height:1px;background:#E1E8EF;")} />o completá el formulario
+              <div style={s("flex:1;height:1px;background:#E1E8EF;")} />
+            </div>
+          </div>
+        )}
+
+        {identidadGoogle && (
+          <div
+            style={s(
+              "max-width:640px;display:flex;align-items:flex-start;gap:11px;background:#E7F8F5;border:1px solid #CBEDE7;border-radius:14px;padding:14px 16px;margin-bottom:26px;",
+            )}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0C8576" strokeWidth={2.4} style={s("flex:none;margin-top:2px;")}>
+              <path d="M20 6 9 17l-5-5" />
+            </svg>
+            <div style={s("font-size:13.5px;line-height:1.55;color:#0C8576;font-weight:600;")}>
+              Vas a registrarte con <strong>{identidadGoogle.email}</strong>, verificado por Google — no vas a
+              necesitar contraseña ni código. Completá el resto de tus datos y adjuntá tu documentación.
+            </div>
+          </div>
+        )}
+
         <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:20px;padding:28px 30px;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
           <div style={s("font:700 17px Space Grotesk;margin-bottom:4px;")}>Datos personales</div>
           <div style={s("font-size:13.5px;color:#8194A8;margin-bottom:22px;")}>
@@ -338,14 +426,24 @@ export default function Registro() {
               <label style={s("display:block;font:700 13px Manrope;color:#41566B;margin-bottom:7px;")}>
                 Correo electrónico <span style={s("color:#E5484D;")}>*</span>
               </label>
+              {/* Con Google el correo lo fija Google: el backend rechaza cualquier otro. */}
               <input
                 type="email"
                 value={form.email}
                 onChange={(e) => set("email", e.target.value)}
                 placeholder="vos@email.com"
-                style={inputStyle("email")}
+                readOnly={!!identidadGoogle}
+                style={s(
+                  (inputStyleRaw("email")) + (identidadGoogle ? "background:#F2F5F9;color:#65788C;" : ""),
+                )}
               />
-              {fieldError("email")}
+              {identidadGoogle ? (
+                <span style={s("display:block;font-size:12px;color:#0C8576;font-weight:600;margin-top:5px;")}>
+                  Verificado por Google
+                </span>
+              ) : (
+                fieldError("email")
+              )}
             </div>
             <div>
               <label style={s("display:block;font:700 13px Manrope;color:#41566B;margin-bottom:7px;")}>
@@ -370,6 +468,9 @@ export default function Registro() {
                 </span>
               )}
             </div>
+            {/* Sin contraseña cuando entra por Google: la cuenta no va a tener una utilizable. */}
+            {!identidadGoogle && (
+              <>
             <div>
               <label style={s("display:block;font:700 13px Manrope;color:#41566B;margin-bottom:7px;")}>
                 Contraseña <span style={s("color:#E5484D;")}>*</span>
@@ -441,6 +542,8 @@ export default function Registro() {
               </div>
               {fieldError("confirmPassword")}
             </div>
+              </>
+            )}
             <div>
               <label style={s("display:block;font:700 13px Manrope;color:#41566B;margin-bottom:7px;")}>
                 {rol === "ALUMNO" ? (

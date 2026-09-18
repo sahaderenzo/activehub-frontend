@@ -29,6 +29,11 @@ export interface ActualizarMiPerfilInput {
   email: string;
   telefono: string;
   fechaNacimiento?: string;
+  /**
+   * Opcional. Es la única forma de cargarlo después del alta: quien se registró con Google
+   * nunca pasó por un formulario que lo pidiera.
+   */
+  dni?: string;
 }
 
 interface PerfilActualizado {
@@ -38,6 +43,7 @@ interface PerfilActualizado {
   email: string;
   telefono?: string;
   fechaNacimiento?: string;
+  dni?: string;
 }
 
 export interface SesionUsuario extends Usuario {
@@ -78,6 +84,12 @@ export interface RegistrarInstructorInput {
   aniosExperiencia?: number;
   descripcion?: string;
   aceptaTerminos: boolean;
+  /**
+   * ID token de Google cuando el alta arrancó con "Continuar con Google". Con esto el backend
+   * crea la cuenta sin contraseña y con el correo ya verificado; sin esto, `password` es
+   * obligatoria.
+   */
+  googleIdToken?: string;
 }
 
 export interface RegistrarAdminInput {
@@ -155,6 +167,9 @@ interface UsuarioRespuesta {
   estado: "ACTIVO" | "SUSPENDIDO";
   cantidadPenalizaciones: number;
   createdAt: string;
+  /** Si confirmó su correo con el código de 6 dígitos. Lo traen login, alta, Google y /me. */
+  emailVerificado?: boolean;
+  authProveedor?: "LOCAL" | "GOOGLE";
   /** Solo alumnos; para los otros roles viene vacía. Son TipoActividad, no texto (V19). */
   intereses?: InteresAlumno[];
   /** Claves habilitadas para su rol (RN-19). El menú y las rutas se arman con esto. */
@@ -221,6 +236,54 @@ interface AuthContextValue {
   cambiarMiContrasenia: (contraseniaActual: string, contraseniaNueva: string) => Promise<void>;
   darDeBajaMiCuenta: () => Promise<void>;
   reabrirSolicitud: () => Promise<void>;
+
+  /**
+   * Ingresa el código de 6 dígitos. Sirve para las dos cosas: confirmar el correo del alta y
+   * confirmar uno nuevo — el backend sabe cuál está pendiente, el cliente no elige.
+   *
+   * <p>Refleja el resultado en `currentUser`: en un cambio, el correo de la sesión pasa a ser
+   * el nuevo. Por eso vive acá y no en `DataContext`.
+   */
+  verificarEmail: (codigo: string) => Promise<VerificacionResultado>;
+  /** Vuelve a mandar el código. El destino lo decide el backend, no el cliente. */
+  reenviarCodigoEmail: () => Promise<{ email: string; enviado: boolean; ttlMin: number }>;
+  /** Arranca el cambio de correo: manda el código al NUEVO. La cuenta no cambia todavía. */
+  solicitarCambioEmail: (email: string, password: string) => Promise<{ email: string; enviado: boolean; ttlMin: number }>;
+  /**
+   * "Continuar con Google". Con `rol = "INSTRUCTOR"` y sin cuenta previa **no crea nada**:
+   * devuelve `modo: "COMPLETAR_INSTRUCTOR"` con la identidad, porque el alta de instructor
+   * exige documentación (RN-12). En cualquier otro caso entra (creando la cuenta si hace falta).
+   */
+  ingresarConGoogle: (idToken: string, rol?: "ALUMNO" | "INSTRUCTOR") => Promise<ResultadoGoogle>;
+}
+
+/** Ver `ingresarConGoogle`. `sesion` viene en `SESION`; `identidad` en `COMPLETAR_INSTRUCTOR`. */
+export interface ResultadoGoogle {
+  modo: "SESION" | "COMPLETAR_INSTRUCTOR" | "SIN_CUENTA";
+  sesion?: SesionUsuario;
+  cuentaNueva: boolean;
+  identidad?: IdentidadGoogle;
+}
+
+export interface IdentidadGoogle {
+  email: string;
+  nombre: string;
+  apellido: string;
+  /** Se adjunta al alta de instructor; el backend lo vuelve a verificar. */
+  idToken: string;
+}
+
+/** Lo que devuelve confirmar un código. */
+export interface VerificacionResultado {
+  email: string;
+  /** true si lo confirmado fue un cambio de correo y no el alta: cambia el cartel de éxito. */
+  cambioDeEmail: boolean;
+  /**
+   * Los permisos, recién cargados. Viajan en el resultado —además de quedar en el contexto—
+   * por la misma razón que en el login: quien llama tiene que decidir a qué área mandar al
+   * usuario sin esperar al render siguiente.
+   */
+  permisos: string[];
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -324,6 +387,96 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setCurrentUser(sesion);
     setPermisos(permisosDelRol);
     return sesion;
+  }, []);
+
+  /**
+   * Google Identity Services devuelve un ID token en el navegador y el backend lo verifica
+   * contra las claves públicas de Google. **Nunca se manda el correo desde el cliente**: eso
+   * sería dejar entrar como cualquiera con un fetch.
+   *
+   * Después es igual que el login normal: `/api/auth/me` para permisos e intereses.
+   */
+  const ingresarConGoogle = useCallback(async (idToken: string, rol?: "ALUMNO" | "INSTRUCTOR") => {
+    const respuesta = await api.post<{
+      modo: "SESION" | "COMPLETAR_INSTRUCTOR" | "SIN_CUENTA";
+      token: string | null;
+      cuentaNueva: boolean;
+      usuario: UsuarioRespuesta | null;
+      identidad: IdentidadGoogle | null;
+    }>("/api/auth/google", { idToken, rol });
+
+    // Dos casos sin sesión: instructor sin cuenta previa (vuelve la identidad para precargar
+    // el formulario; la cuenta se crea al enviarlo con la documentación, RN-12) y el botón del
+    // login contra un correo sin cuenta (no se crea nada, se manda a registrarse).
+    if (!respuesta.token || !respuesta.usuario) {
+      return {
+        modo: respuesta.modo === "SIN_CUENTA" ? ("SIN_CUENTA" as const) : ("COMPLETAR_INSTRUCTOR" as const),
+        cuentaNueva: respuesta.modo !== "SIN_CUENTA",
+        identidad: respuesta.identidad ?? undefined,
+      };
+    }
+
+    const { usuario, token, cuentaNueva } = respuesta;
+    setToken(token);
+    const completo = await api.get<UsuarioRespuesta>("/api/auth/me").catch(() => null);
+    const permisosDelRol = completo?.permisos ?? [];
+    const perfilInstructor = await fetchPerfilInstructorSiCorresponde(usuario, permisosDelRol);
+    const perfilAlumno =
+      usuario.rol === "ALUMNO" ? { usuarioId: usuario.id, intereses: completo?.intereses ?? [] } : undefined;
+    const sesion: SesionUsuario = { ...usuario, permisos: permisosDelRol, perfilAlumno, perfilInstructor };
+    setCurrentUser(sesion);
+    setPermisos(permisosDelRol);
+    return { modo: "SESION" as const, sesion, cuentaNueva };
+  }, []);
+
+  const verificarEmail = useCallback(async (codigo: string) => {
+    const respuesta = await api.post<{
+      token: string;
+      email: string;
+      emailVerificado: boolean;
+      cambioDeEmail: boolean;
+    }>("/api/auth/verificar-email", { codigo });
+    // Token NUEVO, y hay que guardarlo sí o sí: el anterior lleva el claim
+    // `emailVerificado: false` y el backend lo sigue bloqueando hasta que venza. Sin esto,
+    // confirmar el código no desbloquearía nada (ver `EmailVerificadoFilter`).
+    setToken(respuesta.token);
+
+    // Se completa la sesión como en el login. Hace falta porque el alta NO pide
+    // `/api/auth/me` (no hay permisos ni intereses que mostrar en la pantalla del código), así
+    // que hasta acá `permisos` está vacío — y de eso depende a qué área aterriza el usuario
+    // cuando termina de verificar. Sin esto, "Continuar" lo mandaba al catálogo público.
+    const completo = await api.get<UsuarioRespuesta>("/api/auth/me").catch(() => null);
+    const permisosDelRol = completo?.permisos ?? [];
+    const perfilInstructor = completo
+      ? await fetchPerfilInstructorSiCorresponde(completo, permisosDelRol)
+      : undefined;
+
+    // El correo de la sesión pasa a ser el confirmado: en un cambio es uno NUEVO, así que
+    // dejar el viejo en `currentUser` mostraría un dato falso en todas las pantallas.
+    setCurrentUser((prev) =>
+      prev
+        ? {
+            ...prev,
+            email: respuesta.email,
+            emailVerificado: respuesta.emailVerificado,
+            permisos: permisosDelRol,
+            perfilInstructor: perfilInstructor ?? prev.perfilInstructor,
+          }
+        : prev,
+    );
+    setPermisos(permisosDelRol);
+    return { email: respuesta.email, cambioDeEmail: respuesta.cambioDeEmail, permisos: permisosDelRol };
+  }, []);
+
+  const reenviarCodigoEmail = useCallback(async () => {
+    return api.post<{ email: string; enviado: boolean; ttlMin: number }>("/api/auth/verificar-email/reenviar");
+  }, []);
+
+  const solicitarCambioEmail = useCallback(async (email: string, password: string) => {
+    return api.post<{ email: string; enviado: boolean; ttlMin: number }>("/api/usuarios/me/email", {
+      email,
+      password,
+    });
   }, []);
 
   const logout = useCallback(() => {
@@ -442,6 +595,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       cambiarMiContrasenia,
       darDeBajaMiCuenta,
       reabrirSolicitud,
+      verificarEmail,
+      reenviarCodigoEmail,
+      solicitarCambioEmail,
+      ingresarConGoogle,
     }),
     // `permisos`/`puede` tienen que estar sí o sí: sin ellos el menú se queda con los
     // permisos del render anterior (la trampa de deps incompletas que ya pasó dos veces
@@ -463,6 +620,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       cambiarMiContrasenia,
       darDeBajaMiCuenta,
       reabrirSolicitud,
+      verificarEmail,
+      reenviarCodigoEmail,
+      solicitarCambioEmail,
+      ingresarConGoogle,
     ],
   );
 

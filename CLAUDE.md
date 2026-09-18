@@ -95,6 +95,50 @@ Dos reglas que salieron de este barrido:
 - **El estado de error reemplaza al estado vacío, no convive con él.** "No tenés clases", "No tenés notificaciones" o "Actividad no encontrada" son afirmaciones falsas cuando la carga falló. Donde había un ternario `length === 0 ? vacío : lista`, ahora va `errorCarga ? <ErrorReintentar/> : length === 0 ? vacío : lista`.
 - **Si la pantalla hace varias consultas que alimentan los mismos números, van juntas en un `Promise.all`.** El Dashboard y Reportes del admin, el Panel del instructor y el Perfil del alumno mostraban KPIs en cero cuando una sola de sus cuatro consultas fallaba.
 
+## Verificación de correo y "Continuar con Google"
+
+El alta manda un código de 6 dígitos por mail y **el registro ya no aterriza en el panel**: va a `/verificar-email` (`pages/auth/VerificarEmail.tsx`), que es la misma pantalla para el alta y para un cambio de correo — el backend sabe cuál es el código pendiente, el cliente no elige.
+
+- **Seis inputs, no uno.** Pegar el código del mail funciona (se reparte solo desde la casilla donde se pega), el foco avanza al tipear y retrocede con Backspace, y al completar el sexto dígito se envía sin buscar el botón.
+- **Sin confirmar no se navega a ningún lado.** `RequireEmailVerificado` envuelve a las **tres** áreas (`RequireArea` queda adentro): registrarse y volver a `/alumno`, escribir la URL a mano o usar el botón "atrás" devuelven a `/verificar-email`. El backend hace lo mismo por su cuenta (`EmailVerificadoFilter`, 403 `EMAIL_SIN_VERIFICAR`); **esta guarda es la experiencia, no la seguridad** — sin ella el usuario vería pantallas llenándose de 403.
+- **`verificarEmail` guarda el token nuevo que devuelve el backend.** El anterior lleva el claim `emailVerificado: false` y seguiría bloqueado hasta vencer. También completa la sesión con `/api/auth/me`: el alta no lo pide (no hay permisos que mostrar en la pantalla del código), así que sin eso "Continuar" aterrizaba en el catálogo público en vez de en su área.
+- **Sólo bloquea con `emailVerificado === false`.** `undefined` son los usuarios mock, que no traen el campo: tratarlo como "sin verificar" los encerraría a todos.
+
+### El correo salió del formulario de datos personales
+
+Editar el nombre es editar un dato; cambiar el correo es **cambiar la credencial de acceso**, y arrastra dos consecuencias que ese formulario no podía expresar: hay que confirmarlo con un código, y al confirmarse el correo anterior **queda libre para otra persona**. Vive en `components/CambiarEmailCard.tsx`, compartido por los perfiles de alumno, instructor y admin (la misma acción escrita tres veces se iba a desincronizar), pide la contraseña actual y explica las dos cosas.
+
+**El campo Email se sacó de los tres formularios de perfil**: el backend ahora rechaza un `PUT /api/usuarios/me` que traiga otro correo, así que dejarlo editable era ofrecer un error.
+
+### "Terminá tu registro": lo que Google no da
+
+Google devuelve nombre, apellido y correo, y nada más. Una cuenta creada así queda **sin teléfono, sin fecha de nacimiento y sin DNI**, y el usuario aterriza en la aplicación sin enterarse — hasta que algo se los pide. Peor: el teléfono es obligatorio en `PUT /api/usuarios/me`, así que su propio Perfil no se podía guardar sin completarlo primero.
+
+`pages/auth/CompletarRegistro.tsx` es la segunda mitad del formulario de registro para el camino que se la saltea. Pide teléfono y fecha de nacimiento (obligatorios), DNI (opcional, y **es la única forma de cargarlo después del alta**) y, sólo para alumnos, los intereses. Sirve igual para los dos roles.
+
+- **`RequirePerfilCompleto` manda acá y no deja salir.** Un cartel que se puede ignorar deja cuentas a medio llenar para siempre, que es justo lo que esto viene a evitar; por eso tampoco hay botón de "después", sólo cerrar sesión. Va **después** de `RequireEmailVerificado`: primero se confirma quién es el correo, después se completan los datos.
+- **La condición vive en `lib/perfil.ts` (`perfilIncompleto`) y mira `authProveedor === "GOOGLE"`.** Mirar sólo los campos vacíos encerraría a cuentas que nunca pasaron por Google — el administrador sembrado por `app.admin-seed` nace sin teléfono y quedaría atrapado en una pantalla que no le corresponde. Está en `lib/` y no junto al guardián porque también la usan Login y Registro para navegar directo, y un archivo que exporta un componente **y** una función rompe el fast refresh.
+- Login y Registro navegan a `/completar-registro` por su cuenta cuando corresponde. El guardián es la red de seguridad; navegar directo evita el parpadeo de entrar y salir de la home.
+
+### El botón de Google: en el registro, y DESPUÉS de elegir el rol
+
+`components/BotonGoogle.tsx` carga Google Identity Services y usa `renderButton`. No se maqueta uno propio: el botón de GIS es el único que Google garantiza que cumple sus *branding guidelines* (un requisito de sus términos) y el que resuelve solo el popup y los bloqueos de terceros.
+
+Está en **dos lugares, y hacen cosas distintas**:
+
+- **`Login.tsx`** — sólo para **entrar** a una cuenta que ya existe. Va **sin rol**, así que el backend responde `SIN_CUENTA` en vez de crear una: quien aprieta "Iniciar sesión con Google" espera entrar a su cuenta, no que le aparezca una nueva a medio llenar. La pantalla le dice que se registre primero y elija si es alumno o instructor.
+- **`Registro.tsx`, debajo del selector de rol** — para darse de alta. La ubicación no es estética: **qué hace el botón depende del rol elegido**, así que ofrecerlo antes de elegir sería ofrecer una acción ambigua.
+
+En el registro, según el rol:
+
+- **Alumno**: el backend crea la cuenta y entra. Se saltea el código, porque Google ya verificó el correo; de ahí va a "Terminá tu registro".
+- **Instructor**: **no crea nada**. El alta de instructor exige documentación (RN-12), así que vuelve `modo: "COMPLETAR_INSTRUCTOR"` con la identidad y el formulario se precarga: nombre y apellido de Google, el **correo de sólo lectura** (lo fija Google y el backend rechaza cualquier otro) y **sin campos de contraseña** (esa cuenta no va a tener una utilizable). El `idToken` viaja con el alta y el backend lo vuelve a verificar.
+
+Otras dos cosas del componente:
+
+- **El client id se pide a `GET /api/auth/google/config`, no a un `VITE_` propio.** Así no hay forma de ofrecer el botón contra un backend que no puede validar el token. Sin client id el componente **no renderiza nada**: mejor no ofrecer el camino que ofrecer uno que falla.
+- **El callback va en un ref, asignado dentro de un `useEffect`.** GIS se inicializa una sola vez y se queda con la función que le pasamos; tocar el ref durante el render rompe `react-hooks/refs`.
+
 ## Buscar ignora tildes: `lib/texto.ts` en TODOS los filtros
 
 `normalizar(texto)` baja a minúsculas y descompone (NFD) para borrar los diacríticos; `incluye(texto, termino)` es el helper que usan las pantallas. **No volver a escribir `.toLowerCase().includes(...)` en un filtro**: compara code points, así que `ó` y `o` son distintos y buscar "inscripcion" no encontraba "Inscripción". Ya aplicado en Gestión (usuarios y actividades), Trazabilidad, Validar instructor, Explorar, el buscador del Home, las FAQ de Ayuda y el chatbot (`lib/faqs.ts`, que tenía su propia copia de `normalizar` y ahora importa ésta). El espejo del lado del servidor es `ActividadSpecifications.conTexto`, con `translate()` en SQL.

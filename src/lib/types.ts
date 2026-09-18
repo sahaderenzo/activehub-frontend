@@ -46,6 +46,16 @@ export interface Usuario {
   estado: EstadoUsuario;
   cantidadPenalizaciones: number;
   createdAt: string;
+  /**
+   * Si confirmó su correo con el código de 6 dígitos que le llegó por mail.
+   *
+   * <p>Es lo que **reserva** la dirección: hasta que lo confirma, otra persona puede
+   * registrarse con el mismo correo (índice único parcial, V26 del backend). Opcional porque
+   * los usuarios mock de `lib/mockData.ts` no lo traen.
+   */
+  emailVerificado?: boolean;
+  /** `LOCAL` o `GOOGLE`. Una cuenta de Google no tiene contraseña ni cambia su correo acá. */
+  authProveedor?: "LOCAL" | "GOOGLE";
 }
 
 /**
