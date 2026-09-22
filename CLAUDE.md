@@ -1,5 +1,8 @@
 # CLAUDE.md — ActiveHub Frontend (Vite + React)
 
+> **BITÁCORA DEL INFORME — se mantiene siempre.** Todo cambio que pueda afectar el informe final del Proyecto Final (UTN FRM) se registra en `docs/BITACORA-INFORME.txt`, **de este repo y del backend** (copias espejo, UTF-8, sin Markdown). Formato: un bloque `ESTADO GENERAL` al principio que se **reemplaza** en cada actualización, y debajo entradas numeradas que **solo se agregan** — nunca se borra ni se reescribe una entrada anterior; si algo cambió, se agrega una entrada nueva que lo aclare. Se actualiza al terminar cada tarea o grupo de commits y antes de cerrar la sesión de trabajo.
+> Reglas que no se negocian: los números salen de **ejecutar comandos**, no de estimar (ESLint, `tsc -b`, suite del backend, conteo de pantallas), indicando el comando usado; se distingue IMPLEMENTADO / PROBADO / PARCIAL / PENDIENTE / RETIRADO y **nunca** se marca como probado algo que no se ejecutó; los textos de interfaz nuevos o modificados se copian **literales**, con el `*` de los campos obligatorios (sirven para el manual de usuario); **nunca** se escriben contraseñas, tokens ni claves. Si creás una pantalla, una historia de usuario o una regla nueva, proponé el código siguiente de su serie y marcalo como NUEVO. El formato completo de cada entrada está en la cabecera del propio archivo y en el encargo original del usuario.
+
 Convenciones de este repositorio. Leer **antes** de escribir código. Repo hermano `activehub-backend` (Spring Boot) es el único backend — su propio `CLAUDE.md` tiene el detalle de endpoints y reglas de negocio.
 
 ## Qué es
@@ -440,6 +443,35 @@ Lo segundo ya existía pero **sólo escondido en el modal de edición de `admin/
 
 Dos detalles: la pestaña de usuarios **sólo aparece con `usuarios.gestionar`** (el listado de personas es de ese módulo, y alguien puede tener `roles.configurar` sin él), y **no te podés cambiar el rol a vos mismo** — el selector se deshabilita con el motivo, espejo de la guarda del backend.
 
+## "Recomendado para vos": lo calcula el BACKEND, no la pantalla
+
+El bloque del Home dejó de ser un `useMemo` sobre el catálogo y pasa por `GET /api/alumno/recomendaciones` (`listarRecomendaciones` del `DataContext`). Lo que había antes y por qué se fue:
+
+```ts
+// ANTES — no puntuaba, no ordenaba, y rellenaba hasta tres con cualquier cosa
+const matched = actividades.filter((a) => tiposElegidos.has(a.tipoActividadId));
+return [...matched, ...rest].slice(0, 3);
+```
+
+Tres reglas al tocar esta sección:
+
+- **No reordenar ni recortar del lado del cliente.** La lista viene ya ordenada por puntaje; el `limite` va como parámetro. Ordenar acá rompe el trabajo del motor y desincroniza el orden de los motivos.
+- **`sinSenales` es un estado propio y no "lista vacía".** Significa que el alumno no declaró intereses y no tiene historial: se muestra la invitación a cargar intereses (botón **"Cargar mis intereses"** → `/alumno/perfil`), no actividades cualquiera. Son **cuatro** estados en total: cargando, error con Reintentar, `sinSenales`, y lista vacía con señales (nada encaja).
+- **Los motivos se muestran, y salen del backend.** Cada tarjeta lleva debajo hasta dos chips ("Coincide con tu interés en Yoga", "A 1,2 km tuyo"). No escribirlos acá: el motor los arma mientras puntúa, así que son la explicación real del orden.
+
+Se vuelve a pedir cuando llegan las coordenadas de `useGeolocation`, porque la cercanía es parte del puntaje; sin permiso de ubicación simplemente no participa. Y ojo con el patrón de carga: `cargarRecomendaciones` **no** hace `setCargando(true)` de forma síncrona (es `react-hooks/set-state-in-effect`) — el flag arranca en `true` y sólo el botón "Reintentar", que es un evento, lo vuelve a prender.
+
+### Las dos señales que manda el cliente
+
+`registrarInteraccion(tipo, datos)` (`POST /api/alumno/interacciones`) alimenta al motor con lo que el backend no puede deducir solo. **Nunca lanza**: se traga el error, porque es telemetría de producto y no puede romper una navegación.
+
+- **`VISTA_ACTIVIDAD`** en `alumno/Detalle.tsx`, sólo con sesión (esa pantalla también la ve el público).
+- **`BUSQUEDA`** en `alumno/Explorar.tsx`, **con un retardo de 1 segundo**. El filtrado de esa pantalla es instantáneo y no tiene botón de buscar: sin esperar se registrarían "y", "yo", "yog", "yoga" como cuatro búsquedas. El backend además ignora términos de menos de 3 caracteres y deduplica lo repetido dentro de 10 minutos.
+
+El resto de las señales (inscripciones, favoritos, reseñas, intereses) ya están en la base y el backend las lee solo: **no hay que registrarlas desde el cliente**.
+
+**La Landing pública no cambió** y no debe cambiar: sin sesión no hay a quién recomendarle nada. Sigue mostrando el catálogo y las seis mejor calificadas.
+
 ## Home del alumno (E3A-HU01)
 
 Ya cubre los criterios que faltaban: **fila de 7 filtros rápidos** (Categoría · Tipo · Nivel · Ubicación · Fecha · Horario · Precio) que no filtran en el Home sino que navegan a Explorar con la intención ya elegida (`location.state`); **buscador con resultados desplegables** debajo del campo, con "Ingresá al menos 2 caracteres" y "No se encontraron actividades con esos criterios"; **estado vacío** de "Recomendado para vos" con botón "Explorar actividades"; y **banner "No se pudo cargar el inicio" con Reintentar**, alimentado por `errorCatalogo`/`refrescarCatalogo` del `DataContext` (antes el catálogo fallaba en silencio y se veía igual que una plataforma sin actividades).
@@ -619,7 +651,7 @@ Al terminar, siempre: `rm .env.local`, matar los procesos aislados por PID exact
 **Ítem 9 (geolocalización): HECHO**, con OpenStreetMap en lugar de Google Maps — ver la sección propia más abajo. **Ítem 10 (imágenes): la galería y las fotos funcionan**, y el backend ya puede guardar en Supabase Storage en lugar del disco. **No tocó ninguna pantalla**: el bucket es privado y los archivos se siguen sirviendo por `/api/fotos/...`, así que las URLs del frontend no cambian. Queda pendiente la optimización de imágenes (redimensionado/compresión).
 
 Pendientes de verdad:
-- **8** — recomendaciones en Explorar. Hoy el filtrado es tradicional (texto sin tildes, categoría, tipo en cascada, nivel, precio, cupos, fecha, franja horaria, radio de cercanía, orden) y el "Recomendado para vos" del Home cruza los intereses declarados contra el `tipoActividadId`, pero nada aprende del comportamiento.
+**Ítem 8 (recomendaciones): HECHO** — ver "Recomendado para vos" más arriba. El filtrado de Explorar sigue siendo tradicional a propósito (texto sin tildes, categoría, tipo en cascada, nivel, precio, cupos, fecha, franja horaria, radio, orden): ahí el alumno busca algo concreto. Lo que se recomienda es el Home.
 - **11** — IA real, necesita credenciales de Groq. El chatbot flotante ya existe y responde por coincidencia de palabras contra `lib/faqs.ts`, y el "Asistente de beneficios" de `Detalle.tsx` genera el texto con plantillas por nivel. **El copy no promete IA en ningún lado**; si se enchufa el modelo, revisar que eso siga siendo cierto hasta que funcione.
 - **12** — Mercado Pago real, al final.
 - **Deploy** (Vercel) — el build de producción sale limpio y la URL del backend es `VITE_API_URL`, pero no se desplegó.

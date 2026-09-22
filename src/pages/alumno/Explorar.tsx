@@ -121,7 +121,7 @@ interface ExplorarNavState {
 export default function AlumnoExplorar() {
   const {
     actividades, tiposActividad, categorias, nivelesIntensidad, getTipoActividad, getCategoria, instructorNombre,
-    cargandoCatalogo,
+    cargandoCatalogo, registrarInteraccion,
   } = useData();
   const location = useLocation();
   const [search, setSearch] = useState("");
@@ -223,6 +223,26 @@ export default function AlumnoExplorar() {
     }
     return counts;
   }, [actividades]);
+
+  /**
+   * Lo que el alumno busca alimenta sus recomendaciones (V27 del backend).
+   *
+   * **Con retardo, no por tecla.** El filtrado de esta pantalla es instantáneo y no tiene
+   * botón de buscar, así que sin esperar se registraría "y", "yo", "yog", "yoga" como cuatro
+   * búsquedas distintas. Un segundo de quietud alcanza para que quede sólo lo que la persona
+   * terminó de escribir; el backend además ignora los términos de menos de tres caracteres y
+   * deduplica lo repetido dentro de diez minutos.
+   *
+   * `registrarInteraccion` nunca lanza: si falla, la búsqueda sigue funcionando igual.
+   */
+  useEffect(() => {
+    const term = search.trim();
+    if (term.length < 3) return;
+    const id = setTimeout(() => {
+      void registrarInteraccion("BUSQUEDA", { termino: term });
+    }, 1000);
+    return () => clearTimeout(id);
+  }, [search, registrarInteraccion]);
 
   const filtered = useMemo(() => {
     const term = search.trim();

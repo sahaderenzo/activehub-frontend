@@ -63,6 +63,41 @@ interface ActividadListResp extends ActividadCamposComunes {
   proximaClase: { fechaHora: string; estado: string; cuposMax: number; cuposOcupados: number } | null;
 }
 
+interface RecomendadaResp extends ActividadCamposComunes {
+  proximaClase: { fechaHora: string; estado: string; cuposMax: number; cuposOcupados: number } | null;
+  puntaje: number;
+  motivos: string[];
+}
+
+interface RecomendacionesResp {
+  sinSenales: boolean;
+  recomendadas: RecomendadaResp[];
+}
+
+/**
+ * Una actividad recomendada. `motivos` es lo que la pantalla muestra debajo de la tarjeta:
+ * una recomendación que no se puede explicar se lee como un error.
+ */
+export interface RecomendacionAlumno {
+  actividad: Actividad;
+  /** Puntaje del motor. No se muestra; sirve para diagnosticar el orden. */
+  puntaje: number;
+  motivos: string[];
+}
+
+export interface Recomendaciones {
+  /**
+   * El alumno no declaró intereses y no tiene historial. La pantalla muestra la invitación a
+   * cargarlos **en vez de** rellenar con actividades cualquiera, que era el comportamiento
+   * viejo.
+   */
+  sinSenales: boolean;
+  recomendaciones: RecomendacionAlumno[];
+}
+
+/** Las dos señales de comportamiento que el backend no puede deducir solo (V27). */
+export type TipoInteraccion = "VISTA_ACTIVIDAD" | "BUSQUEDA";
+
 interface ClaseResp {
   id: string;
   fechaHora: string;
@@ -671,6 +706,24 @@ interface DataContextValue {
   resolverDenuncia: (id: string, accion: AccionResolucion, detalle?: string, sancion?: SancionSuspension) => Promise<void>;
   tomarDenuncia: (id: string) => Promise<void>;
   listarMisPagos: () => Promise<MiPago[]>;
+  /**
+   * Las recomendaciones del alumno logueado, ya puntuadas y ordenadas por el backend.
+   *
+   * <p>`coords` es opcional: sin permiso de ubicación la cercanía no participa del puntaje,
+   * en vez de inventar una distancia. El orden lo decide el motor — **no reordenar acá**.
+   */
+  listarRecomendaciones: (
+    coords?: { lat: number; lng: number } | null,
+    limite?: number,
+  ) => Promise<Recomendaciones>;
+  /**
+   * Registra una señal de comportamiento. **Nunca falla hacia la pantalla**: es telemetría de
+   * producto y un error acá no puede romper una navegación ni una búsqueda.
+   */
+  registrarInteraccion: (
+    tipo: TipoInteraccion,
+    datos: { actividadId?: string; termino?: string },
+  ) => Promise<void>;
   actualizarResenia: (id: string, puntaje: number, comentario: string) => Promise<void>;
   actualizarUsuarioAdmin: (id: string, input: ActualizarUsuarioAdminInput) => Promise<void>;
   responderResenia: (
@@ -1104,6 +1157,43 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return api.get<MiPago[]>("/api/alumno/pagos");
   }, []);
 
+  const listarRecomendaciones = useCallback(
+    async (coords?: { lat: number; lng: number } | null, limite?: number): Promise<Recomendaciones> => {
+      const params = new URLSearchParams();
+      if (coords) {
+        params.set("lat", String(coords.lat));
+        params.set("lng", String(coords.lng));
+      }
+      if (limite) params.set("limite", String(limite));
+      const query = params.toString();
+      const r = await api.get<RecomendacionesResp>(
+        `/api/alumno/recomendaciones${query ? `?${query}` : ""}`,
+      );
+      return {
+        sinSenales: r.sinSenales,
+        recomendaciones: r.recomendadas.map((x) => ({
+          actividad: aplanarActividad(x, x.proximaClase ?? undefined),
+          puntaje: x.puntaje,
+          motivos: x.motivos,
+        })),
+      };
+    },
+    [],
+  );
+
+  // Se traga cualquier error a propósito: el alumno no tiene que enterarse de que una señal
+  // no se pudo guardar, y menos ver un cartel de error por abrir una actividad.
+  const registrarInteraccion = useCallback(
+    async (tipo: TipoInteraccion, datos: { actividadId?: string; termino?: string }) => {
+      try {
+        await api.post("/api/alumno/interacciones", { tipo, ...datos });
+      } catch {
+        /* señal perdida, no es un problema del usuario */
+      }
+    },
+    [],
+  );
+
   // Edición real: antes "editar" era borrar y volver a crear en dos requests sin transacción.
   const actualizarResenia = useCallback(async (id: string, puntaje: number, comentario: string) => {
     await api.put(`/api/alumno/resenas/${id}`, { puntaje, comentario });
@@ -1279,6 +1369,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       resolverDenuncia,
       tomarDenuncia,
       listarMisPagos,
+      listarRecomendaciones,
+      registrarInteraccion,
       actualizarResenia,
       actualizarUsuarioAdmin,
       responderResenia,
@@ -1371,6 +1463,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       resolverDenuncia,
       tomarDenuncia,
       listarMisPagos,
+      listarRecomendaciones,
+      registrarInteraccion,
       actualizarResenia,
       actualizarUsuarioAdmin,
       responderResenia,

@@ -95,6 +95,7 @@ export default function AlumnoDetalle() {
     listarMisInscripciones,
     listarResenasActividad,
     cargandoCatalogo,
+    registrarInteraccion,
   } = useData();
 
   const actividad = actividades.find((a) => a.id === id);
@@ -133,6 +134,18 @@ export default function AlumnoDetalle() {
     if (currentUser) listarMisFavoritos().then(setMisFavoritos).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser]);
+
+  /**
+   * Abrir el detalle es una señal de interés y alimenta las recomendaciones (V27 del backend).
+   *
+   * Sólo con sesión: es una señal **de alguien**, y esta pantalla también la ve el público.
+   * El backend deduplica la misma vista dentro de diez minutos, así que volver atrás y entrar
+   * de nuevo no convierte esta actividad en el gusto dominante del alumno.
+   */
+  useEffect(() => {
+    if (!id || !currentUser) return;
+    void registrarInteraccion("VISTA_ACTIVIDAD", { actividadId: id });
+  }, [id, currentUser, registrarInteraccion]);
 
   useEffect(() => {
     if (currentUser) listarMisInscripciones().then(setMisInscripciones).catch(() => {});

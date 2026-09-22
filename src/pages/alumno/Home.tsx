@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AlumnoNav from "../../components/AlumnoNav";
 import ActivityCard from "../../components/ActivityCard";
@@ -8,6 +8,7 @@ import { s } from "../../lib/style";
 import { incluye } from "../../lib/texto";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
+import type { RecomendacionAlumno } from "../../context/DataContext";
 import { haversineKm, useGeolocation } from "../../lib/geo";
 import type { Actividad, Categoria, TipoActividad } from "../../lib/types";
 
@@ -152,6 +153,7 @@ export default function AlumnoHome() {
     errorCatalogo,
     cargandoCatalogo,
     refrescarCatalogo,
+    listarRecomendaciones,
   } = useData();
   const [search, setSearch] = useState("");
   // Filtro rápido desplegado (criterio 1) y foco del buscador, que abre los
@@ -214,15 +216,41 @@ export default function AlumnoHome() {
 
   const intereses = currentUser?.perfilAlumno?.intereses ?? [];
 
-  // Desde V19 un interés ES un tipo de actividad, así que el cruce es por id y no por
-  // coincidencia de texto contra el nombre: eso metía falsos positivos y, al revés, se
-  // perdía las actividades cuyo nombre no repetía la palabra del interés.
-  const recomendado = useMemo(() => {
-    const tiposElegidos = new Set(intereses.map((i) => i.tipoActividadId));
-    const matched = actividades.filter((a) => tiposElegidos.has(a.tipoActividadId));
-    const rest = actividades.filter((a) => !matched.includes(a));
-    return [...matched, ...rest].slice(0, 3);
-  }, [actividades, intereses]);
+  /**
+   * Las recomendaciones las calcula el backend (`GET /api/alumno/recomendaciones`), no esta
+   * pantalla.
+   *
+   * Antes esto era un `useMemo` que filtraba el catálogo por los intereses declarados y
+   * rellenaba hasta tres con lo que hubiera: no puntuaba, no miraba nada más que los
+   * intereses, y dos alumnos con los mismos intereses veían exactamente lo mismo. Hoy el
+   * motor cruza seis señales (intereses, inscripciones, favoritos, reseñas, vistas y
+   * búsquedas) y devuelve la lista **ya ordenada**: no hay que reordenarla acá.
+   *
+   * Se vuelve a pedir cuando llegan las coordenadas, porque la cercanía es parte del puntaje.
+   */
+  const [recomendaciones, setRecomendaciones] = useState<RecomendacionAlumno[]>([]);
+  const [sinSenales, setSinSenales] = useState(false);
+  const [cargandoRecomendaciones, setCargandoRecomendaciones] = useState(true);
+  const [errorRecomendaciones, setErrorRecomendaciones] = useState(false);
+
+  // Sin `setCargando(true)` acá: el flag arranca en true y baja en el `.finally()`. Tocar
+  // estado de forma síncrona dentro del efecto es `react-hooks/set-state-in-effect`, y además
+  // la segunda corrida (cuando llegan las coordenadas) es un refresco, no una carga inicial:
+  // volver a tapar la sección con el cartel haría parpadear lo que ya está en pantalla.
+  const cargarRecomendaciones = useCallback(() => {
+    return listarRecomendaciones(geolocation.coords, 3)
+      .then((r) => {
+        setRecomendaciones(r.recomendaciones);
+        setSinSenales(r.sinSenales);
+        setErrorRecomendaciones(false);
+      })
+      .catch(() => setErrorRecomendaciones(true))
+      .finally(() => setCargandoRecomendaciones(false));
+  }, [listarRecomendaciones, geolocation.coords]);
+
+  useEffect(() => {
+    void cargarRecomendaciones();
+  }, [cargarRecomendaciones]);
 
   // Real: ordenada por distancia calculada con la ubicación del alumno, no
   // "lo que haya sobrado" de recomendado como antes. Sin permiso de ubicación,
@@ -456,23 +484,78 @@ export default function AlumnoHome() {
           <div>
             <h2 style={s("font:700 23px Space Grotesk,sans-serif;letter-spacing:-.4px;margin:0;")}>Recomendado para vos</h2>
             <p style={s("font-size:14px;color:#7A8C9E;margin:4px 0 0;")}>
+              {/* El subtítulo nombra los intereses cuando los hay, pero el motor mira mucho
+                  más que eso, así que no puede prometer que sea lo único: por eso el "y en
+                  lo que venís haciendo". */}
               {intereses.length > 0
-                ? `En base a tus intereses: ${intereses.map((i) => i.nombre).join(", ")}`
-                : "Descubrí actividades pensadas para vos"}
+                ? `En base a tus intereses (${intereses.map((i) => i.nombre).join(", ")}) y en lo que venís haciendo`
+                : "En base a tus clases, favoritos y lo que venís mirando"}
             </p>
           </div>
           <span className="ah-link" onClick={() => irAExplorar()} style={s("font-weight:700;color:#FF6A2B;cursor:pointer;font-size:14.5px;")}>
             Ver más →
           </span>
         </div>
-        {recomendado.length === 0 ? (
+        {/*
+          Cuatro estados, y los cuatro dicen algo distinto. El que más importa es `sinSenales`:
+          sin intereses ni historial NO se recomienda nada y se invita a cargar los intereses.
+          Antes, ese mismo caso rellenaba con las tres primeras actividades del catálogo y las
+          rotulaba "Recomendado para vos", que es una afirmación falsa.
+        */}
+        {cargandoRecomendaciones ? (
+          <CargandoSeccion seccion="recomendaciones" />
+        ) : errorRecomendaciones ? (
+          <div style={s("margin-bottom:42px;")}>
+            <ErrorReintentar
+              variant="bloque"
+              mensaje="No se pudieron cargar tus recomendaciones"
+              onReintentar={() => {
+                // Acá sí: es un evento del usuario, no un efecto.
+                setCargandoRecomendaciones(true);
+                void cargarRecomendaciones();
+              }}
+            />
+          </div>
+        ) : sinSenales ? (
+          <div
+            style={s(
+              "background:#fff;border:1px dashed #D6DEE7;border-radius:16px;padding:32px 20px;text-align:center;margin-bottom:42px;",
+            )}
+          >
+            <div style={s("color:#7A8C9E;font-weight:600;font-size:13.5px;margin-bottom:6px;")}>
+              Todavía no sabemos qué recomendarte.
+            </div>
+            <div style={s("color:#90A1B2;font-size:13px;line-height:1.6;margin-bottom:14px;")}>
+              Cargá tus intereses deportivos en tu perfil o anotate en tu primera clase, y acá vas a ver actividades
+              elegidas para vos.
+            </div>
+            <button
+              className="ah-btn"
+              onClick={() => navigate("/alumno/perfil")}
+              style={s(
+                "background:#FF6A2B;color:#fff;border:none;border-radius:11px;padding:11px 20px;font:700 13.5px Manrope,sans-serif;cursor:pointer;margin-right:10px;",
+              )}
+            >
+              Cargar mis intereses
+            </button>
+            <button
+              className="ah-btn"
+              onClick={() => irAExplorar()}
+              style={s(
+                "background:#fff;color:#41566B;border:1.5px solid #E1E8EF;border-radius:11px;padding:11px 20px;font:700 13.5px Manrope,sans-serif;cursor:pointer;",
+              )}
+            >
+              Explorar actividades
+            </button>
+          </div>
+        ) : recomendaciones.length === 0 ? (
           <div
             style={s(
               "background:#fff;border:1px dashed #D6DEE7;border-radius:16px;padding:32px 20px;text-align:center;margin-bottom:42px;",
             )}
           >
             <div style={s("color:#7A8C9E;font-weight:600;font-size:13.5px;margin-bottom:14px;")}>
-              Todavía no tenemos recomendaciones para vos. ¡Explorá todas las actividades!
+              Por ahora no encontramos actividades que encajen con lo que te gusta.
             </div>
             <button
               className="ah-btn"
@@ -486,8 +569,28 @@ export default function AlumnoHome() {
           </div>
         ) : (
           <div className="ah-grid-3" style={s("display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-bottom:42px;")}>
-            {recomendado.map((a) => (
-              <ActivityCard key={a.id} {...cardProps(a, getTipoActividad, getCategoria, instructorNombre, geolocation.coords)} />
+            {recomendaciones.map((r) => (
+              <div key={r.actividad.id}>
+                <ActivityCard
+                  {...cardProps(r.actividad, getTipoActividad, getCategoria, instructorNombre, geolocation.coords)}
+                />
+                {/* El porqué, en las palabras que manda el backend. Una recomendación que no
+                    se puede explicar se lee como un error. */}
+                {r.motivos.length > 0 && (
+                  <div style={s("display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;")}>
+                    {r.motivos.slice(0, 2).map((m) => (
+                      <span
+                        key={m}
+                        style={s(
+                          "background:#F1FBF9;border:1px solid #CBEDE7;color:#0C8576;border-radius:99px;padding:4px 10px;font:700 11.5px Manrope,sans-serif;",
+                        )}
+                      >
+                        {m}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
             ))}
           </div>
         )}
