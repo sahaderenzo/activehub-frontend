@@ -13,6 +13,7 @@ import Errores from "./pages/public/Errores";
 import Login from "./pages/auth/Login";
 import Registro from "./pages/auth/Registro";
 import VerificarEmail from "./pages/auth/VerificarEmail";
+import RecuperarPassword from "./pages/auth/RecuperarPassword";
 import CompletarRegistro from "./pages/auth/CompletarRegistro";
 
 import AlumnoHome from "./pages/alumno/Home";
@@ -68,6 +69,8 @@ function AppRoutes() {
           <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />
           <Route path="/registro" element={<Registro />} />
+          {/* Publica y sin sesion: se entra justamente porque no se puede entrar. */}
+          <Route path="/recuperar-password" element={<RecuperarPassword />} />
           {/* Fuera de RequireArea: se llega con sesion pero sin el correo confirmado, y la
               pantalla tiene que ser alcanzable por cualquier rol. */}
           <Route path="/verificar-email" element={<VerificarEmail />} />

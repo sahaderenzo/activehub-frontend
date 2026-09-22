@@ -250,6 +250,23 @@ interface AuthContextValue {
   /** Arranca el cambio de correo: manda el código al NUEVO. La cuenta no cambia todavía. */
   solicitarCambioEmail: (email: string, password: string) => Promise<{ email: string; enviado: boolean; ttlMin: number }>;
   /**
+   * "¿Olvidaste tu contraseña?", paso 1: pide el código al correo de la cuenta.
+   *
+   * <p>**La respuesta es la misma exista o no la cuenta** y no trae el correo de vuelta: el
+   * backend no dice si está registrado, así que la pantalla tampoco puede afirmarlo. Por eso
+   * el texto que muestra después habla en condicional ("si hay una cuenta con ese correo").
+   */
+  solicitarRecuperacionPassword: (email: string) => Promise<{ envioHabilitado: boolean; ttlMin: number }>;
+  /**
+   * Paso 2: el código más la contraseña nueva. **No inicia sesión** — devuelve el correo para
+   * precargar el login, y escribir la contraseña una vez es lo que confirma que se la guardó.
+   */
+  restablecerPassword: (
+    email: string,
+    codigo: string,
+    contraseniaNueva: string,
+  ) => Promise<{ email: string }>;
+  /**
    * "Continuar con Google". Con `rol = "INSTRUCTOR"` y sin cuenta previa **no crea nada**:
    * devuelve `modo: "COMPLETAR_INSTRUCTOR"` con la identidad, porque el alta de instructor
    * exige documentación (RN-12). En cualquier otro caso entra (creando la cuenta si hace falta).
@@ -479,6 +496,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  // Los dos pasos de "¿Olvidaste tu contraseña?" son públicos: se llaman sin token, desde una
+  // pantalla a la que se entra justamente porque no se puede entrar.
+  const solicitarRecuperacionPassword = useCallback(async (email: string) => {
+    return api.post<{ envioHabilitado: boolean; ttlMin: number }>("/api/auth/recuperar-password", { email });
+  }, []);
+
+  const restablecerPassword = useCallback(
+    async (email: string, codigo: string, contraseniaNueva: string) => {
+      return api.post<{ email: string }>("/api/auth/recuperar-password/confirmar", {
+        email,
+        codigo,
+        contraseniaNueva,
+      });
+    },
+    [],
+  );
+
   const logout = useCallback(() => {
     clearToken();
     setCurrentUser(null);
@@ -598,6 +632,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       verificarEmail,
       reenviarCodigoEmail,
       solicitarCambioEmail,
+      solicitarRecuperacionPassword,
+      restablecerPassword,
       ingresarConGoogle,
     }),
     // `permisos`/`puede` tienen que estar sí o sí: sin ellos el menú se queda con los
@@ -623,6 +659,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       verificarEmail,
       reenviarCodigoEmail,
       solicitarCambioEmail,
+      solicitarRecuperacionPassword,
+      restablecerPassword,
       ingresarConGoogle,
     ],
   );

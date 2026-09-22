@@ -130,6 +130,18 @@ Editar el nombre es editar un dato; cambiar el correo es **cambiar la credencial
 
 **El campo Email se sacó de los tres formularios de perfil**: el backend ahora rechaza un `PUT /api/usuarios/me` que traiga otro correo, así que dejarlo editable era ofrecer un error.
 
+### "¿Olvidaste tu contraseña?": `pages/auth/RecuperarPassword.tsx`
+
+El enlace del Login dejó de ser un `span` muerto: lleva a `/recuperar-password`, pantalla **pública** (ruta fuera de todas las guardas, al lado de `/login` y `/registro`) con los dos endpoints nuevos del backend, vía `solicitarRecuperacionPassword` y `restablecerPassword` de `AuthContext`.
+
+- **Tres pasos en UNA pantalla** (`correo` → `codigo` → `listo`), no tres rutas. El código vive minutos en el backend; una ruta propia invitaría a recargarla o compartirla cuando ya no sirve.
+- **La pantalla NO afirma que la cuenta exista.** El backend responde igual exista o no el correo (es a propósito, ver su CLAUDE.md), así que el texto va en condicional: *"Si hay una cuenta registrada con X, le enviamos un código de 6 dígitos"*. Decir "te enviamos un código a X" sería afirmar algo que el cliente no sabe. **No cambiar ese copy por uno afirmativo.**
+- **Las seis casillas son las mismas de `VerificarEmail`** (pegar reparte, el foco avanza y retrocede), con una diferencia: completar el sexto dígito **no envía solo**, porque falta la contraseña nueva.
+- Valida con `passwordStrength` (RN-20, espejo del backend) y que las dos contraseñas coincidan, antes de gastar el código en un request que va a fallar.
+- **Al fallar se limpia el código pero NO la contraseña ya elegida**: el error más probable es el código, y reescribir lo otro es castigo gratis.
+- **Avisa que una cuenta de Google no tiene contraseña propia** y manda al botón de Google, en vez de dejar a la persona esperando un mail que no va a llegar.
+- **Restablecer no inicia sesión**: termina en "Contraseña actualizada" + "Ir a iniciar sesión". Es lo que devuelve el backend (no manda token).
+
 ### "Terminá tu registro": lo que Google no da
 
 Google devuelve nombre, apellido y correo, y nada más. Una cuenta creada así queda **sin teléfono, sin fecha de nacimiento y sin DNI**, y el usuario aterriza en la aplicación sin enterarse — hasta que algo se los pide. Peor: el teléfono es obligatorio en `PUT /api/usuarios/me`, así que su propio Perfil no se podía guardar sin completarlo primero.
@@ -604,14 +616,14 @@ Al terminar, siempre: `rm .env.local`, matar los procesos aislados por PID exact
 
 Ítems 2 a 7 completos (Denuncias, Gestión de usuarios, Auditoría consultable, Dashboard y Reportes reales, Notificar ausencia de profesor + sistema de notificaciones + favoritos reales, ABM de Categoría).
 
-**Ítem 9 (geolocalización): HECHO**, con OpenStreetMap en lugar de Google Maps — ver la sección propia más abajo. **Ítem 10 (imágenes): la galería y las fotos funcionan** contra el disco del backend; lo pendiente es sólo mudar el almacenamiento a Supabase Storage, que no toca ninguna pantalla.
+**Ítem 9 (geolocalización): HECHO**, con OpenStreetMap en lugar de Google Maps — ver la sección propia más abajo. **Ítem 10 (imágenes): la galería y las fotos funcionan**, y el backend ya puede guardar en Supabase Storage en lugar del disco. **No tocó ninguna pantalla**: el bucket es privado y los archivos se siguen sirviendo por `/api/fotos/...`, así que las URLs del frontend no cambian. Queda pendiente la optimización de imágenes (redimensionado/compresión).
 
 Pendientes de verdad:
 - **8** — recomendaciones en Explorar. Hoy el filtrado es tradicional (texto sin tildes, categoría, tipo en cascada, nivel, precio, cupos, fecha, franja horaria, radio de cercanía, orden) y el "Recomendado para vos" del Home cruza los intereses declarados contra el `tipoActividadId`, pero nada aprende del comportamiento.
 - **11** — IA real, necesita credenciales de Groq. El chatbot flotante ya existe y responde por coincidencia de palabras contra `lib/faqs.ts`, y el "Asistente de beneficios" de `Detalle.tsx` genera el texto con plantillas por nivel. **El copy no promete IA en ningún lado**; si se enchufa el modelo, revisar que eso siga siendo cierto hasta que funcione.
 - **12** — Mercado Pago real, al final.
 - **Deploy** (Vercel) — el build de producción sale limpio y la URL del backend es `VITE_API_URL`, pero no se desplegó.
-- **Recuperar contraseña** — el enlace "¿Olvidaste tu contraseña?" de `Login.tsx` es un `span` sin `onClick`: no hay flujo detrás y nunca tuvo HU. Si se implementa, es pantalla nueva; el cambio de contraseña y el de correo del usuario autenticado sí existen.
+**Recuperar contraseña: HECHO.** El enlace de `Login.tsx` lleva a `/recuperar-password` (`pages/auth/RecuperarPassword.tsx`) — ver la sección propia más arriba.
 
 Redis quedó **descartado** (no diferido): el control de cupos se resolvió en la base.
 

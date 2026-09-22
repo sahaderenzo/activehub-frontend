@@ -229,7 +229,11 @@ export default function Login() {
           </div>
 
           <div style={s("text-align:right;margin-bottom:20px;")}>
-            <span className="ah-link" style={s("font-size:13.5px;font-weight:700;color:#12B5A5;cursor:pointer;")}>
+            <span
+              className="ah-link"
+              onClick={() => navigate("/recuperar-password")}
+              style={s("font-size:13.5px;font-weight:700;color:#12B5A5;cursor:pointer;")}
+            >
               ¿Olvidaste tu contraseña?
             </span>
           </div>
