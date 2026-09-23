@@ -157,3 +157,29 @@ body {
     font-size: 30px !important;
   }
 }
+
+/* El índice del Manual (`pages/public/Manual.tsx`) es una columna pegajosa al costado del
+   texto. Apilado sobre el contenido —que es como queda cuando `ah-grid-side` colapsa a una
+   columna— seguir pegado significaría tapar media pantalla con el índice mientras se lee. */
+@media (max-width: 820px) {
+  .ah-manual-indice {
+    position: static !important;
+    max-height: none !important;
+  }
+}
+
+/* Impresión ("Imprimir / PDF" del Manual): fuera lo que solo sirve en pantalla —encabezado,
+   buscador, índice y botones—, y los fondos de las tarjetas se imprimen tal cual para que el
+   PDF no quede en blanco y negro plano. */
+@media print {
+  .ah-no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff !important;
+  }
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

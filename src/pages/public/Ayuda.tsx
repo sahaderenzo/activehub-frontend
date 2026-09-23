@@ -201,7 +201,7 @@ export default function Ayuda() {
 
       <div style={s("max-width:1000px;margin:0 auto;padding:34px 28px 60px;")}>
         <div style={s("font:700 18px Space Grotesk;margin-bottom:16px;")}>Guías rápidas</div>
-        <div className="ah-grid-3" style={s("display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:40px;")}>
+        <div className="ah-grid-3" style={s("display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px;")}>
           {GUIAS.map((g) => (
             <div
               key={g.title}
@@ -225,6 +225,40 @@ export default function Ayuda() {
               </span>
             </div>
           ))}
+        </div>
+
+        {/* El manual completo (`/manual`). Va acá arriba, antes de las preguntas frecuentes,
+            porque responde otra cosa: las FAQ resuelven una duda puntual y el manual es el
+            recorrido entero de cada rol, que es lo que busca quien recién empieza. */}
+        <div
+          className="ah-hov"
+          onClick={() => navigate("/manual")}
+          style={s(
+            "cursor:pointer;display:flex;align-items:center;gap:18px;flex-wrap:wrap;background:linear-gradient(135deg,#0E2A47,#143A5E);border-radius:18px;padding:24px 26px;margin-bottom:40px;",
+          )}
+        >
+          <div
+            style={s(
+              "width:48px;height:48px;border-radius:12px;background:rgba(18,181,165,.22);display:flex;align-items:center;justify-content:center;flex:none;",
+            )}
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#5FE3D2" strokeWidth={2}>
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+            </svg>
+          </div>
+          <div style={s("flex:1;min-width:220px;")}>
+            <div style={s("font:700 17px Space Grotesk;color:#fff;margin-bottom:5px;")}>Manual de usuario</div>
+            <div style={s("font-size:13.5px;color:#9DB3C9;font-weight:600;line-height:1.55;")}>
+              Todo el uso de la plataforma paso a paso, por rol: Alumno, Instructor y Administrador, con el glosario de estados.
+            </div>
+          </div>
+          <span
+            className="ah-btn"
+            style={s("background:#12B5A5;color:#fff;border-radius:11px;padding:12px 20px;font:700 13.5px Manrope;white-space:nowrap;")}
+          >
+            Abrir el manual →
+          </span>
         </div>
 
         <div className="ah-grid-side-alt" style={s("display:grid;grid-template-columns:1.5fr 1fr;gap:30px;align-items:start;")}>

@@ -10,6 +10,7 @@ SPA de ActiveHub para los 3 roles (Alumno, Instructor, Administrador). React 19 
 
 ## Estructura
 - `src/pages/<rol>/Pantalla.tsx` — una pantalla por archivo, sin sub-carpetas de componentes por pantalla.
+- `src/**/*.test.ts(x)` — las pruebas, al lado de lo que prueban. `src/test/setup.ts` es la preparación común. Ver "Pruebas automatizadas" y `docs/PRUEBAS.md`.
 - `src/components/` — compartidos entre pantallas. Navegación y sesión: `DashLayout`/`DashSidebar` (instructor/admin), `AlumnoNav` (alumno), `Footer` (todas), `NotificationBell`, `Logo`, `Avatar`, `BotonGoogle`, `CambiarEmailCard`. Guardas: `RequireArea`, `RequirePermiso`, `RequireEmailVerificado`, `RequirePerfilCompleto`. Piezas de UI: `ActivityCard`, `ActivityPhoto`, `StatusBadge`, `Modal`, `Cargando`, `ErrorReintentar`, `GraficoBarras`, `LeafletMap`, `ChatbotWidget`.
 - `src/context/AuthContext.tsx` — sesión real (JWT en `localStorage`, login/logout/registro, permisos, perfil propio).
 - `src/context/DataContext.tsx` — el context grande: catálogo + todas las funciones que llaman a la API real. **Ya no tiene sección mock**: los arrays `inscripciones`/`pagos`/`penalizaciones` que vivían acá se borraron y las pantallas que los leían pasaron a la API.
@@ -18,7 +19,25 @@ SPA de ActiveHub para los 3 roles (Alumno, Instructor, Administrador). React 19 
 - `src/lib/areas.ts` — **fuente de verdad de la navegación**: áreas, pantallas y el permiso que exige cada una. Ver "Permisos en el frontend".
 - `src/lib/mockData.ts` — catálogo de demostración + helpers de formato de fecha/hora (`formatFecha`, `formatHora`, `diasHastaClase`, `disponibilidad`, `tipoIngreso`…). **Los helpers son de formato, no de datos**, y se usan en todas las pantallas aunque ya sean 100% reales.
 - `src/lib/ia.ts` — cliente del asistente con IA (`preguntarAlAsistente`) y los dos ayudantes que clasifican el error (`esIaNoDisponible`, `esSinCuota`). Ver "Chatbot flotante".
-- Resto de `src/lib/`: `texto.ts` (búsqueda sin tildes), `geo.ts` + `nominatim.ts` (distancias y direcciones), `photos.ts`, `nivelStyle.ts`, `status.ts`, `notificaciones.ts`, `resaltado.ts`, `cargaParcial.ts`, `perfil.ts`, `faqs.ts`, `ahora.ts`, `exportCsv.ts`, `exportPdf.ts`, `style.ts`.
+- Resto de `src/lib/`: `texto.ts` (búsqueda sin tildes), `geo.ts` + `nominatim.ts` (distancias y direcciones), `photos.ts`, `nivelStyle.ts`, `status.ts`, `notificaciones.ts`, `resaltado.ts`, `cargaParcial.ts`, `perfil.ts`, `faqs.ts`, `manual.ts` (el texto del Manual de usuario; ver su sección), `ahora.ts`, `exportCsv.ts`, `exportPdf.ts`, `style.ts`.
+
+## Pruebas automatizadas: existen, y una regresión reportada se cubre con una prueba
+
+Hasta este tramo el frontend **no tenía ninguna** (el backend sí: 842). Hoy hay **Vitest + jsdom + Testing Library**, 16 archivos y 142 pruebas. El detalle —qué cubre cada archivo, con qué criterio se agrega una prueba y qué falta— está en **`docs/PRUEBAS.md`**; acá va sólo lo que hay que saber antes de escribir código.
+
+- **Comandos**: `npm test` (una corrida, es lo que corre CI), `npm run test:watch`, `npm run test:coverage`, `npm run typecheck`.
+- **Dónde va cada prueba**: al lado del archivo que prueba, `algo.test.ts` / `algo.test.tsx`. No hay carpeta `__tests__`.
+- **Configuración**: el bloque `test` de `vite.config.ts` (Vitest comparte la config de Vite, por eso no se eligió Jest) y `src/test/setup.ts`, que sólo tiene lo que **toda** prueba necesita: la limpieza del DOM y los stubs de `scrollTo`, `scrollIntoView`, `matchMedia` y `requestAnimationFrame`, que jsdom no implementa. Un mock que sirve a una sola prueba va en esa prueba.
+- **Sin `globals`**: cada archivo importa `describe`/`it`/`expect`/`vi` de `"vitest"`. A cambio no hay identificadores que ESLint no conozca ni tipos globales que declarar.
+- **Las pruebas de pantalla mockean los contextos** (`vi.mock` de `AuthContext` y `DataContext`): montar los proveedores de verdad arrastra la sesión y la API, que no son lo que se está probando. Se consulta por lo que ve la persona (texto del botón, placeholder del campo), nunca por clases CSS.
+- **La regla**: si se reporta un bug y se arregla, **la prueba va en el mismo cambio**. Varias de las que hay son exactamente eso — la carrera del `onToggle` de las guías de Ayuda, el aterrizaje del admin parcial, el reporte de soporte que no guardaba nada — y el comentario de cada una dice qué se rompió.
+- **Lo que no se prueba todavía**, a propósito: el flujo de inscripción y pago, hasta que esté la integración real con Mercado Pago (hoy habla con `MockPaymentGateway` y habría que reescribirla enseguida).
+
+## CI: `.github/workflows/ci.yml`
+
+En cada push y cada Pull Request sobre `integracion` y `main` corren, en este orden y los cuatro bloqueantes: **ESLint → `tsc -b` → `npm test` → `npm run build`**. Primero lo que falla en segundos, al final lo que tarda.
+
+Las **advertencias** de ESLint no hacen fallar el trabajo; los errores sí. Hoy hay 11 advertencias, todas de `react-hooks/exhaustive-deps` y todas preexistentes: poner `--max-warnings 0` ahora dejaría la rama en rojo permanente y el chequeo se dejaría de mirar. Se agrega cuando esas 11 estén resueltas, no antes.
 
 ## Patrón establecido para cablear una pantalla a datos reales
 1. En `DataContext.tsx`: agregar la interfaz de respuesta (`XxxResp`/`Xxx`), la función (`useCallback`) que llama a `api.get/post/put/delete`, agregarla a `DataContextValue` y a **los dos lugares** del `useMemo` final (el objeto `value` y su array de deps — es fácil olvidar el segundo).
@@ -248,6 +267,19 @@ De yapa, `abrirFaq` resalta la respuesta unos segundos (`ESTILO_RESALTE` de `lib
 - **"Iniciar chat" abre el `ChatbotWidget`**, que ahora se monta también en Ayuda (es un portal, funciona en cualquier pantalla) en modo controlado.
 - **Los links del footer llegan con `state.seccion`** (`faqs` / `contacto`) y la pantalla scrollea a la sección. El efecto sólo hace `scrollIntoView`, no toca estado.
 - **La bandeja del admin es la pestaña "Soporte" de `admin/Gestion.tsx`**, detrás de `soporte.gestionar`. Muestra quién escribió (o **"Sin cuenta"** cuando `autorNombre` viene en null: la etiqueta la pone la pantalla), el detalle, el estado y la respuesta; el modal de cierre pide una respuesta opcional. La clave nueva está en `lib/areas.ts` **en los dos lugares**: en `requiere` del área admin y en el de la pantalla `gestionadmin` — sin lo segundo, alguien con sólo ese permiso abriría el área sin poder entrar a la única pantalla que lo usa.
+
+## Manual de usuario: pantalla propia (`/manual`), y el texto NO vive en el JSX
+
+El manual existía sólo como el **Anexo 8** del informe (`Manual de usuario Activehub.txt`, en la raíz del proyecto): un archivo de texto que quien usa el sistema no tiene ni va a buscar. `/ayuda` respondía dudas sueltas (FAQ, guías, chat) pero nadie podía leer el recorrido completo de su rol desde adentro de la app. `pages/public/Manual.tsx` es ese documento.
+
+- **Ruta pública**, igual que `/ayuda` y por la misma razón: crear la cuenta, verificar el correo e iniciar sesión son justo lo que hace falta cuando todavía no se pudo entrar. Está fuera de `RequireEmailVerificado`.
+- **El contenido está en `lib/manual.ts`, no en la pantalla.** Mismo criterio que `lib/faqs.ts`: el manual lo corrige quien redacta la documentación, y una corrección de redacción no tiene que obligar a leer 400 líneas de `style={s(...)}`. La pantalla sólo sabe cómo se ve cada **tipo de bloque** (`p`, `sub`, `pasos`, `lista`, `tabla`). **Si cambia un texto de la interfaz, se transcribe literal entre comillas acá también**, igual que en el anexo.
+- **El único marcado es `**término**` → negrita** (`conNegritas`). No se renderiza HTML del texto, justamente para que una corrección de redacción no pueda inyectar nada.
+- **El buscador usa `incluye` de `lib/texto.ts`** (sin tildes, como todo el resto) y filtra **apartados**, que es la unidad que ofrece el índice; una sección sin apartados que coincidan desaparece del índice y del cuerpo.
+- **El índice se resalta por scroll**, no con `IntersectionObserver`: alcanza con "cuál fue el último título que pasó el pliegue" (los `<h3>` llevan `data-apartado`). El listener se registra en un efecto y **nunca se ejecuta de forma síncrona ahí**, así que no cae en `react-hooks/set-state-in-effect`.
+- **El scroll a un apartado se hace a mano** (`- 96 px`), porque el ancla nativa queda tapada por el encabezado pegajoso. Se llega por `state.apartado` (desde Ayuda) o por el hash de la URL (`/manual#a-2-6`), que es lo que queda al compartir un enlace.
+- **`window.print()` y `.ah-no-print`**: el botón "Imprimir / PDF" imprime sólo el cuerpo; encabezado, buscador, índice y botones se ocultan con esa clase (`index.css`, bloque `@media print`). Es el mismo camino que ya usan las exportaciones a PDF del instructor y del admin: el diálogo del navegador, sin dependencias.
+- Los accesos: la tarjeta oscura "Manual de usuario" arriba de las preguntas frecuentes en `/ayuda`, y "Manual de usuario" / "Manual" en las dos variantes de `components/Footer.tsx`. Las figuras del anexo (capturas) **no** se trasladaron: quien lee el manual ya está mirando el sistema.
 
 ## "Asistente de beneficios y prevenciones": el informe lo escribe el modelo
 

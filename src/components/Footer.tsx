@@ -101,6 +101,7 @@ export default function Footer() {
           </div>
           <div style={s("display:flex;gap:18px;font-size:14px;margin-left:auto;flex-wrap:wrap;")}>
             {enlace("Ayuda", () => navigate("/ayuda"))}
+            {enlace("Manual", () => navigate("/manual"))}
             {enlace("Preguntas frecuentes", () => navigate("/ayuda", { state: { seccion: "faqs" } }))}
             {enlace("Contacto", () => navigate("/ayuda", { state: { seccion: "contacto" } }))}
           </div>
@@ -148,6 +149,8 @@ export default function Footer() {
             {/* Los tres van a `/ayuda`, que es donde vive cada cosa: las FAQ y el bloque de contacto
                 son secciones de esa misma pantalla, y el `state` dice a cuál scrollear. */}
             {enlace("Ayuda", () => navigate("/ayuda"))}
+            {/* El manual es pantalla propia (`/manual`), no una sección de /ayuda. */}
+            {enlace("Manual de usuario", () => navigate("/manual"))}
             {enlace("Preguntas frecuentes", () => navigate("/ayuda", { state: { seccion: "faqs" } }))}
             {enlace("Contacto", () => navigate("/ayuda", { state: { seccion: "contacto" } }))}
           </div>

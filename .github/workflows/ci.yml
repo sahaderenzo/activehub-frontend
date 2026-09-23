@@ -1,0 +1,60 @@
+# Control de calidad del frontend en cada cambio de la rama de integración.
+#
+# Corre lo mismo que se corre a mano antes de cerrar una tarea, en este orden: análisis
+# estático (ESLint), verificación de tipos, pruebas automatizadas y compilación de
+# producción. El orden no es casual: primero lo que falla en segundos y señala la línea
+# exacta, al final lo que tarda.
+#
+# Los cuatro pasos son BLOQUEANTES: si ESLint encuentra un error, el trabajo falla. Las
+# advertencias no lo hacen fallar (hoy hay 11, todas de react-hooks/exhaustive-deps y
+# preexistentes); si en algún momento se quiere que tampoco se permitan, se agrega
+# `--max-warnings 0` al paso de ESLint, pero recién cuando esas 11 estén resueltas, porque
+# si no la rama queda en rojo permanente y el chequeo deja de mirarse.
+name: CI
+
+on:
+  push:
+    branches: [integracion, main]
+  pull_request:
+    branches: [integracion, main]
+  # Permite correrlo a mano desde la pestaña Actions, sin tener que empujar un commit.
+  workflow_dispatch:
+
+# Un push nuevo sobre la misma rama cancela la corrida anterior: el resultado de la anterior
+# ya no le importa a nadie y los minutos de Actions son limitados.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  calidad:
+    name: ESLint, tipos, pruebas y build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Traer el código
+        uses: actions/checkout@v4
+
+      - name: Preparar Node
+        uses: actions/setup-node@v4
+        with:
+          # Vite 8 exige Node ^20.19 || ^22.13 || >=24. "22.x" resuelve siempre al último 22.
+          node-version: '22.x'
+          cache: npm
+
+      # `npm ci` y no `npm install`: instala exactamente lo que dice package-lock.json y falla
+      # si el lock está desactualizado, que es justo lo que se quiere detectar en CI.
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Análisis estático (ESLint)
+        run: npm run lint
+
+      - name: Verificación de tipos
+        run: npm run typecheck
+
+      - name: Pruebas automatizadas
+        run: npm test
+
+      - name: Compilación de producción
+        run: npm run build

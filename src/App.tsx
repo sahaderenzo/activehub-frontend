@@ -10,6 +10,7 @@ import { permisosDePantalla } from "./lib/areas";
 
 import Landing from "./pages/public/Landing";
 import Ayuda from "./pages/public/Ayuda";
+import Manual from "./pages/public/Manual";
 import Errores from "./pages/public/Errores";
 import Login from "./pages/auth/Login";
 import Registro from "./pages/auth/Registro";
@@ -79,6 +80,9 @@ function AppRoutes() {
               pero con el perfil a medias, y aplica a cualquier rol. */}
           <Route path="/completar-registro" element={<CompletarRegistro />} />
           <Route path="/ayuda" element={<Ayuda />} />
+          {/* Pública por la misma razón que /ayuda: buena parte del manual (crear la cuenta,
+              verificar el correo, iniciar sesión) hace falta justo cuando no se pudo entrar. */}
+          <Route path="/manual" element={<Manual />} />
 
           {/* Envuelve a las TRES areas: sin el correo confirmado no se navega a ningun lado.
               El backend hace lo mismo por su cuenta (`EmailVerificadoFilter`); esto evita
