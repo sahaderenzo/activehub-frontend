@@ -10,12 +10,20 @@ import { CargandoSeccion } from "../../components/Cargando";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
-import type { MiInscripcion, ReseniaActividad } from "../../context/DataContext";
-import { BASE_URL } from "../../lib/api";
+import type { InformeActividad, MiInscripcion, ReseniaActividad } from "../../context/DataContext";
+import { esIaNoDisponible, esSinCuota } from "../../lib/ia";
+import { ApiError, BASE_URL } from "../../lib/api";
 import { diasHastaClase, disponibilidad, formatFecha, formatHora, tipoIngreso } from "../../lib/mockData";
 import { formatDistanciaKm, haversineKm, useGeolocation } from "../../lib/geo";
 import type { Actividad, Clase } from "../../lib/types";
 
+// Beneficios y prevenciones de respaldo, para cuando la IA no está disponible (sin credenciales
+// de Groq, proveedor caído, backend apagado). El informe real lo escribe el modelo cruzando la
+// actividad con el perfil del alumno — ver `generarInformeActividad` del DataContext y
+// `GenerarInformeActividadService` del backend. Estos textos son lo que la pantalla mostraba antes
+// de que existiera el modelo y siguen siendo el piso: es mejor dar información genérica correcta
+// que dejar la tarjeta vacía porque un servicio externo no respondió.
+//
 // Keyed por NOMBRE de nivel, no por un tipo cerrado: desde E4Ad-HU05 el admin puede crear
 // niveles nuevos, y para esos no hay copy escrito — se usan los textos genéricos de abajo.
 const BENEFICIOS_POR_NIVEL: Record<string, string[]> = {
@@ -77,7 +85,8 @@ const FAQS = [
   },
 ];
 
-type AiState = "idle" | "loading" | "generated";
+/** `error` es "no se pudo, y no es que falte la IA": el límite de consultas o un 4xx. */
+type AiState = "idle" | "loading" | "generated" | "error";
 
 export default function AlumnoDetalle() {
   const { id } = useParams<{ id: string }>();
@@ -96,6 +105,7 @@ export default function AlumnoDetalle() {
     listarResenasActividad,
     cargandoCatalogo,
     registrarInteraccion,
+    generarInformeActividad,
   } = useData();
 
   const actividad = actividades.find((a) => a.id === id);
@@ -106,6 +116,14 @@ export default function AlumnoDetalle() {
   const [aiState, setAiState] = useState<AiState>("idle");
   const [aiActualizado, setAiActualizado] = useState(false);
   const [aiFecha, setAiFecha] = useState<string>("");
+  /** El informe del modelo. Null con `aiState === "generated"` = se cayó a los textos por nivel. */
+  const [informe, setInforme] = useState<InformeActividad | null>(null);
+  const [aiError, setAiError] = useState("");
+  /**
+   * Por qué el informe es el general y no el personalizado. Vacío = la IA simplemente no estaba;
+   * con texto = el mensaje del backend, que dice cuánto falta para que la cuota se recupere.
+   */
+  const [aiAviso, setAiAviso] = useState("");
   const [misInscripciones, setMisInscripciones] = useState<MiInscripcion[]>([]);
   const [reviewsActividad, setReviewsActividad] = useState<ReseniaActividad[]>([]);
   const [misFavoritos, setMisFavoritos] = useState<string[]>([]);
@@ -200,22 +218,50 @@ export default function AlumnoDetalle() {
 
   const intereses = currentUser?.perfilAlumno?.intereses ?? [];
 
-  const generarInforme = () => {
+  /**
+   * Pide el informe al backend, que lo genera con el modelo de lenguaje cruzando esta actividad con
+   * el perfil del alumno. La clase seleccionada viaja para que el informe pueda hablar de esa fecha
+   * y ese horario.
+   *
+   * <p><b>Si la IA no está disponible el informe igual se muestra</b>, armado con los textos por
+   * nivel de intensidad de arriba y con un aviso de que se generó sin IA. Es la misma degradación
+   * que el chatbot: un servicio externo caído no puede dejar una sección de la pantalla sin
+   * contenido. El límite de consultas (429) sí se muestra como error, porque ahí lo que corresponde
+   * es esperar y volver a intentar.
+   */
+  const pedirInforme = (esActualizacion: boolean) => {
+    if (!actividad) return;
     setAiState("loading");
-    window.setTimeout(() => {
-      setAiFecha(new Date().toISOString());
-      setAiState("generated");
-    }, 1400);
+    setAiError("");
+    generarInformeActividad(actividad.id, selectedClase?.id)
+      .then((r) => {
+        setInforme(r);
+        setAiAviso("");
+        setAiFecha(r.generadoEn);
+        setAiState("generated");
+        if (esActualizacion) setAiActualizado(true);
+      })
+      .catch((error: unknown) => {
+        // Sin IA y sin cuota terminan en el mismo lugar —el informe general— porque en los dos
+        // casos es lo mejor que se puede mostrar. Lo que cambia es el aviso: cuando es cuota, el
+        // backend ya escribió cuánto falta y ese texto se muestra tal cual (promete justamente
+        // "más abajo están los beneficios generales", que es lo que se está mostrando).
+        const sinCuota = esSinCuota(error) && error instanceof ApiError;
+        if (sinCuota || esIaNoDisponible(error)) {
+          setInforme(null);
+          setAiAviso(sinCuota ? (error as ApiError).message : "");
+          setAiFecha(new Date().toISOString());
+          setAiState("generated");
+          if (esActualizacion) setAiActualizado(true);
+          return;
+        }
+        setAiError("No pudimos generar el informe. Probá de nuevo en un momento.");
+        setAiState("error");
+      });
   };
 
-  const actualizarInforme = () => {
-    setAiState("loading");
-    window.setTimeout(() => {
-      setAiFecha(new Date().toISOString());
-      setAiState("generated");
-      setAiActualizado(true);
-    }, 1400);
-  };
+  const generarInforme = () => pedirInforme(false);
+  const actualizarInforme = () => pedirInforme(true);
 
   const ratingProm = reviewsActividad.length
     ? reviewsActividad.reduce((sum, r) => sum + r.puntaje, 0) / reviewsActividad.length
@@ -458,6 +504,23 @@ export default function AlumnoDetalle() {
                 </div>
               )}
 
+              {aiState === "error" && (
+                <div style={s("background:#fff;border:1px solid #F3D7C4;border-radius:14px;padding:22px;text-align:center;")}>
+                  <p style={s("font-size:14px;color:#B9741A;font-weight:700;line-height:1.5;margin:0 0 14px;")}>
+                    {aiError}
+                  </p>
+                  <button
+                    className="ah-btn"
+                    onClick={generarInforme}
+                    style={s(
+                      "background:#fff;border:1px solid #D6DEE7;border-radius:10px;padding:10px 18px;font:700 13px Manrope,sans-serif;color:#0E2A47;cursor:pointer;",
+                    )}
+                  >
+                    Reintentar
+                  </button>
+                </div>
+              )}
+
               {aiState === "generated" && (
                 <div style={s("background:#fff;border:1px solid #D6EDEA;border-radius:14px;padding:20px 22px;")}>
                   <div style={s("display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:16px;")}>
@@ -491,6 +554,64 @@ export default function AlumnoDetalle() {
                       Actualizar informe
                     </button>
                   </div>
+
+                  {/* El resumen es lo que el alumno vino a leer: si esta actividad le va a gustar.
+                      Los beneficios y prevenciones de abajo son el detalle. */}
+                  {informe && (
+                    <div style={s("margin-bottom:18px;")}>
+                      <div style={s("display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:9px;")}>
+                        <span
+                          style={s(
+                            `font:700 11px Manrope,sans-serif;padding:4px 10px;border-radius:99px;${
+                              informe.afinidad === "Alta"
+                                ? "color:#0C8576;background:#D7F2ED;border:1px solid #BCE7DF;"
+                                : informe.afinidad === "Media"
+                                  ? "color:#5A6B7C;background:#EEF2F6;border:1px solid #DDE5EC;"
+                                  : "color:#B9741A;background:#FFF3E0;border:1px solid #F6E2C0;"
+                            }`,
+                          )}
+                        >
+                          Afinidad {informe.afinidad.toLowerCase()}
+                        </span>
+                        <span style={s("font:600 11.5px Manrope,sans-serif;color:#9AAABA;")}>
+                          según tus intereses y lo que ya hiciste en ActiveHub
+                        </span>
+                      </div>
+                      <p style={s("font-size:14.5px;line-height:1.6;color:#36506B;font-weight:600;margin:0;")}>
+                        {informe.resumen}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* La IA no estaba: el informe son los textos por nivel de intensidad. Se dice,
+                      porque el encabezado promete que usa el perfil del alumno y acá no lo usó. */}
+                  {!informe && (
+                    <div
+                      style={s(
+                        "display:flex;align-items:flex-start;gap:9px;margin-bottom:18px;padding:10px 12px;background:#FFF9F2;border:1px solid #F6E2C0;border-radius:10px;",
+                      )}
+                    >
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#B9741A" strokeWidth={2} style={s("flex:none;margin-top:1px;")}>
+                        <circle cx="12" cy="12" r="9" />
+                        <path d="M12 16v-4M12 8h.01" />
+                      </svg>
+                      <span style={s("font:600 12px Manrope,sans-serif;color:#8A6B44;line-height:1.5;")}>
+                        {aiAviso ? (
+                          <>
+                            {aiAviso} Por ahora este informe es general para el nivel{" "}
+                            <b>{actividad.nivelIntensidad}</b> y no considera tu perfil.
+                          </>
+                        ) : (
+                          <>
+                            El asistente de IA no está disponible en este momento, así que este informe
+                            es general para el nivel <b>{actividad.nivelIntensidad}</b> y no considera
+                            tu perfil. Probá <b>Actualizar informe</b> en un rato.
+                          </>
+                        )}
+                      </span>
+                    </div>
+                  )}
+
                   <div className="ah-grid-2" style={s("display:grid;grid-template-columns:1fr 1fr;gap:22px;")}>
                     <div>
                       <div
@@ -504,7 +625,7 @@ export default function AlumnoDetalle() {
                         Beneficios para vos
                       </div>
                       <div style={s("display:flex;flex-direction:column;gap:11px;")}>
-                        {(BENEFICIOS_POR_NIVEL[actividad.nivelIntensidad] ?? BENEFICIOS_GENERICOS).map((b) => (
+                        {(informe?.beneficios.length ? informe.beneficios : BENEFICIOS_POR_NIVEL[actividad.nivelIntensidad] ?? BENEFICIOS_GENERICOS).map((b) => (
                           <div key={b} style={s("display:flex;align-items:flex-start;gap:9px;font-size:13.5px;color:#36506B;font-weight:600;line-height:1.45;")}>
                             <span style={s("width:7px;height:7px;border-radius:99px;background:#0FB8A9;flex:none;margin-top:6px;")} />
                             {b}
@@ -525,7 +646,7 @@ export default function AlumnoDetalle() {
                         Prevenciones a considerar
                       </div>
                       <div style={s("display:flex;flex-direction:column;gap:11px;")}>
-                        {(PREVENCIONES_POR_NIVEL[actividad.nivelIntensidad] ?? PREVENCIONES_GENERICAS).map((p) => (
+                        {(informe?.prevenciones.length ? informe.prevenciones : PREVENCIONES_POR_NIVEL[actividad.nivelIntensidad] ?? PREVENCIONES_GENERICAS).map((p) => (
                           <div key={p} style={s("display:flex;align-items:flex-start;gap:9px;font-size:13.5px;color:#36506B;font-weight:600;line-height:1.45;")}>
                             <span style={s("width:7px;height:7px;border-radius:99px;background:#E2A03B;flex:none;margin-top:6px;")} />
                             {p}

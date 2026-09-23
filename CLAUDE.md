@@ -10,13 +10,14 @@ SPA de ActiveHub para los 3 roles (Alumno, Instructor, Administrador). React 19 
 
 ## Estructura
 - `src/pages/<rol>/Pantalla.tsx` — una pantalla por archivo, sin sub-carpetas de componentes por pantalla.
-- `src/components/` — compartidos entre pantallas. Navegación y sesión: `DashLayout`/`DashSidebar` (instructor/admin), `AlumnoNav` (alumno), `NotificationBell`, `Logo`, `Avatar`, `BotonGoogle`, `CambiarEmailCard`. Guardas: `RequireArea`, `RequirePermiso`, `RequireEmailVerificado`, `RequirePerfilCompleto`. Piezas de UI: `ActivityCard`, `ActivityPhoto`, `StatusBadge`, `Modal`, `Cargando`, `ErrorReintentar`, `GraficoBarras`, `LeafletMap`, `ChatbotWidget`.
+- `src/components/` — compartidos entre pantallas. Navegación y sesión: `DashLayout`/`DashSidebar` (instructor/admin), `AlumnoNav` (alumno), `Footer` (todas), `NotificationBell`, `Logo`, `Avatar`, `BotonGoogle`, `CambiarEmailCard`. Guardas: `RequireArea`, `RequirePermiso`, `RequireEmailVerificado`, `RequirePerfilCompleto`. Piezas de UI: `ActivityCard`, `ActivityPhoto`, `StatusBadge`, `Modal`, `Cargando`, `ErrorReintentar`, `GraficoBarras`, `LeafletMap`, `ChatbotWidget`.
 - `src/context/AuthContext.tsx` — sesión real (JWT en `localStorage`, login/logout/registro, permisos, perfil propio).
 - `src/context/DataContext.tsx` — el context grande: catálogo + todas las funciones que llaman a la API real. **Ya no tiene sección mock**: los arrays `inscripciones`/`pagos`/`penalizaciones` que vivían acá se borraron y las pantallas que los leían pasaron a la API.
 - `src/lib/api.ts` — cliente HTTP (`api.get/post/put/delete<T>(path, body?)` + `api.postForm` para multipart), lanza `ApiError(code, message, status, fieldErrors)` en no-2xx.
 - `src/lib/types.ts` — tipos de dominio compartidos.
 - `src/lib/areas.ts` — **fuente de verdad de la navegación**: áreas, pantallas y el permiso que exige cada una. Ver "Permisos en el frontend".
 - `src/lib/mockData.ts` — catálogo de demostración + helpers de formato de fecha/hora (`formatFecha`, `formatHora`, `diasHastaClase`, `disponibilidad`, `tipoIngreso`…). **Los helpers son de formato, no de datos**, y se usan en todas las pantallas aunque ya sean 100% reales.
+- `src/lib/ia.ts` — cliente del asistente con IA (`preguntarAlAsistente`) y los dos ayudantes que clasifican el error (`esIaNoDisponible`, `esSinCuota`). Ver "Chatbot flotante".
 - Resto de `src/lib/`: `texto.ts` (búsqueda sin tildes), `geo.ts` + `nominatim.ts` (distancias y direcciones), `photos.ts`, `nivelStyle.ts`, `status.ts`, `notificaciones.ts`, `resaltado.ts`, `cargaParcial.ts`, `perfil.ts`, `faqs.ts`, `ahora.ts`, `exportCsv.ts`, `exportPdf.ts`, `style.ts`.
 
 ## Patrón establecido para cablear una pantalla a datos reales
@@ -204,13 +205,20 @@ Se monta **una sola vez** en `AlumnoNav`, no pantalla por pantalla, para que nin
 
 **Arranca colapsado a propósito.** Desplegado ocupa 340px de ancho por casi media pantalla de alto, justo encima de la grilla de actividades — que es lo que el alumno vino a mirar. Colapsado es una burbuja angosta pegada al borde derecho (`right:0`, con la esquina redondeada sólo del lado interno); el cuadro completo aparece al hacer click, y ahí el botón pasa a ser sólo la cruz de cerrar.
 
-Las respuestas salen de `lib/faqs.ts` por coincidencia de palabras, **no de un modelo**: el chatbot con Groq es el ítem 11 del roadmap y depende de credenciales. El copy no promete IA en ningún lado. `lib/faqs.ts` es la misma fuente que usa la pantalla pública de Ayuda: estaban duplicadas y se iban a desincronizar.
+**Las respuestas las da un modelo de lenguaje, y SÓLO con el manual de usuario.** Cada consulta va a `POST /api/asistente/consultas` vía `lib/ia.ts` (`preguntarAlAsistente`). El backend busca las secciones del manual relacionadas y se las pasa al modelo como única fuente, así que una pregunta que no es sobre ActiveHub —o que intenta sacarle datos del sistema— se contesta "Esa información no se encuentra disponible." y no con lo que el modelo sepa del mundo. Debajo de cada respuesta la burbuja muestra de qué secciones salió: **una respuesta que no se puede rastrear al manual se lee como inventada**, y acá el valor es justamente que no lo sea.
+
+- **`lib/faqs.ts` sigue existiendo, y no es código muerto:** es el respaldo. Si el backend devuelve **503 `IA_NO_DISPONIBLE`** (sin credenciales, proveedor caído) o hay error de red, el chat responde por coincidencia de palabras como antes y **lo aclara en el mensaje** ("Respuesta de las preguntas frecuentes: el asistente no está disponible ahora."). `esIaNoDisponible(error)` de `lib/ia.ts` es quien decide eso.
+- **El 429 `IA_SIN_CUOTA` es otra cosa y se trata distinto** (`esSinCuota`). Ahí la IA existe pero se agotó su cuota, así que **no se responde una FAQ en su lugar**: se muestra el mensaje del backend tal cual —dice cuánto falta para volver— con estilo propio y la etiqueta "El asistente necesita descansar". Contestar una FAQ sería darle algo que no preguntó y ocultarle que puede volver en un rato; quedarse en blanco es peor todavía.
+  - Mientras está en ese estado (`sinCuota`) **vuelven a aparecer los accesos rápidos a las FAQ**, y ahí **responden localmente** (`responderConFaq`) sin pegarle al backend: gastar un pedido para recibir el mismo aviso no le sirve a nadie. El flag se apaga en cuanto una consulta vuelve a funcionar.
+- El cliente vive en `lib/ia.ts` y **no** en `DataContext` a propósito: el chat es público (la burbuja también está en `/ayuda`, sin sesión), así que no es "datos del usuario logueado". El informe de beneficios, que sí es del alumno, sí está en el Context.
+- **El historial lo manda el cliente**, recortado a los últimos 6 turnos: el chat no tiene estado en el servidor y no se guarda ninguna conversación. El saludo inicial no viaja — no lo dijo nadie, lo escribió la pantalla.
+- `lib/faqs.ts` es además la misma fuente que usa la pantalla pública de Ayuda: estaban duplicadas y se iban a desincronizar.
 
 **Se puede usar suelto o controlado.** Sin props se abre y cierra solo (así lo monta `AlumnoNav`); con `abierto` + `onAbiertoChange` lo maneja la pantalla. Lo segundo existe para el botón "Iniciar chat" de Ayuda, que necesita abrir un widget que ya está montado.
 
 ## Soporte: toda la sección andaba en falso
 
-Reportado: *"toda la sección de Soporte no funciona"*. Era literal — **siete controles muertos** entre el footer de la Landing y `/ayuda`:
+Reportado: *"toda la sección de Soporte no funciona"*. Era literal — **siete controles muertos** entre el pie de página (entonces sólo en la Landing; hoy en todas, ver `components/Footer.tsx`) y `/ayuda`:
 
 | Dónde | Qué pasaba |
 |---|---|
@@ -240,6 +248,30 @@ De yapa, `abrirFaq` resalta la respuesta unos segundos (`ESTILO_RESALTE` de `lib
 - **"Iniciar chat" abre el `ChatbotWidget`**, que ahora se monta también en Ayuda (es un portal, funciona en cualquier pantalla) en modo controlado.
 - **Los links del footer llegan con `state.seccion`** (`faqs` / `contacto`) y la pantalla scrollea a la sección. El efecto sólo hace `scrollIntoView`, no toca estado.
 - **La bandeja del admin es la pestaña "Soporte" de `admin/Gestion.tsx`**, detrás de `soporte.gestionar`. Muestra quién escribió (o **"Sin cuenta"** cuando `autorNombre` viene en null: la etiqueta la pone la pantalla), el detalle, el estado y la respuesta; el modal de cierre pide una respuesta opcional. La clave nueva está en `lib/areas.ts` **en los dos lugares**: en `requiere` del área admin y en el de la pantalla `gestionadmin` — sin lo segundo, alguien con sólo ese permiso abriría el área sin poder entrar a la única pantalla que lo usa.
+
+## "Asistente de beneficios y prevenciones": el informe lo escribe el modelo
+
+La sección del detalle de actividad (`alumno/Detalle.tsx`) ya no arma el texto con plantillas: llama a `generarInformeActividad(actividadId, claseId)` del `DataContext` (`POST /api/alumno/actividades/{id}/informe`), que devuelve `InformeActividad` — `resumen`, `afinidad` (`Alta`/`Media`/`Baja`), `beneficios`, `prevenciones` y `generadoEn`.
+
+- **El resumen y la afinidad son lo nuevo y lo que el alumno vino a leer**: si esta actividad le va a gustar. Los beneficios y prevenciones son el detalle. La afinidad sale de cruzar la actividad con sus intereses y con lo que ya hizo en la plataforma; es una etiqueta, no un puntaje, y **no condiciona ni bloquea la inscripción**.
+- **`BENEFICIOS_POR_NIVEL` / `PREVENCIONES_POR_NIVEL` siguen en el archivo como respaldo, no como fuente.** Con 503 `IA_NO_DISPONIBLE` (o error de red) el informe se muestra igual con esos textos y un aviso de que es general para el nivel y no considera el perfil. **Hay que decirlo**: el encabezado promete que usa el perfil del alumno, y en ese caso no lo usó. Siguen keyed por nombre de nivel, con su versión genérica (el admin puede crear niveles).
+- **El 429 `IA_SIN_CUOTA` también muestra el informe general, no un cartel de error**, y el aviso es el mensaje del backend (`aiAviso`), que dice cuánto falta. El motivo es literal: ese mensaje termina con "podés ver los beneficios y prevenciones generales de la actividad más abajo", así que **esa promesa tiene que ser verdadera en la pantalla**. Si en cambio se mostrara un estado de error vacío, el texto estaría mandando a algo que no está.
+- **`AiState` tiene un cuarto valor, `"error"`**, para lo que sí es una falla (un 4xx que no es cuota): ahí va el cartel con "Reintentar".
+- **La clase seleccionada viaja** (`selectedClase?.id`) para que el informe pueda hablar de esa fecha y ese horario. **Nada del perfil se manda desde el cliente**: sale del token y de la base, para que nadie pueda pedir un informe con datos de salud inventados.
+- El aviso legal al pie **no se toca**: "Informe orientativo generado por IA. **No es un diagnóstico médico** ni una indicación clínica, y **no condiciona ni bloquea tu inscripción**…". El prompt del backend está escrito para que eso siga siendo verdad; si cambiás uno, mirá el otro.
+- Sigue sin persistirse ("Informe guardado para esta sesión"): ver el CLAUDE.md del backend para por qué.
+
+## `components/Footer.tsx`: el pie va en TODAS las pantallas, montado una sola vez
+
+Estaba escrito dentro de `pages/public/Landing.tsx` y se veía nada más que ahí: el resto de la aplicación —incluida `/ayuda`, el login y el registro— terminaba en el aire, sin los accesos a Ayuda, preguntas frecuentes y contacto, que es justo lo que alguien busca al final de una pantalla en la que se quedó trabado.
+
+**Se monta en `App.tsx`, después de `<Routes>` y fuera de ellas.** Es el mismo criterio que `ChatbotWidget`: si cada pantalla tuviera que acordarse de ponerlo, la próxima que se agregue se lo olvida. **No hay que agregarlo a ninguna pantalla nueva** — ya está.
+
+- **Dos variantes, y las elige la ruta, no un prop.** Completo (las cuatro columnas de la landing) en el área pública y la del alumno; **compacto** (logo + los tres enlaces de soporte + copyright) en `/instructor` y `/admin`: son herramientas de trabajo, y un pie con "Ser instructor" y "Registrarse" abajo del panel de administración no le sirve a nadie. La decisión se toma dentro del componente por el `pathname`, así no hay que tocar `App.tsx` ni los dos layouts cuando cambie.
+- **El pie se adapta a la sesión.** Sin sesión: "Iniciar sesión" y "Registrarse". Con sesión: "Mi perfil", y **cuál perfil lo deciden los permisos** (`puedeEntrarA` de `lib/areas.ts`), no el rol ni la ruta — un instructor mirando `/ayuda` tiene que ir al suyo, y mandarlo a `/alumno/perfil` lo rebota en `RequireArea`. "Ser instructor" desaparece con sesión abierta: el registro pide crear otra cuenta.
+- **"Categorías" depende de dónde estás.** La sección vive en la landing: ahí scrollea, y desde cualquier otra pantalla navega a `/` con `state.seccion = "categorias"` y **la landing hace el scroll** (un `useEffect` que sólo scrollea, con un `setTimeout` corto porque recién montada las tarjetas del catálogo todavía están moviendo la sección de lugar). Es el mismo mecanismo que ya usaba `/ayuda` para "Preguntas frecuentes" y "Contacto".
+- **La barra inferior reserva 150px a la derecha** para la burbuja "¿Dudas?", que es `position:fixed` en esa esquina: sin ese espacio le queda encima al "Hecho en Mendoza".
+- Sigue valiendo la regla de la sección de Soporte: **los enlaces navegan, no decoran**. Nada de texto con cursor de mano sin `onClick`.
 
 ## El chip de usuario del `AlumnoNav` es un menú, no un link
 
@@ -652,7 +684,7 @@ Al terminar, siempre: `rm .env.local`, matar los procesos aislados por PID exact
 
 Pendientes de verdad:
 **Ítem 8 (recomendaciones): HECHO** — ver "Recomendado para vos" más arriba. El filtrado de Explorar sigue siendo tradicional a propósito (texto sin tildes, categoría, tipo en cascada, nivel, precio, cupos, fecha, franja horaria, radio, orden): ahí el alumno busca algo concreto. Lo que se recomienda es el Home.
-- **11** — IA real, necesita credenciales de Groq. El chatbot flotante ya existe y responde por coincidencia de palabras contra `lib/faqs.ts`, y el "Asistente de beneficios" de `Detalle.tsx` genera el texto con plantillas por nivel. **El copy no promete IA en ningún lado**; si se enchufa el modelo, revisar que eso siga siendo cierto hasta que funcione.
+**Ítem 11 (IA real): HECHO y verificado contra Groq por API.** El chatbot responde con un modelo usando el manual de usuario como única fuente (`lib/ia.ts`) y el "Asistente de beneficios" pide su informe al backend. **El copy ahora sí promete IA** (etiqueta "IA" en el encabezado de la burbuja, "Responde según el manual de usuario"), y eso es correcto porque hay modelo detrás — con dos condiciones que hay que mantener: **cuando no está, las dos pantallas lo dicen** y vuelven a su comportamiento anterior; **cuando se agotó la cuota, avisan cuánto falta** en vez de quedarse en blanco. Lo único que falta del ítem es probarlo en el navegador (la clave ya está cargada en el backend del usuario).
 - **12** — Mercado Pago real, al final.
 - **Deploy** (Vercel) — el build de producción sale limpio y la URL del backend es `VITE_API_URL`, pero no se desplegó.
 **Recuperar contraseña: HECHO.** El enlace de `Login.tsx` lleva a `/recuperar-password` (`pages/auth/RecuperarPassword.tsx`) — ver la sección propia más arriba.
@@ -663,7 +695,8 @@ Redis quedó **descartado** (no diferido): el control de cupos se resolvió en l
 Los tres dashboards, los intereses del alumno, las listas de inscripciones/pagos/penalizaciones **y la Landing** ya son reales. Lo único mock que queda:
 - `AuthContext.users` / `updateUsuario`: el "directorio" de usuarios en `localStorage`, que sobrevive porque la API no expone un listado público de personas. Las pantallas admin ya usan `listarUsuariosAdmin()`.
 - El catálogo de demo de `lib/mockData.ts` (`actividades`, `clases`, `usuarios`, `perfiles*`), que alimenta ese directorio. Sus **helpers de formato** (`formatFecha`, `formatHora`, `disponibilidad`, `tipoIngreso`…) no son mock y se usan en todas las pantallas.
-- El "Asistente de beneficios" de `Detalle.tsx`, simulado con `setTimeout` hasta que exista el ítem 11 (IA real).
+
+El "Asistente de beneficios" de `Detalle.tsx` **dejó de ser simulado**: ya no hay `setTimeout`, pide el informe al backend. Sus textos por nivel de intensidad quedaron como respaldo para cuando la IA no está disponible, y la pantalla avisa cuando está mostrando eso.
 
 ## Verificación visual
 Para cualquier cambio de UI, levantar el preview (instancia aislada de arriba) y probarlo en el navegador — un `tsc` en verde no prueba que la pantalla funcione. Ver `<preview_tools>`/`<verification_workflow>` del sistema para el flujo completo (console errors, network requests, screenshot final).

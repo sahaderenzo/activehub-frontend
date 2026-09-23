@@ -3,6 +3,14 @@ import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { s } from "../lib/style";
 import { FAQS, buscarFaq } from "../lib/faqs";
+import {
+  MAX_CARACTERES_CONSULTA,
+  esIaNoDisponible,
+  esSinCuota,
+  preguntarAlAsistente,
+  type TurnoAsistente,
+} from "../lib/ia";
+import { ApiError } from "../lib/api";
 
 /**
  * Botón flotante de ayuda en la esquina inferior derecha de las pantallas del alumno
@@ -33,16 +41,36 @@ import { FAQS, buscarFaq } from "../lib/faqs";
  * ancho por casi media pantalla de alto, y sobre la grilla de actividades del alumno eso es
  * justo lo que vino a mirar. El cuadro completo aparece recién al hacer click.
  *
- * <p>Las respuestas salen de `lib/faqs.ts` por coincidencia de palabras, no de un modelo: el
- * chatbot con IA es el ítem 11 del roadmap y depende de credenciales de Groq. El copy no
- * promete IA en ningún lado, y cuando no encuentra respuesta deriva a la pantalla de Ayuda.
+ * <h2>Las respuestas las da un modelo, y SÓLO con el manual de usuario</h2>
+ *
+ * Cada consulta va a `POST /api/asistente/consultas` (slice `preguntaralasistente`), que busca las
+ * secciones del manual de usuario relacionadas y se las pasa al modelo como única fuente. Por eso
+ * una pregunta que no es sobre ActiveHub —o que intenta sacarle datos del sistema— se contesta con
+ * "Esa información no se encuentra disponible." y no con lo que el modelo sepa del mundo.
+ *
+ * <p><b>Si la IA no está (sin credenciales, proveedor caído, backend apagado), el chat sigue
+ * andando:</b> se responde con `lib/faqs.ts` por coincidencia de palabras, que es exactamente lo que
+ * hacía antes de que existiera el modelo. Es el motivo de que ese archivo siga existiendo, y de que
+ * el backend devuelva 503 `IA_NO_DISPONIBLE` en vez de un error genérico. `lib/faqs.ts` es además
+ * la misma fuente que usa la pantalla pública de Ayuda: estaban duplicadas y se iban a
+ * desincronizar.
  */
 
 const ETIQUETA = "¿Dudas?";
 
+/** Lo que se le dice a quien preguntó algo que el manual no cubre. */
+const SIN_RESPUESTA =
+  "No encontré una respuesta para eso. Podés ver todas las preguntas frecuentes o escribirle al equipo desde la pantalla de Ayuda.";
+
 interface Mensaje {
   de: "bot" | "yo";
   texto: string;
+  /** Secciones del manual que respaldan la respuesta. Sólo en los mensajes del bot. */
+  secciones?: string[];
+  /** true si esta respuesta salió de las FAQs locales porque la IA no estaba disponible. */
+  sinIa?: boolean;
+  /** true si es el aviso de "me quedé sin cuota, volvé en X". Se pinta distinto. */
+  sinCuota?: boolean;
 }
 
 /**
@@ -66,34 +94,96 @@ export default function ChatbotWidget({ abierto: abiertoProp, onAbiertoChange }:
     onAbiertoChange?.(siguiente);
   };
   const [borrador, setBorrador] = useState("");
+  const [pensando, setPensando] = useState(false);
+  /**
+   * El asistente se quedó sin cuota. Mientras está en true se vuelven a mostrar los accesos a las
+   * preguntas frecuentes: es lo único que le sirve a la persona hasta que la cuota se recupere.
+   * Se apaga en cuanto una consulta vuelve a funcionar.
+   */
+  const [sinCuota, setSinCuota] = useState(false);
   const [mensajes, setMensajes] = useState<Mensaje[]>([
     {
       de: "bot",
       texto:
-        "¡Hola! Puedo ayudarte con inscripciones, pagos, reseñas y denuncias. Escribime tu consulta o elegí una de abajo.",
+        "¡Hola! Puedo responderte cualquier duda sobre cómo usar ActiveHub: inscripciones, pagos, reseñas, denuncias y más. Escribime tu consulta o elegí una de abajo.",
     },
   ]);
   const finRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (abierto) finRef.current?.scrollIntoView({ block: "end" });
-  }, [mensajes, abierto]);
+  }, [mensajes, pensando, abierto]);
 
-  const responder = (consulta: string) => {
-    const texto = consulta.trim();
-    if (!texto) return;
-    const faq = buscarFaq(texto);
+  /**
+   * El historial que se le manda al modelo: los turnos ya intercambiados, en el formato del
+   * backend. Se arma acá y no en `lib/ia.ts` porque es la traducción entre la forma que tiene la
+   * conversación en la pantalla y la que entiende la API.
+   */
+  const historialPara = (previos: Mensaje[]): TurnoAsistente[] =>
+    previos
+      // El saludo inicial no es parte de la conversación: no lo dijo nadie, lo escribió la pantalla.
+      .slice(1)
+      .map((m) => ({ deElAsistente: m.de === "bot", texto: m.texto }));
+
+  /**
+   * Responde una FAQ **sin pasar por el modelo**. Es lo que hacen los accesos rápidos mientras la
+   * cuota está agotada: gastar el pedido para recibir el mismo aviso de espera no le sirve a nadie,
+   * y la respuesta ya está escrita en `lib/faqs.ts`.
+   */
+  const responderConFaq = (pregunta: string, respuesta: string) => {
     setMensajes((prev) => [
       ...prev,
-      { de: "yo", texto },
-      {
-        de: "bot",
-        texto:
-          faq?.a ??
-          "No encontré una respuesta para eso. Podés ver todas las preguntas frecuentes o escribirle al equipo desde la pantalla de Ayuda.",
-      },
+      { de: "yo", texto: pregunta },
+      { de: "bot", texto: respuesta, sinIa: true },
     ]);
+  };
+
+  const responder = async (consulta: string) => {
+    const texto = consulta.trim();
+    if (!texto || pensando) return;
+
+    const historial = historialPara(mensajes);
+    setMensajes((prev) => [...prev, { de: "yo", texto }]);
     setBorrador("");
+    setPensando(true);
+
+    try {
+      const r = await preguntarAlAsistente(texto, historial);
+      setSinCuota(false);
+      setMensajes((prev) => [
+        ...prev,
+        {
+          de: "bot",
+          texto: r.sinInformacion ? SIN_RESPUESTA : r.respuesta,
+          secciones: r.sinInformacion ? [] : r.secciones,
+        },
+      ]);
+    } catch (error) {
+      if (esSinCuota(error)) {
+        // Se agotó la cuota (del proveedor o la de esta persona). El mensaje del backend dice
+        // cuánto falta y deriva a las preguntas frecuentes, así que se muestra tal cual, y se
+        // vuelven a ofrecer los accesos a las FAQ: es lo único que sirve mientras tanto.
+        setMensajes((prev) => [...prev, { de: "bot", texto: (error as ApiError).message, sinCuota: true }]);
+        setSinCuota(true);
+      } else if (esIaNoDisponible(error)) {
+        // Sin modelo, el chat vuelve a ser el de antes: coincidencia de palabras contra las FAQs.
+        const faq = buscarFaq(texto);
+        setMensajes((prev) => [
+          ...prev,
+          { de: "bot", texto: faq?.a ?? SIN_RESPUESTA, sinIa: true },
+        ]);
+      } else {
+        setMensajes((prev) => [
+          ...prev,
+          {
+            de: "bot",
+            texto: "Se me complicó procesar esa consulta. Probá escribirla de otra forma.",
+          },
+        ]);
+      }
+    } finally {
+      setPensando(false);
+    }
   };
 
   return createPortal(
@@ -128,9 +218,18 @@ export default function ChatbotWidget({ abierto: abiertoProp, onAbiertoChange }:
           )}
         >
           <div style={s("background:linear-gradient(135deg,#0FB8A9,#12B5A5);padding:16px 18px;color:#fff;")}>
-            <div style={s("font:700 15px Space Grotesk,sans-serif;")}>Asistente de ActiveHub</div>
+            <div style={s("font:700 15px Space Grotesk,sans-serif;display:flex;align-items:center;gap:8px;")}>
+              Asistente de ActiveHub
+              <span
+                style={s(
+                  "font:700 10px Manrope,sans-serif;background:rgba(255,255,255,.22);border:1px solid rgba(255,255,255,.35);padding:2px 7px;border-radius:99px;letter-spacing:.3px;",
+                )}
+              >
+                IA
+              </span>
+            </div>
             <div style={s("font-size:12.5px;color:rgba(255,255,255,.85);font-weight:600;margin-top:2px;")}>
-              Respuestas a las consultas más frecuentes
+              Responde según el manual de usuario
             </div>
           </div>
 
@@ -140,23 +239,68 @@ export default function ChatbotWidget({ abierto: abiertoProp, onAbiertoChange }:
                 key={i}
                 style={s(
                   m.de === "bot"
-                    ? "align-self:flex-start;max-width:88%;background:#F2F5F9;color:#33485E;border-radius:12px 12px 12px 4px;padding:10px 12px;font:600 13px Manrope,sans-serif;line-height:1.5;"
-                    : "align-self:flex-end;max-width:88%;background:#0E2A47;color:#fff;border-radius:12px 12px 4px 12px;padding:10px 12px;font:600 13px Manrope,sans-serif;line-height:1.5;",
+                    ? "align-self:flex-start;max-width:88%;display:flex;flex-direction:column;gap:5px;"
+                    : "align-self:flex-end;max-width:88%;display:flex;flex-direction:column;gap:5px;",
                 )}
               >
-                {m.texto}
+                <div
+                  style={s(
+                    m.de !== "bot"
+                      ? "background:#0E2A47;color:#fff;border-radius:12px 12px 4px 12px;padding:10px 12px;font:600 13px Manrope,sans-serif;line-height:1.5;"
+                      : m.sinCuota
+                        ? // El aviso de cuota agotada no es una respuesta: se distingue para que no
+                          // se lea como si el asistente hubiera contestado la pregunta.
+                          "background:#FFF9F2;color:#8A6B44;border:1px solid #F6E2C0;border-radius:12px 12px 12px 4px;padding:10px 12px;font:600 13px Manrope,sans-serif;line-height:1.5;white-space:pre-wrap;"
+                        : "background:#F2F5F9;color:#33485E;border-radius:12px 12px 12px 4px;padding:10px 12px;font:600 13px Manrope,sans-serif;line-height:1.5;white-space:pre-wrap;",
+                  )}
+                >
+                  {m.sinCuota && (
+                    <span style={s("display:block;font:700 11px Manrope,sans-serif;color:#B9741A;margin-bottom:4px;")}>
+                      El asistente necesita descansar
+                    </span>
+                  )}
+                  {m.texto}
+                </div>
+                {/* De dónde salió la respuesta. Una respuesta que no se puede rastrear al manual
+                    se lee como inventada, y acá justamente el valor es que no lo sea. */}
+                {m.secciones && m.secciones.length > 0 && (
+                  <span style={s("font:600 10.5px Manrope,sans-serif;color:#9AAABA;line-height:1.4;")}>
+                    Manual de usuario · {m.secciones.slice(0, 2).join(" · ")}
+                  </span>
+                )}
+                {m.sinIa && (
+                  <span style={s("font:600 10.5px Manrope,sans-serif;color:#B9741A;line-height:1.4;")}>
+                    Respuesta de las preguntas frecuentes: el asistente no está disponible ahora.
+                  </span>
+                )}
               </div>
             ))}
+            {pensando && (
+              <div
+                style={s(
+                  "align-self:flex-start;background:#F2F5F9;color:#7A8C9E;border-radius:12px 12px 12px 4px;padding:10px 12px;font:600 13px Manrope,sans-serif;display:flex;align-items:center;gap:8px;",
+                )}
+              >
+                <span
+                  style={s(
+                    "display:inline-block;width:13px;height:13px;border:2px solid #D6DEE7;border-top-color:#12B5A5;border-radius:99px;animation:ahspin 0.8s linear infinite;",
+                  )}
+                />
+                Buscando en el manual…
+              </div>
+            )}
             <div ref={finRef} />
           </div>
 
-          {mensajes.length === 1 && (
+          {/* Al principio (para arrancar la conversación) y cuando se agotó la cuota (para que
+              tenga algo que hacer mientras espera). */}
+          {(mensajes.length === 1 || sinCuota) && !pensando && (
             <div style={s("padding:0 14px 12px;display:flex;flex-direction:column;gap:6px;")}>
               {FAQS.slice(0, 3).map((f) => (
                 <button
                   key={f.q}
                   className="ah-btn"
-                  onClick={() => responder(f.q)}
+                  onClick={() => (sinCuota ? responderConFaq(f.q, f.a) : void responder(f.q))}
                   style={s(
                     "text-align:left;background:#fff;border:1px solid #E2E9F0;border-radius:10px;padding:8px 11px;font:600 12.5px Manrope,sans-serif;color:#41566B;cursor:pointer;line-height:1.4;",
                   )}
@@ -170,14 +314,16 @@ export default function ChatbotWidget({ abierto: abiertoProp, onAbiertoChange }:
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              responder(borrador);
+              void responder(borrador);
             }}
             style={s("border-top:1px solid #F1F4F8;padding:10px 12px;display:flex;gap:8px;align-items:center;")}
           >
             <input
               value={borrador}
               onChange={(e) => setBorrador(e.target.value)}
-              placeholder="Escribí tu consulta…"
+              maxLength={MAX_CARACTERES_CONSULTA}
+              disabled={pensando}
+              placeholder={pensando ? "Esperando la respuesta…" : "Escribí tu consulta…"}
               style={s(
                 "flex:1;border:1px solid #E2E9F0;border-radius:10px;padding:9px 11px;font:600 13px Manrope,sans-serif;color:#0E2A47;outline:none;",
               )}
@@ -185,11 +331,11 @@ export default function ChatbotWidget({ abierto: abiertoProp, onAbiertoChange }:
             <button
               type="submit"
               className="ah-btn"
-              disabled={!borrador.trim()}
+              disabled={!borrador.trim() || pensando}
               style={s(
                 `flex:none;width:36px;height:36px;border-radius:10px;border:none;background:${
-                  borrador.trim() ? "#FF6A2B" : "#F1C7B4"
-                };cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;`,
+                  borrador.trim() && !pensando ? "#FF6A2B" : "#F1C7B4"
+                };cursor:${pensando ? "default" : "pointer"};display:flex;align-items:center;justify-content:center;padding:0;`,
               )}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.2}>

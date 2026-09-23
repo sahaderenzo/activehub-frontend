@@ -5,6 +5,7 @@ import RequireArea from "./components/RequireArea";
 import RequireEmailVerificado from "./components/RequireEmailVerificado";
 import RequirePerfilCompleto from "./components/RequirePerfilCompleto";
 import RequirePermiso from "./components/RequirePermiso";
+import Footer from "./components/Footer";
 import { permisosDePantalla } from "./lib/areas";
 
 import Landing from "./pages/public/Landing";
@@ -178,6 +179,11 @@ function AppRoutes() {
           <Route path="/404" element={<Errores />} />
           <Route path="*" element={<Navigate to="/404" replace />} />
         </Routes>
+        {/* El pie va acá, FUERA de las rutas y una sola vez: aparece debajo de cualquier pantalla
+            sin que ninguna tenga que acordarse de ponerlo, que es el mismo criterio con el que
+            `ChatbotWidget` se monta una sola vez. Vivía dentro de `Landing.tsx` y se veía nada más
+            que ahí. Elige su variante (completa o compacta) según la ruta — ver `Footer.tsx`. */}
+        <Footer />
     </BrowserRouter>
   );
 }

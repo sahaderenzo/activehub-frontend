@@ -89,7 +89,8 @@ export default function Ayuda() {
 
   const homeByRol: Record<string, string> = { ALUMNO: "/alumno", INSTRUCTOR: "/instructor", ADMIN: "/admin" };
 
-  // Los links "Preguntas frecuentes" y "Contacto" del footer de la Landing llegan acá con la
+  // Los links "Preguntas frecuentes" y "Contacto" del pie de página (`components/Footer.tsx`, que
+  // hoy está en todas las pantallas y no sólo en la Landing) llegan acá con la
   // sección pedida. Solo scrollea (no toca estado), así que no cae en `set-state-in-effect`.
   useEffect(() => {
     const seccion = (location.state as { seccion?: string } | null)?.seccion;

@@ -98,6 +98,23 @@ export interface Recomendaciones {
 /** Las dos señales de comportamiento que el backend no puede deducir solo (V27). */
 export type TipoInteraccion = "VISTA_ACTIVIDAD" | "BUSQUEDA";
 
+/**
+ * El informe del "Asistente de beneficios y prevenciones" del detalle de actividad, generado por
+ * el modelo de lenguaje a partir de la actividad y del perfil del alumno.
+ *
+ * <p><b>Es orientativo y no es un diagnóstico médico</b>: el backend lo genera con reglas explícitas
+ * para que no lo sea (ver `GenerarInformeActividadService`) y la pantalla lo aclara al pie. No
+ * condiciona ni bloquea la inscripción.
+ */
+export interface InformeActividad {
+  resumen: string;
+  /** Cuánto pega la actividad con lo que el alumno ya eligió. Etiqueta, no puntaje. */
+  afinidad: "Alta" | "Media" | "Baja";
+  beneficios: string[];
+  prevenciones: string[];
+  generadoEn: string;
+}
+
 interface ClaseResp {
   id: string;
   fechaHora: string;
@@ -724,6 +741,18 @@ interface DataContextValue {
     tipo: TipoInteraccion,
     datos: { actividadId?: string; termino?: string },
   ) => Promise<void>;
+  /**
+   * Pide el informe de beneficios y prevenciones de una actividad para el alumno logueado.
+   *
+   * <p>`claseId` es opcional y sirve para que el informe hable de la fecha y el horario que el
+   * alumno está mirando; sin ella el backend usa la próxima clase. **Nada del perfil del alumno se
+   * manda desde acá**: sale del token y de la base, para que nadie pueda pedir un informe con datos
+   * de salud inventados.
+   *
+   * <p>Rechaza con `ApiError` 503 `IA_NO_DISPONIBLE` cuando no hay modelo configurado o el proveedor
+   * no responde. La pantalla lo trata cayendo a sus textos por nivel de intensidad.
+   */
+  generarInformeActividad: (actividadId: string, claseId?: string) => Promise<InformeActividad>;
   actualizarResenia: (id: string, puntaje: number, comentario: string) => Promise<void>;
   actualizarUsuarioAdmin: (id: string, input: ActualizarUsuarioAdminInput) => Promise<void>;
   responderResenia: (
@@ -1194,6 +1223,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  // A diferencia de `registrarInteraccion`, acá el error SÍ tiene que llegar a la pantalla: el
+  // alumno apretó un botón y está esperando un informe, así que necesita saber que no salió (y la
+  // pantalla usa el 503 para caer a sus textos por nivel de intensidad).
+  const generarInformeActividad = useCallback(
+    async (actividadId: string, claseId?: string): Promise<InformeActividad> => {
+      return api.post<InformeActividad>(`/api/alumno/actividades/${actividadId}/informe`, {
+        claseId: claseId ?? null,
+      });
+    },
+    [],
+  );
+
   // Edición real: antes "editar" era borrar y volver a crear en dos requests sin transacción.
   const actualizarResenia = useCallback(async (id: string, puntaje: number, comentario: string) => {
     await api.put(`/api/alumno/resenas/${id}`, { puntaje, comentario });
@@ -1371,6 +1412,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       listarMisPagos,
       listarRecomendaciones,
       registrarInteraccion,
+      generarInformeActividad,
       actualizarResenia,
       actualizarUsuarioAdmin,
       responderResenia,
@@ -1465,6 +1507,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       listarMisPagos,
       listarRecomendaciones,
       registrarInteraccion,
+      generarInformeActividad,
       actualizarResenia,
       actualizarUsuarioAdmin,
       responderResenia,

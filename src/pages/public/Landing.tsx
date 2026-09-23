@@ -1,5 +1,5 @@
-import { useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { s } from "../../lib/style";
 import { normalizar } from "../../lib/texto";
 import Logo from "../../components/Logo";
@@ -103,10 +103,28 @@ const BENEFITS = [
 
 export default function Landing() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { actividades, categorias, getTipoActividad, instructorNombre, cargandoCatalogo } = useData();
   const goExplorar = () => navigate("/alumno/explorar");
   const scrollToCategorias = () => document.getElementById("categorias")?.scrollIntoView({ behavior: "smooth" });
+
   const scrollToComoFunciona = () => document.getElementById("como-funciona")?.scrollIntoView({ behavior: "smooth" });
+
+  /**
+   * "Categorías" del pie de página, apretado desde otra pantalla: la sección vive acá, así que el
+   * pie navega a la landing con la sección pedida y el scroll lo hace ella. Es el mismo mecanismo
+   * que ya usaba `/ayuda` para "Preguntas frecuentes" y "Contacto".
+   *
+   * <p>Sólo scrollea, no toca estado, así que no cae en `react-hooks/set-state-in-effect`. Espera un
+   * momento porque al aterrizar recién montado la sección todavía no está en su lugar definitivo:
+   * las tarjetas del catálogo la empujan hacia abajo mientras cargan.
+   */
+  useEffect(() => {
+    const seccion = (location.state as { seccion?: string } | null)?.seccion;
+    if (seccion !== "categorias") return;
+    const id = window.setTimeout(scrollToCategorias, 80);
+    return () => window.clearTimeout(id);
+  }, [location.state]);
 
   const countActividades = (categoriaId: string): number =>
     actividades.filter((a) => getTipoActividad(a.tipoActividadId)?.categoriaId === categoriaId).length;
@@ -479,90 +497,6 @@ export default function Landing() {
           </div>
         )}
       </section>
-
-      <footer style={s("background:#0A1F36;color:#9DB3C9;")}>
-        <div
-          className="ah-grid-4"
-          style={s("max-width:1200px;margin:0 auto;padding:46px 28px 30px;display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:30px;")}
-        >
-          <div>
-            <div style={s("display:flex;align-items:center;gap:10px;margin-bottom:14px;")}>
-              <div
-                style={s(
-                  "width:34px;height:34px;border-radius:10px;background:linear-gradient(140deg,#12B5A5,#FF6A2B);display:flex;align-items:center;justify-content:center;font:700 18px Space Grotesk;color:#fff;",
-                )}
-              >
-                A
-              </div>
-              <span style={s("font:700 19px Space Grotesk;color:#fff;")}>ActiveHub</span>
-            </div>
-            <p style={s("font-size:14px;line-height:1.6;max-width:280px;margin:0;")}>
-              La plataforma para encontrar actividades físicas y recreativas cerca tuyo e inscribirte a sus clases.
-            </p>
-          </div>
-          <div>
-            <div style={s("color:#fff;font-weight:700;margin-bottom:12px;font-size:14px;")}>Plataforma</div>
-            {/*
-              Los tres eran texto con cursor de mano y sin `onClick`, como antes lo eran los de
-              "Soporte". "Instructores" además no tenía a dónde ir: no existe un directorio
-              público de instructores, así que en su lugar va el alta, que sí existe.
-            */}
-            <div style={s("display:flex;flex-direction:column;gap:9px;font-size:14px;")}>
-              <span className="ah-link" onClick={goExplorar} style={s("cursor:pointer;")}>
-                Explorar
-              </span>
-              <span className="ah-link" onClick={scrollToCategorias} style={s("cursor:pointer;")}>
-                Categorías
-              </span>
-              <span className="ah-link" onClick={() => navigate("/registro")} style={s("cursor:pointer;")}>
-                Ser instructor
-              </span>
-            </div>
-          </div>
-          <div>
-            <div style={s("color:#fff;font-weight:700;margin-bottom:12px;font-size:14px;")}>Soporte</div>
-            <div style={s("display:flex;flex-direction:column;gap:9px;font-size:14px;")}>
-              {/* Los tres van a `/ayuda`, que es donde vive cada cosa: las FAQ y el bloque de
-                  contacto son secciones de esa misma pantalla. El `state` le dice a cuál
-                  scrollear. Antes sólo "Ayuda" tenía `onClick`: los otros dos eran texto con
-                  cursor de mano que no hacía nada. */}
-              <span className="ah-link" onClick={() => navigate("/ayuda")} style={s("cursor:pointer;")}>
-                Ayuda
-              </span>
-              <span
-                className="ah-link"
-                onClick={() => navigate("/ayuda", { state: { seccion: "faqs" } })}
-                style={s("cursor:pointer;")}
-              >
-                Preguntas frecuentes
-              </span>
-              <span
-                className="ah-link"
-                onClick={() => navigate("/ayuda", { state: { seccion: "contacto" } })}
-                style={s("cursor:pointer;")}
-              >
-                Contacto
-              </span>
-            </div>
-          </div>
-          <div>
-            <div style={s("color:#fff;font-weight:700;margin-bottom:12px;font-size:14px;")}>Cuenta</div>
-            <div style={s("display:flex;flex-direction:column;gap:9px;font-size:14px;")}>
-              <span className="ah-link" onClick={() => navigate("/login")} style={s("cursor:pointer;")}>
-                Iniciar sesión
-              </span>
-              <span className="ah-link" onClick={() => navigate("/registro")} style={s("cursor:pointer;")}>
-                Registrarse
-              </span>
-            </div>
-          </div>
-        </div>
-        <div style={s("border-top:1px solid rgba(255,255,255,.08);")}>
-          <div style={s("max-width:1200px;margin:0 auto;padding:18px 28px;font-size:13px;display:flex;justify-content:space-between;")}>
-            © 2026 ActiveHub · Proyecto Final · Ingeniería en Sistemas<span>Hecho en Mendoza, Argentina</span>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }
