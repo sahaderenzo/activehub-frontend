@@ -84,8 +84,15 @@ function renderGrafico(g: ReportePdf<unknown>["grafico"]): string {
   </div>`;
 }
 
-function escapar(texto: string): string {
-  return texto
+/**
+ * Acepta `null`/`undefined` a propósito. Los tipos del cliente dicen `string`, pero la base no
+ * siempre: `audit_log.entidad_id` es nullable, y un `null.replace` tiraba una excepción
+ * **después** del `window.open`, así que la pestaña quedaba en blanco sin ningún error visible.
+ * Era "Exportar todo" de Trazabilidad, y "Exportar esta página" en cualquier página que
+ * tuviera una de esas filas.
+ */
+function escapar(texto: string | null | undefined): string {
+  return String(texto ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -93,9 +100,9 @@ function escapar(texto: string): string {
 }
 
 export function exportarPdf<T>(reporte: ReportePdf<T>): boolean {
-  const ventana = window.open("", "_blank", "width=1100,height=800");
-  if (!ventana) return false;
-
+  // El documento se arma ANTES de abrir la ventana: si algo falla al armarlo, la excepción
+  // sale sin dejar una pestaña en blanco colgada. Sigue siendo síncrono dentro del click, así
+  // que la activación de usuario todavía vale para el `window.open` de abajo.
   const meta = (reporte.meta ?? [])
     .map(
       (m) =>
@@ -203,6 +210,8 @@ export function exportarPdf<T>(reporte: ReportePdf<T>): boolean {
   //
   // Con un Blob la ventana carga un documento de verdad (URL `blob:`), y la llamada a
   // `print()` viaja DENTRO del HTML, asi que corre cuando el navegador termino de parsearlo.
+  const ventana = window.open("", "_blank", "width=1100,height=800");
+  if (!ventana) return false;
   const url = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }));
   ventana.location.replace(url);
   // Se libera cuando la ventana ya lo cargo; revocarlo antes cancelaria la carga.

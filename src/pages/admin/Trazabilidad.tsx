@@ -9,6 +9,7 @@ import type { AuditoriaEntry } from "../../context/DataContext";
 import { ApiError } from "../../lib/api";
 import { formatFecha, formatHora } from "../../lib/mockData";
 import { exportarPdf } from "../../lib/exportPdf";
+import { useAhora } from "../../lib/ahora";
 import type { RolNombre } from "../../lib/types";
 
 type RolFiltro = RolNombre | "SISTEMA" | "TODOS";
@@ -73,6 +74,36 @@ const COLUMNAS: { campo: CampoOrden; label: string }[] = [
 const GRID_COLUMNAS =
   "grid-template-columns:130px minmax(150px,1.3fr) minmax(196px,1.1fr) minmax(104px,.8fr) minmax(190px,1.9fr);";
 
+/**
+ * Período de "Exportar todo": todo lo filtrado, los últimos 7 días, o un mes calendario
+ * (`"2026-09"`). Se aplica ENCIMA de los filtros de la pantalla, no en su lugar: el documento
+ * sigue siendo "lo que estoy mirando", recortado en el tiempo.
+ */
+type PeriodoExport = "todo" | "7d" | `${number}-${string}`;
+
+const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+
+/** Clave del mes en hora local, que es la que ve el admin en la columna Fecha. */
+function claveMes(fecha: Date): `${number}-${string}` {
+  return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function etiquetaMes(clave: string): string {
+  const [anio, mes] = clave.split("-");
+  return `${MESES[Number(mes) - 1]} ${anio}`;
+}
+
+function etiquetaPeriodo(p: PeriodoExport): string {
+  return p === "todo" ? "Todo el registro" : p === "7d" ? "Últimos 7 días" : etiquetaMes(p);
+}
+
+function enPeriodo(createdAt: string, p: PeriodoExport, ahora: number): boolean {
+  if (p === "todo") return true;
+  const fecha = new Date(createdAt);
+  if (p === "7d") return ahora - fecha.getTime() <= 7 * 24 * 60 * 60 * 1000;
+  return claveMes(fecha) === p;
+}
+
 function sameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
@@ -95,7 +126,9 @@ export default function AdminTrazabilidad() {
   const [editandoPagina, setEditandoPagina] = useState(false);
   const [paginaInput, setPaginaInput] = useState("");
   const [confirmarExport, setConfirmarExport] = useState(false);
+  const [periodoExport, setPeriodoExport] = useState<PeriodoExport>("todo");
   const [cargando, setCargando] = useState(true);
+  const ahora = useAhora();
 
   useEffect(() => {
     listarAuditoria()
@@ -183,6 +216,16 @@ export default function AdminTrazabilidad() {
     [ordenados, paginaActual],
   );
 
+  /** Meses que tienen eventos en lo filtrado, del más reciente al más antiguo. */
+  const mesesDisponibles = useMemo(
+    () => Array.from(new Set(filtered.map((e) => claveMes(new Date(e.createdAt))))).sort().reverse(),
+    [filtered],
+  );
+  const filasPeriodo = useMemo(
+    () => ordenados.filter((e) => enPeriodo(e.createdAt, periodoExport, ahora)),
+    [ordenados, periodoExport, ahora],
+  );
+
   const irAPagina = (n: number) => setPagina(Math.min(totalPaginas, Math.max(1, n)));
 
   const confirmarPaginaEscrita = () => {
@@ -229,36 +272,47 @@ export default function AdminTrazabilidad() {
    * auditoría que exporta algo distinto de lo que se está mirando no sirve como respaldo.
    */
   const generarPdf = (alcance: "pagina" | "todo") => {
-    const filas = alcance === "pagina" ? visibles : ordenados;
+    // En el handler sí vale Date.now(): "últimos 7 días" se mide contra el momento del click,
+    // no contra el montaje de la pantalla.
+    const filas =
+      alcance === "pagina" ? visibles : ordenados.filter((e) => enPeriodo(e.createdAt, periodoExport, Date.now()));
 
-    const ok = exportarPdf({
-      titulo: "Registro de auditoría y trazabilidad",
-      subtitulo: "Listado inalterable de las operaciones del sistema",
-      meta: [
-        { etiqueta: "Emitido", valor: new Date().toLocaleString("es-AR") },
-        {
-          etiqueta: "Alcance",
-          valor:
-            alcance === "pagina"
-              ? `Página ${paginaActual} de ${totalPaginas} · ${filas.length} eventos`
-              : `${filas.length} eventos (todos los filtrados)`,
-        },
-        { etiqueta: "Total registrado", valor: String(auditLog.length) },
-        { etiqueta: "Rol", valor: rolBtnLabel },
-        { etiqueta: "Acción", valor: accBtnLabel },
-        { etiqueta: "Búsqueda", valor: query.trim() || "sin filtro" },
-      ],
-      columnas: [
-        { encabezado: "Fecha y hora", ancho: "13%", valor: (e) => `${formatFecha(e.createdAt)} ${formatHora(e.createdAt)}` },
-        { encabezado: "Usuario", ancho: "17%", valor: (e) => `${e.nombre} (${ROL_LABEL[e.rol]})` },
-        { encabezado: "Acción", ancho: "17%", valor: (e) => e.accion },
-        { encabezado: "Entidad", ancho: "12%", valor: (e) => e.entidad },
-        { encabezado: "ID de entidad", ancho: "20%", valor: (e) => e.entidadId },
-        { encabezado: "Detalle", ancho: "21%", valor: (e) => e.descripcion },
-      ],
-      filas,
-      pie: "Documento generado por ActiveHub a partir del registro de auditoría. Uso interno / confidencial.",
-    });
+    let ok: boolean;
+    try {
+      ok = exportarPdf({
+        titulo: "Registro de auditoría y trazabilidad",
+        subtitulo: "Listado inalterable de las operaciones del sistema",
+        meta: [
+          { etiqueta: "Emitido", valor: new Date().toLocaleString("es-AR") },
+          {
+            etiqueta: "Alcance",
+            valor:
+              alcance === "pagina"
+                ? `Página ${paginaActual} de ${totalPaginas} · ${filas.length} eventos`
+                : `${filas.length} eventos (todos los filtrados)`,
+          },
+          ...(alcance === "todo" ? [{ etiqueta: "Período", valor: etiquetaPeriodo(periodoExport) }] : []),
+          { etiqueta: "Total registrado", valor: String(auditLog.length) },
+          { etiqueta: "Rol", valor: rolBtnLabel },
+          { etiqueta: "Acción", valor: accBtnLabel },
+          { etiqueta: "Búsqueda", valor: query.trim() || "sin filtro" },
+        ],
+        columnas: [
+          { encabezado: "Fecha y hora", ancho: "13%", valor: (e) => `${formatFecha(e.createdAt)} ${formatHora(e.createdAt)}` },
+          { encabezado: "Usuario", ancho: "17%", valor: (e) => `${e.nombre} (${ROL_LABEL[e.rol]})` },
+          { encabezado: "Acción", ancho: "17%", valor: (e) => e.accion },
+          { encabezado: "Entidad", ancho: "12%", valor: (e) => e.entidad },
+          { encabezado: "ID de entidad", ancho: "20%", valor: (e) => e.entidadId ?? "—" },
+          { encabezado: "Detalle", ancho: "21%", valor: (e) => e.descripcion },
+        ],
+        filas,
+        pie: "Documento generado por ActiveHub a partir del registro de auditoría. Uso interno / confidencial.",
+      });
+    } catch {
+      // Sin esto una fila inesperada dejaba la exportación muda: ni documento ni aviso.
+      setError("No pudimos generar el documento de exportación. Intentá de nuevo.");
+      return;
+    }
     if (!ok) {
       setError("El navegador bloqueó la ventana de exportación. Habilitá las ventanas emergentes para este sitio.");
     }
@@ -275,9 +329,16 @@ export default function AdminTrazabilidad() {
    *
    * <p>Con un modal de la propia app, el click en "Exportar" es un gesto de usuario nuevo y el
    * `window.open` sale desde adentro de su handler, igual que en el otro botón.
+   *
+   * <p>"Exportar todo" abre el modal siempre, aunque sean pocos eventos: ahí se elige el
+   * período (todo, últimos 7 días o un mes).
    */
   const exportar = (alcance: "pagina" | "todo") => {
-    if (alcance === "todo" && ordenados.length > POR_PAGINA) {
+    if (alcance === "todo") {
+      // Un mes elegido antes puede haber quedado sin eventos después de cambiar un filtro.
+      if (periodoExport !== "todo" && periodoExport !== "7d" && !mesesDisponibles.includes(periodoExport)) {
+        setPeriodoExport("todo");
+      }
       setConfirmarExport(true);
       return;
     }
@@ -326,7 +387,7 @@ export default function AdminTrazabilidad() {
           <button
             className="ah-btn"
             onClick={() => exportar("todo")}
-            title="Exporta a PDF todos los eventos que pasan los filtros actuales"
+            title="Exporta a PDF los eventos filtrados: todos, los últimos 7 días o un mes"
             style={s(
               "background:#fff;border:1px solid #E2E9F0;border-radius:10px;padding:10px 15px;font:700 13px Manrope,sans-serif;color:#65788C;cursor:pointer;display:flex;align-items:center;gap:7px;",
             )}
@@ -693,11 +754,35 @@ export default function AdminTrazabilidad() {
             )}
           >
             <div style={s("font:700 17px Space Grotesk,sans-serif;color:#0E2A47;margin-bottom:8px;")}>
-              Exportar {ordenados.length} eventos
+              Exportar eventos
             </div>
+            <label
+              htmlFor="periodo-export"
+              style={s("display:block;font:700 12px Manrope,sans-serif;color:#5A6B7D;margin-bottom:6px;")}
+            >
+              Período
+            </label>
+            <select
+              id="periodo-export"
+              value={periodoExport}
+              onChange={(e) => setPeriodoExport(e.target.value as PeriodoExport)}
+              style={s(
+                "width:100%;border:1px solid #D9E1EA;border-radius:11px;padding:10px 12px;font:600 14px Manrope,sans-serif;color:#0E2A47;background:#fff;margin-bottom:12px;cursor:pointer;",
+              )}
+            >
+              <option value="todo">Todo el registro</option>
+              <option value="7d">Últimos 7 días</option>
+              {mesesDisponibles.map((m) => (
+                <option key={m} value={m}>
+                  {etiquetaMes(m)}
+                </option>
+              ))}
+            </select>
             <p style={s("font-size:13.5px;color:#65788C;font-weight:600;line-height:1.55;margin:0 0 18px;")}>
-              Son {totalPaginas} páginas de la tabla. Con muchos registros el documento puede tardar unos segundos
-              en abrirse.
+              {filasPeriodo.length === 0
+                ? "No hay eventos en ese período con los filtros actuales."
+                : `Se van a exportar ${filasPeriodo.length} eventos, respetando los filtros y el orden de la tabla.`}
+              {filasPeriodo.length > 500 && " Con tantos registros el documento puede tardar unos segundos en abrirse."}
             </p>
             <div style={s("display:flex;gap:10px;justify-content:flex-end;")}>
               <button
@@ -715,8 +800,9 @@ export default function AdminTrazabilidad() {
                   setConfirmarExport(false);
                   generarPdf("todo");
                 }}
+                disabled={filasPeriodo.length === 0}
                 style={s(
-                  "background:#0FB8A9;border:none;border-radius:11px;padding:10px 18px;font:700 13px Manrope,sans-serif;color:#fff;cursor:pointer;",
+                  `background:#0FB8A9;border:none;border-radius:11px;padding:10px 18px;font:700 13px Manrope,sans-serif;color:#fff;cursor:${filasPeriodo.length === 0 ? "not-allowed" : "pointer"};opacity:${filasPeriodo.length === 0 ? ".5" : "1"};`,
                 )}
               >
                 Exportar

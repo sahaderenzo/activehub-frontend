@@ -40,6 +40,7 @@ Las pruebas viven al lado del archivo que prueban, con la extensión `.test.ts` 
 | `lib/faqs.test.ts` | La búsqueda de FAQs, que es el camino **sin IA** del chatbot. |
 | `lib/ia.test.ts` | La distinción entre "la IA no está disponible" y "se acabó la cuota", que se tratan distinto, y el recorte del historial a 6 turnos. |
 | `lib/exportCsv.test.ts` | El BOM y el separador `;`, sin los cuales el CSV no abre bien en Excel en es-AR. |
+| `lib/exportPdf.test.ts` | Regresión: una celda `null` dejaba la pestaña del PDF en blanco (Trazabilidad). También que un armado fallido no abra ventana y que devuelva `false` con el pop-up bloqueado. |
 | `lib/geo.test.ts` | Distancias y su formato (metros debajo del kilómetro). |
 | `lib/style.test.ts` | El parseo de las declaraciones CSS y su caché por cadena. |
 | `lib/mockData.test.ts` | La regla de los 4 días (`tipoIngreso`), la disponibilidad de cupos y el formato de fecha y hora. |

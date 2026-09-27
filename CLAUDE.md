@@ -23,7 +23,7 @@ SPA de ActiveHub para los 3 roles (Alumno, Instructor, Administrador). React 19 
 
 ## Pruebas automatizadas: existen, y una regresión reportada se cubre con una prueba
 
-Hasta este tramo el frontend **no tenía ninguna** (el backend sí: 842). Hoy hay **Vitest + jsdom + Testing Library**, 16 archivos y 142 pruebas. El detalle —qué cubre cada archivo, con qué criterio se agrega una prueba y qué falta— está en **`docs/PRUEBAS.md`**; acá va sólo lo que hay que saber antes de escribir código.
+Hasta este tramo el frontend **no tenía ninguna** (el backend sí: 842). Hoy hay **Vitest + jsdom + Testing Library**, 17 archivos y 145 pruebas. El detalle —qué cubre cada archivo, con qué criterio se agrega una prueba y qué falta— está en **`docs/PRUEBAS.md`**; acá va sólo lo que hay que saber antes de escribir código.
 
 - **Comandos**: `npm test` (una corrida, es lo que corre CI), `npm run test:watch`, `npm run test:coverage`, `npm run typecheck`.
 - **Dónde va cada prueba**: al lado del archivo que prueba, `algo.test.ts` / `algo.test.tsx`. No hay carpeta `__tests__`.
@@ -117,7 +117,7 @@ Se descartó Google Maps Platform porque exige una cuenta de facturación con ta
 Tercer estado, además de "hay datos" y "falló". Reportado: *"entro a Mis clases siendo alumno y veo todo en 0, creo que no tengo nada"* — la consulta seguía en vuelo. **Un cero y un vacío son afirmaciones, y mientras los datos no llegaron son falsas.** Es la misma regla que ya obligaba a que el error reemplace al estado vacío, extendida a la carga.
 
 - **`<CargandoAccion activo mensaje="…" />` — el usuario apretó algo y hay que esperar.** Overlay que tapa la pantalla con fondo gris y un cartel centrado. Va en **portal a `document.body`** por la misma razón que `Modal` (`.ah-screen` anima `transform` y captura los `position:fixed`), bloquea el scroll del body y **z-index 120, por encima del modal**, porque varias de estas acciones se disparan desde adentro de uno. El mensaje va en gerundio y sin punto: "Procesando tu pago".
-  - Va en **inscripciones, reseñas y pagos**: preinscribirse, inscribirse/pagar, cancelar inscripción, confirmar cobro en efectivo, publicar/editar/eliminar reseña, responder una reseña, enviar una denuncia. Ahí el doble click cuesta una inscripción o un cobro de más, así que **no alcanza con deshabilitar el botón**: el overlay no deja llegar ni el segundo click ni un Enter perdido. Para el resto de las mutaciones (crear una clase, editar una actividad) sigue alcanzando con el botón deshabilitado.
+  - Va en **inscripciones, reseñas, pagos y el alta de cuenta** (`auth/Registro.tsx`, "Creando tu cuenta", los dos roles: entre "Crear cuenta" y la pantalla del código no se veía nada): preinscribirse, inscribirse/pagar, cancelar inscripción, confirmar cobro en efectivo, publicar/editar/eliminar reseña, responder una reseña, enviar una denuncia. Ahí el doble click cuesta una inscripción o un cobro de más, así que **no alcanza con deshabilitar el botón**: el overlay no deja llegar ni el segundo click ni un Enter perdido. Para el resto de las mutaciones (crear una clase, editar una actividad) sigue alcanzando con el botón deshabilitado.
 - **`<CargandoSeccion seccion="clases" />` — la pantalla todavía no tiene los datos.** Cartel "Cargando {sección}, por favor espere" que **reemplaza al contenido**, no lo acompaña. `seccion` va en minúscula y en plural cuando corresponde.
 
 Tres reglas al aplicarlo:
@@ -409,7 +409,8 @@ Lo que cada pantalla oculta cuando falta el permiso: las tarjetas KPI del Dashbo
 ## Trazabilidad: paginada, ordenable, exportable y legible
 
 - **15 eventos por página** (`POR_PAGINA`). La auditoría es de sólo-append y crece para siempre: con miles de filas la pantalla tardaba en pintar y "Exportar" generaba un PDF de cientos de hojas.
-- **Dos botones de exportación**: "Exportar esta página" y "Exportar todo (N)". El segundo **avisa cuántos son y pide confirmación** antes de generar el documento.
+- **Dos botones de exportación**: "Exportar esta página" y "Exportar todo (N)". El segundo abre **siempre** un modal con un selector de **Período** (todo el registro · últimos 7 días · un mes calendario, sólo los meses que tienen eventos en lo filtrado), dice cuántos eventos salen y deshabilita "Exportar" si son cero. El período se aplica **encima** de los filtros y respeta el orden de la tabla; "últimos 7 días" se mide con `Date.now()` en el handler (el contador del modal usa `useAhora()`).
+- **`entidadId` es `string | null`** (`audit_log.entidad_id` es nullable). Tiparlo como `string` fue lo que dejaba la pestaña de exportación en blanco: ver "exportación sin dependencias".
 - **La columna "Detalle" muestra `descripcion`**, la frase en castellano que arma el backend (`DescripcionAuditoria`). Antes concatenaba `entidadId + metadata`, o sea un UUID y una clave técnica.
 - Cualquier cambio de filtro vuelve a la página 1; si un filtro deja menos páginas que la actual, se cae a la última válida en vez de mostrar una página vacía.
 
@@ -456,7 +457,8 @@ El mismo gráfico estaba escrito cuatro veces (Dashboard y Reportes del admin, P
 - **El documento se entrega como Blob, NO con `document.write`.** Con `window.open("")` + `document.write` la ventana se queda en `about:blank` y su evento `load` **ya se disparó** antes de que escribiéramos nada, así que el `onload` que llamaba a `print()` no corría nunca: ventana en blanco y sin diálogo de impresión. Con un Blob la ventana carga un documento real y la llamada a `print()` viaja **dentro** del HTML.
 - **El gráfico se puede incluir** (`grafico`): se dibuja con divs y CSS, no como imagen. Un `<canvas>` rasterizado sale borroso al imprimir; con barras de CSS el PDF queda vectorial. Lleva el valor escrito sobre cada barra y escala a la izquierda, porque un gráfico impreso no tiene tooltip. Lo usan Reportes y Métricas; el CSV, que no puede llevar imagen, incluye la serie como filas.
 - **Los fondos hay que pedirlos: `print-color-adjust: exact`.** Los navegadores imprimen sin fondos por defecto, así que del gráfico del PDF de Reportes se veían los ejes, las líneas y las etiquetas (texto y bordes) pero **las barras del centro salían en blanco**, igual que el encabezado gris de la tabla. La declaración va en el selector `*` de la hoja del documento —Chrome la aplica por elemento, no se hereda— y las barras además llevan `border` como plan B por si alguien imprime con "Gráficos de fondo" desactivado a mano.
-- Todo el texto se escapa antes de interpolarse: el contenido viene de datos que escribieron usuarios.
+- Todo el texto se escapa antes de interpolarse: el contenido viene de datos que escribieron usuarios. **`escapar` acepta `null`/`undefined`**: un `null.replace` tiraba una excepción y la pestaña quedaba en blanco sin error visible (Trazabilidad, filas sin `entidadId`).
+- **El HTML se arma ANTES del `window.open`.** Si el armado falla, la excepción sale sin dejar una ventana colgada; sigue siendo síncrono dentro del click, así que la activación de usuario no se pierde. La pantalla que llama envuelve `exportarPdf` en `try/catch` y muestra el error. Prueba: `lib/exportPdf.test.ts`.
 
 ## `admin/Perfil.tsx`: el administrador también tiene cuenta propia
 

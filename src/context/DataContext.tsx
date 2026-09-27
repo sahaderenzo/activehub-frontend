@@ -485,7 +485,8 @@ export interface AuditoriaEntry {
   actorRol: RolNombre | null;
   accion: string;
   entidad: string;
-  entidadId: string;
+  /** Nullable en la base (`audit_log.entidad_id`): hay eventos que no apuntan a una fila. */
+  entidadId: string | null;
   metadata: string | null;
   /**
    * La misma fila contada en castellano, armada por el backend (`DescripcionAuditoria`). Es lo

@@ -8,6 +8,7 @@ import { useData } from "../../context/DataContext";
 import BotonGoogle from "../../components/BotonGoogle";
 import { perfilIncompleto } from "../../lib/perfil";
 import { homeDe } from "../../lib/areas";
+import { CargandoAccion } from "../../components/Cargando";
 
 type Rol = "ALUMNO" | "INSTRUCTOR";
 
@@ -64,7 +65,9 @@ export default function Registro() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [archivos, setArchivos] = useState<File[]>([]);
   const [archivosError, setArchivosError] = useState<string | null>(null);
-  const [subiendo, setSubiendo] = useState(false);
+  // Cubre el alta de los dos roles: entre "Crear cuenta" y la pantalla del código el backend
+  // crea la cuenta y manda el mail, y sin overlay no se veía que estuviera pasando nada.
+  const [enviando, setEnviando] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitAttempted, setSubmitAttempted] = useState(false);
   /**
@@ -188,6 +191,7 @@ export default function Registro() {
       setErrors(clientErrors);
       return;
     }
+    setEnviando(true);
     try {
       if (rol === "ALUMNO") {
         await registerAlumno({
@@ -208,35 +212,32 @@ export default function Registro() {
       } else {
         // Los archivos van en el mismo request que los datos: si la subida falla, el
         // backend hace rollback y NO queda ninguna cuenta creada (E1A-HU04 criterio 9).
-        setSubiendo(true);
-        try {
-          await registerInstructor(
-            {
-              nombre: form.nombre,
-              apellido: form.apellido,
-              email: form.email,
-              telefono: form.telefono,
-              dni: form.dni.trim() || undefined,
-              password: form.password,
-              fechaNacimiento: form.fechaNacimiento || undefined,
-              especialidad: form.especialidad,
-              aniosExperiencia: form.aniosExperiencia ? Number(form.aniosExperiencia) : undefined,
-              descripcion: form.descripcion || undefined,
-              aceptaTerminos: form.aceptaTerminos,
-              // El backend lo vuelve a verificar; acá sólo se reenvía.
-              googleIdToken: identidadGoogle?.idToken,
-            },
-            archivos,
-          );
-          navigate("/verificar-email", { replace: true });
-        } finally {
-          setSubiendo(false);
-        }
+        await registerInstructor(
+          {
+            nombre: form.nombre,
+            apellido: form.apellido,
+            email: form.email,
+            telefono: form.telefono,
+            dni: form.dni.trim() || undefined,
+            password: form.password,
+            fechaNacimiento: form.fechaNacimiento || undefined,
+            especialidad: form.especialidad,
+            aniosExperiencia: form.aniosExperiencia ? Number(form.aniosExperiencia) : undefined,
+            descripcion: form.descripcion || undefined,
+            aceptaTerminos: form.aceptaTerminos,
+            // El backend lo vuelve a verificar; acá sólo se reenvía.
+            googleIdToken: identidadGoogle?.idToken,
+          },
+          archivos,
+        );
+        navigate("/verificar-email", { replace: true });
       }
     } catch (err) {
       if (err instanceof ApiError && err.fieldErrors) setErrors(err.fieldErrors);
       else if (err instanceof ApiError) setErrors({ email: err.message });
       else setErrors({ email: "No pudimos crear la cuenta. Intentá de nuevo." });
+    } finally {
+      setEnviando(false);
     }
   };
 
@@ -746,15 +747,19 @@ export default function Registro() {
           <button
             className="ah-btn"
             type="submit"
-            disabled={subiendo}
+            disabled={enviando}
             style={s(
-              `margin-top:22px;width:100%;background:#FF6A2B;color:#fff;border:none;border-radius:12px;padding:15px;font:700 15.5px Manrope;cursor:${subiendo ? "not-allowed" : "pointer"};box-shadow:0 8px 18px rgba(255,106,43,.3);opacity:${subiendo ? ".7" : "1"};`,
+              `margin-top:22px;width:100%;background:#FF6A2B;color:#fff;border:none;border-radius:12px;padding:15px;font:700 15.5px Manrope;cursor:${enviando ? "not-allowed" : "pointer"};box-shadow:0 8px 18px rgba(255,106,43,.3);opacity:${enviando ? ".7" : "1"};`,
             )}
           >
-            {subiendo ? "Subiendo documentos…" : "Crear cuenta"}
+            {enviando ? "Creando cuenta…" : "Crear cuenta"}
           </button>
         </div>
       </form>
+      <CargandoAccion
+        activo={enviando}
+        mensaje={rol === "INSTRUCTOR" ? "Creando tu cuenta y subiendo tus documentos" : "Creando tu cuenta"}
+      />
     </div>
   );
 }
