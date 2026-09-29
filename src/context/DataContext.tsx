@@ -14,6 +14,7 @@ import type {
   Penalizacion,
   RolNombre,
   TipoActividad,
+  DatosPagoMercadoPago,
 } from "../lib/types";
 import {
   favoritos as seedFavoritos,
@@ -381,7 +382,12 @@ interface DataContextValue {
   eliminarTipoActividad: (id: string) => Promise<void>;
 
   // inscripción / pago real
-  inscribirse: (clase: Clase, alumnoId: string, metodo?: "Mercado Pago" | "Efectivo") => Promise<void>;
+  inscribirse: (
+    clase: Clase,
+    alumnoId: string,
+    metodo?: "Mercado Pago" | "Efectivo",
+    datosPago?: DatosPagoMercadoPago,
+  ) => Promise<void>;
   cancelarInscripcion: (id: string) => Promise<void>;
   confirmarCobroEfectivo: (inscripcionId: string) => Promise<void>;
   marcarAsistencia: (inscripcionId: string, presente: boolean) => Promise<void>;
@@ -585,12 +591,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const inscribirse = useCallback(
-    async (clase: Clase, _alumnoId: string, metodo?: "Mercado Pago" | "Efectivo") => {
+    async (
+      clase: Clase,
+      _alumnoId: string,
+      metodo?: "Mercado Pago" | "Efectivo",
+      datosPago?: DatosPagoMercadoPago,
+    ) => {
       void _alumnoId;
       if (!metodo) {
         await api.post(`/api/alumno/clases/${clase.id}/preinscripciones`);
       } else {
-        await api.post(`/api/alumno/clases/${clase.id}/inscripciones`, { metodoPago: metodo });
+        const body = datosPago ? { metodoPago: metodo, datosPago } : { metodoPago: metodo };
+        await api.post(`/api/alumno/clases/${clase.id}/inscripciones`, body);
       }
       setClases((prev) => prev.map((c) => (c.id === clase.id ? { ...c, cuposOcupados: c.cuposOcupados + (metodo ? 1 : 0) } : c)));
     },

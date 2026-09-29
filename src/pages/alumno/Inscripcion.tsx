@@ -7,6 +7,8 @@ import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import { ApiError } from "../../lib/api";
 import { formatFecha, formatHora, tipoIngreso } from "../../lib/mockData";
+import type { DatosPagoMercadoPago } from "../../lib/types";
+import ModalPagoMercadoPago from "../../components/pago/ModalPagoMercadoPago";
 
 type Metodo = "Mercado Pago" | "Efectivo";
 
@@ -19,6 +21,7 @@ export default function AlumnoInscripcion() {
   const [confirmado, setConfirmado] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
+  const [modalMpAbierto, setModalMpAbierto] = useState(false);
 
   const clase = clases.find((c) => c.id === id);
   const actividad = clase ? actividades.find((a) => a.id === clase.actividadId) : undefined;
@@ -43,16 +46,19 @@ export default function AlumnoInscripcion() {
   const cat = tipo ? getCategoria(tipo.categoriaId) : undefined;
   const instructor = instructorNombre[actividad.instructorId];
 
-  const confirmarPago = async (m: Metodo) => {
+  const confirmarPago = async (m: Metodo, datosPago?: DatosPagoMercadoPago) => {
     if (!currentUser) return;
     setError(null);
     setEnviando(true);
     try {
-      await inscribirse(clase, currentUser.id, m);
+      await inscribirse(clase, currentUser.id, m, datosPago);
       setMetodo(m);
       setConfirmado(true);
+      setModalMpAbierto(false);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "No pudimos confirmar la inscripción. Intentá de nuevo.");
+      const msg = err instanceof ApiError ? err.message : "No pudimos confirmar la inscripción. Intentá de nuevo.";
+      setError(msg);
+      throw err;
     } finally {
       setEnviando(false);
     }
@@ -233,18 +239,19 @@ export default function AlumnoInscripcion() {
                   <div style={s("font:700 15px Manrope,sans-serif;color:#0E2A47;")}>Pagar con MercadoPago</div>
                 </div>
                 <p style={s("font-size:13.5px;line-height:1.55;color:#65788C;margin:0 0 16px;")}>
-                  Vas a ser redirigido a la pasarela segura de MercadoPago para completar el pago. Tu lugar queda reservado mientras
-                  tanto.
+                  Vas a completar los datos de tu tarjeta en una ventana segura de MercadoPago. Tu lugar queda confirmado cuando el
+                  pago se aprueba.
                 </p>
                 <button
-                  className="ah-btn"
-                  onClick={() => confirmarPago("Mercado Pago")}
+                  type="button"
+                  className="ah-btn js-button-pagar-mp"
+                  onClick={() => setModalMpAbierto(true)}
                   disabled={enviando}
                   style={s(
                     `width:100%;background:#009EE3;color:#fff;border:none;border-radius:12px;padding:15px;font:700 15.5px Manrope,sans-serif;cursor:pointer;box-shadow:0 8px 18px rgba(0,158,227,.28);opacity:${enviando ? ".7" : "1"};`,
                   )}
                 >
-                  {enviando ? "Procesando…" : `Pagar $${actividad.precio.toLocaleString("es-AR")} con MercadoPago`}
+                  Pagar ${actividad.precio.toLocaleString("es-AR")} con MercadoPago
                 </button>
               </div>
             ) : (
@@ -262,7 +269,8 @@ export default function AlumnoInscripcion() {
                 </div>
                 <button
                   className="ah-btn"
-                  onClick={() => confirmarPago("Efectivo")}
+                  // El error ya se muestra con setError; el re-throw de confirmarPago es para el Brick de MP.
+                  onClick={() => confirmarPago("Efectivo").catch(() => {})}
                   disabled={enviando}
                   style={s(
                     `width:100%;background:#0FB8A9;color:#fff;border:none;border-radius:12px;padding:15px;font:700 15.5px Manrope,sans-serif;cursor:pointer;box-shadow:0 8px 18px rgba(15,184,169,.3);opacity:${enviando ? ".7" : "1"};`,
@@ -311,6 +319,15 @@ export default function AlumnoInscripcion() {
           </div>
         </div>
       </div>
+
+      <ModalPagoMercadoPago
+        isOpen={modalMpAbierto}
+        onClose={() => setModalMpAbierto(false)}
+        amount={actividad.precio}
+        payerEmail={currentUser?.email}
+        title={`Pago: ${actividad.nombre}`}
+        onSubmitPago={(datosPago) => confirmarPago("Mercado Pago", datosPago)}
+      />
     </div>
   );
 }

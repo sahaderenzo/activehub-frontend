@@ -147,3 +147,35 @@ export interface ActividadFavorita {
   usuarioId: string;
   actividadId: string;
 }
+
+/**
+ * Lo que se manda al backend al pagar con Mercado Pago: solo el resultado de tokenizar la
+ * tarjeta en el Card Payment Brick. El monto, la referencia y el pagador los pone el servidor
+ * (precio de la clase, id de la inscripción, correo del alumno logueado).
+ */
+export interface DatosPagoMercadoPago {
+  token: string;
+  paymentMethodId: string;
+  paymentMethodType: string;
+  cuotas: number;
+}
+
+export interface CardBrickFormData {
+  token: string;
+  issuer_id?: string;
+  payment_method_id: string;
+  transaction_amount: number;
+  installments: number | string;
+  payer?: {
+    email?: string;
+    identification?: {
+      type: string;
+      number: string;
+    };
+  };
+}
+
+export interface CardBrickAdditionalData {
+  paymentTypeId?: string;
+}
+
