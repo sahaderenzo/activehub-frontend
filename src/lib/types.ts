@@ -114,6 +114,13 @@ export interface Actividad {
   imagenes?: string[];
   lat?: number;
   lng?: number;
+  /**
+   * Solo en el detalle (KAN-57): si el instructor tiene Mercado Pago vinculado. En false o
+   * ausente, sus clases solo aceptan efectivo.
+   */
+  aceptaMercadoPago?: boolean;
+  /** Public key de MP del instructor, para inicializar el Brick. Nunca un token. */
+  mpPublicKey?: string | null;
   /** Solo presente cuando la actividad viene del catálogo real (listaractividades). */
   proximaClase?: { fechaHora: string; estado: EstadoClase; cuposMax: number; cuposOcupados: number };
 }

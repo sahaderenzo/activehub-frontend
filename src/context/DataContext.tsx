@@ -50,7 +50,8 @@ interface ActividadCamposComunes {
   tipoActividad: { id: string; nombre: string };
   categoria: { id: string; nombre: string };
   nivelIntensidad: { id: string; nombre: string };
-  instructor: { id: string; nombre: string; apellido: string };
+  /** `aceptaMercadoPago` y `mpPublicKey` solo vienen en el detalle (KAN-57). */
+  instructor: { id: string; nombre: string; apellido: string; aceptaMercadoPago?: boolean; mpPublicKey?: string | null };
   precio: number;
   ubicacion: string;
   photoTint: string;
@@ -880,7 +881,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const r = await api.get<ActividadDetalleResp>(`/api/actividades/${id}`);
     setActividades((prev) => {
       const anterior = prev.find((a) => a.id === id);
-      const plano: Actividad = { ...aplanarActividad(r, anterior?.proximaClase), descripcion: r.descripcion };
+      const plano: Actividad = {
+        ...aplanarActividad(r, anterior?.proximaClase),
+        descripcion: r.descripcion,
+        aceptaMercadoPago: r.instructor.aceptaMercadoPago === true,
+        mpPublicKey: r.instructor.mpPublicKey ?? null,
+      };
       const existe = prev.some((a) => a.id === id);
       return existe ? prev.map((a) => (a.id === id ? plano : a)) : [...prev, plano];
     });

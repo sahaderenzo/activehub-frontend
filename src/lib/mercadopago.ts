@@ -1,14 +1,17 @@
 // Helper centralizado para inicializar y obtener la instancia del SDK de Mercado Pago.
 
-let mpInstance: MercadoPago | null = null;
+// Una instancia por public key: en el marketplace cada instructor tiene la suya (KAN-57) y la
+// tarjeta se tokeniza con la del VENDEDOR. Con una sola instancia cacheada, pagar la clase de
+// un segundo instructor tokenizaba con la key del primero.
+const instancias = new Map<string, MercadoPago>();
 
 /**
- * Inicializa y retorna la instancia de MercadoPago SDK v2.
- * Toma la public key de la variable de entorno VITE_MERCADOPAGO_PUBLIC_KEY o un valor alternativo provisto.
+ * Instancia del SDK v2 de Mercado Pago para esa public key (la del instructor dueño de la clase).
  */
-export function getMercadoPago(publicKey?: string): MercadoPago | null {
-  if (mpInstance) {
-    return mpInstance;
+export function getMercadoPago(publicKey: string): MercadoPago | null {
+  const existente = instancias.get(publicKey);
+  if (existente) {
+    return existente;
   }
 
   if (typeof window === "undefined" || !window.MercadoPago) {
@@ -16,9 +19,7 @@ export function getMercadoPago(publicKey?: string): MercadoPago | null {
     return null;
   }
 
-  const key = publicKey || import.meta.env.VITE_MERCADOPAGO_PUBLIC_KEY || "YOUR_PUBLIC_KEY";
-  mpInstance = new window.MercadoPago(key, {
-    locale: "es-AR",
-  });
-  return mpInstance;
+  const mp = new window.MercadoPago(publicKey, { locale: "es-AR" });
+  instancias.set(publicKey, mp);
+  return mp;
 }

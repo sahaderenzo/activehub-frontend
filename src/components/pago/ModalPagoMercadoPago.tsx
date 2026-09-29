@@ -11,6 +11,8 @@ export interface ModalPagoMercadoPagoProps {
   onClose: () => void;
   /** Monto total a abonar */
   amount: number;
+  /** Public key de Mercado Pago del INSTRUCTOR: en marketplace se tokeniza con la del vendedor. */
+  publicKey: string;
   /** Email del alumno o pagador */
   payerEmail?: string;
   /** Título del modal */
@@ -29,6 +31,7 @@ export default function ModalPagoMercadoPago({
   isOpen,
   onClose,
   amount,
+  publicKey,
   payerEmail,
   title = "Pago seguro con tarjeta",
   onSubmitPago,
@@ -72,7 +75,7 @@ export default function ModalPagoMercadoPago({
       if (!containerRef.current) return;
       containerRef.current.innerHTML = "";
 
-      const mp = getMercadoPago();
+      const mp = getMercadoPago(publicKey);
       if (!mp) {
         if (!isDisposed) {
           setIsLoading(false);
@@ -165,7 +168,7 @@ export default function ModalPagoMercadoPago({
         controllerRef.current = null;
       }
     };
-  }, [isOpen, amount, payerEmail, onSubmitPago, onError]);
+  }, [isOpen, amount, publicKey, payerEmail, onSubmitPago, onError]);
 
   if (!isOpen) return null;
 

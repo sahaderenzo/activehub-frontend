@@ -27,6 +27,10 @@ export default function AlumnoInscripcion() {
 
   const clase = clases.find((c) => c.id === id);
   const actividad = clase ? actividades.find((a) => a.id === clase.actividadId) : undefined;
+  // KAN-57: sin cuenta de Mercado Pago vinculada, la clase solo acepta efectivo. Se deriva en vez
+  // de corregir `metodo` en un effect: así nunca hay un render con MP elegido y no disponible.
+  const mpPublicKey = actividad?.aceptaMercadoPago ? actividad.mpPublicKey : null;
+  const metodoActual: Metodo = mpPublicKey ? metodo : "Efectivo";
 
   useEffect(() => {
     // La inscripción con pago solo aplica a 4 días o menos de la clase; si
@@ -100,10 +104,10 @@ export default function AlumnoInscripcion() {
               </svg>
             </span>
             <h1 style={s("font:700 24px Space Grotesk,sans-serif;color:#0E2A47;margin:0 0 8px;")}>
-              {metodo === "Mercado Pago" ? "¡Inscripción confirmada!" : "¡Inscripción registrada!"}
+              {metodoActual === "Mercado Pago" ? "¡Inscripción confirmada!" : "¡Inscripción registrada!"}
             </h1>
             <p style={s("font-size:14.5px;color:#65788C;margin:0 0 26px;max-width:420px;margin-inline:auto;")}>
-              {metodo === "Mercado Pago"
+              {metodoActual === "Mercado Pago"
                 ? `Tu pago fue aprobado y tu lugar en ${actividad.nombre} del ${formatFecha(clase.fechaHora)} quedó confirmado.`
                 : `Tu lugar en ${actividad.nombre} del ${formatFecha(clase.fechaHora)} quedó inscripto con pago pendiente. Abonalo directamente al instructor.`}
             </p>
@@ -185,40 +189,51 @@ export default function AlumnoInscripcion() {
           <div>
             <div style={s("font:700 16px Space Grotesk,sans-serif;margin-bottom:14px;")}>Elegí tu método de pago</div>
             <div style={s("display:flex;flex-direction:column;gap:13px;margin-bottom:22px;")}>
-              <div
-                onClick={() => setMetodo("Mercado Pago")}
-                className="ah-btn"
-                style={s(
-                  `cursor:pointer;background:${metodo === "Mercado Pago" ? "#F3FBFA" : "#fff"};border:2px solid ${metodo === "Mercado Pago" ? "#0FB8A9" : "#E7EDF3"};border-radius:16px;padding:18px 20px;display:flex;align-items:center;gap:15px;`,
-                )}
-              >
-                <RadioDot on={metodo === "Mercado Pago"} />
-                <div style={s("width:46px;height:46px;border-radius:11px;background:#009EE3;display:flex;align-items:center;justify-content:center;")}>
-                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2}>
-                    <path d="M2 9a3 3 0 0 1 3-3h14a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3z" />
-                    <circle cx="12" cy="12" r="2.5" />
-                  </svg>
-                </div>
-                <div style={s("flex:1;")}>
-                  <div style={s("font:700 16px Manrope,sans-serif;color:#0E2A47;")}>MercadoPago</div>
-                  <div style={s("font-size:13px;color:#65788C;font-weight:600;")}>Tarjeta de crédito, débito o dinero en cuenta</div>
-                </div>
-                <span
+              {mpPublicKey ? (
+                <div
+                  onClick={() => setMetodo("Mercado Pago")}
+                  className="ah-btn"
                   style={s(
-                    "font:700 11px Manrope,sans-serif;color:#0C8576;background:#E7F8F5;border:1px solid #CBEDE7;padding:4px 9px;border-radius:99px;",
+                    `cursor:pointer;background:${metodoActual === "Mercado Pago" ? "#F3FBFA" : "#fff"};border:2px solid ${metodoActual === "Mercado Pago" ? "#0FB8A9" : "#E7EDF3"};border-radius:16px;padding:18px 20px;display:flex;align-items:center;gap:15px;`,
                   )}
                 >
-                  Recomendado
-                </span>
-              </div>
+                  <RadioDot on={metodoActual === "Mercado Pago"} />
+                  <div style={s("width:46px;height:46px;border-radius:11px;background:#009EE3;display:flex;align-items:center;justify-content:center;")}>
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2}>
+                      <path d="M2 9a3 3 0 0 1 3-3h14a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3z" />
+                      <circle cx="12" cy="12" r="2.5" />
+                    </svg>
+                  </div>
+                  <div style={s("flex:1;")}>
+                    <div style={s("font:700 16px Manrope,sans-serif;color:#0E2A47;")}>MercadoPago</div>
+                    <div style={s("font-size:13px;color:#65788C;font-weight:600;")}>Tarjeta de crédito, débito o dinero en cuenta</div>
+                  </div>
+                  <span
+                    style={s(
+                      "font:700 11px Manrope,sans-serif;color:#0C8576;background:#E7F8F5;border:1px solid #CBEDE7;padding:4px 9px;border-radius:99px;",
+                    )}
+                  >
+                    Recomendado
+                  </span>
+                </div>
+              ) : (
+                <div
+                  role="note"
+                  style={s(
+                    "background:#F4F7FA;border:1px solid #E7EDF3;border-radius:16px;padding:14px 18px;font-size:13.5px;line-height:1.45;color:#65788C;font-weight:600;",
+                  )}
+                >
+                  Esta clase solo acepta pago en efectivo: el instructor todavía no habilitó los pagos con Mercado Pago.
+                </div>
+              )}
               <div
                 onClick={() => setMetodo("Efectivo")}
                 className="ah-btn"
                 style={s(
-                  `cursor:pointer;background:${metodo === "Efectivo" ? "#F3FBFA" : "#fff"};border:2px solid ${metodo === "Efectivo" ? "#0FB8A9" : "#E7EDF3"};border-radius:16px;padding:18px 20px;display:flex;align-items:center;gap:15px;`,
+                  `cursor:pointer;background:${metodoActual === "Efectivo" ? "#F3FBFA" : "#fff"};border:2px solid ${metodoActual === "Efectivo" ? "#0FB8A9" : "#E7EDF3"};border-radius:16px;padding:18px 20px;display:flex;align-items:center;gap:15px;`,
                 )}
               >
-                <RadioDot on={metodo === "Efectivo"} />
+                <RadioDot on={metodoActual === "Efectivo"} />
                 <div style={s("width:46px;height:46px;border-radius:11px;background:#E7F8F5;display:flex;align-items:center;justify-content:center;")}>
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0C8576" strokeWidth={2}>
                     <rect x="2" y="6" width="20" height="12" rx="2" />
@@ -243,7 +258,7 @@ export default function AlumnoInscripcion() {
               </div>
             )}
 
-            {metodo === "Mercado Pago" ? (
+            {metodoActual === "Mercado Pago" ? (
               <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:16px;padding:20px;")}>
                 <div style={s("display:flex;align-items:center;gap:10px;margin-bottom:14px;")}>
                   <div style={s("width:34px;height:34px;border-radius:9px;background:#009EE3;display:flex;align-items:center;justify-content:center;")}>
@@ -339,14 +354,17 @@ export default function AlumnoInscripcion() {
         </div>
       </div>
 
-      <ModalPagoMercadoPago
-        isOpen={modalMpAbierto}
-        onClose={() => setModalMpAbierto(false)}
-        amount={clase.precio}
-        payerEmail={currentUser?.email}
-        title={`Pago: ${actividad.nombre}`}
-        onSubmitPago={(datosPago) => confirmarPago("Mercado Pago", datosPago)}
-      />
+      {mpPublicKey && (
+        <ModalPagoMercadoPago
+          isOpen={modalMpAbierto}
+          publicKey={mpPublicKey}
+          onClose={() => setModalMpAbierto(false)}
+          amount={clase.precio}
+          payerEmail={currentUser?.email}
+          title={`Pago: ${actividad.nombre}`}
+          onSubmitPago={(datosPago) => confirmarPago("Mercado Pago", datosPago)}
+        />
+      )}
     </div>
   );
 }
