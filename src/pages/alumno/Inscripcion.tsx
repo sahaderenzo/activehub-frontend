@@ -267,7 +267,7 @@ export default function AlumnoInscripcion() {
                     `width:100%;background:#009EE3;color:#fff;border:none;border-radius:12px;padding:15px;font:700 15.5px Manrope,sans-serif;cursor:pointer;box-shadow:0 8px 18px rgba(0,158,227,.28);opacity:${enviando ? ".7" : "1"};`,
                   )}
                 >
-                  Pagar ${actividad.precio.toLocaleString("es-AR")} con MercadoPago
+                  {enviando ? "Procesando…" : `Pagar $${clase.precio.toLocaleString("es-AR")} con MercadoPago`}
                 </button>
               </div>
             ) : (
@@ -342,7 +342,7 @@ export default function AlumnoInscripcion() {
       <ModalPagoMercadoPago
         isOpen={modalMpAbierto}
         onClose={() => setModalMpAbierto(false)}
-        amount={actividad.precio}
+        amount={clase.precio}
         payerEmail={currentUser?.email}
         title={`Pago: ${actividad.nombre}`}
         onSubmitPago={(datosPago) => confirmarPago("Mercado Pago", datosPago)}
