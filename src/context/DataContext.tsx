@@ -15,11 +15,8 @@ import type {
   NivelIntensidad,
   RolNombre,
   TipoActividad,
-<<<<<<< HEAD
   DatosPagoMercadoPago,
-=======
   TipoPenalizacion,
->>>>>>> 41b6694527d7b1385820f51674b674d6ab602f7e
 } from "../lib/types";
 import type { DestinoNotificacion } from "../lib/notificaciones";
 import { api } from "../lib/api";
@@ -82,6 +79,15 @@ interface RecomendacionesResp {
  * Una actividad recomendada. `motivos` es lo que la pantalla muestra debajo de la tarjeta:
  * una recomendación que no se puede explicar se lee como un error.
  */
+/** Estado de la vinculación con Mercado Pago. Nunca trae tokens. */
+export interface CuentaMercadoPago {
+  vinculada: boolean;
+  estado: "VINCULADA" | "DESVINCULADA" | "TOKEN_VENCIDO" | null;
+  mpUserId: string | null;
+  actualizadaEl: string | null;
+  expiraEl: string | null;
+}
+
 export interface RecomendacionAlumno {
   actividad: Actividad;
   /** Puntaje del motor. No se muestra; sirve para diagnosticar el orden. */
@@ -694,6 +700,9 @@ interface DataContextValue {
   ) => Promise<void>;
   cancelarInscripcion: (id: string) => Promise<void>;
   confirmarCobroEfectivo: (inscripcionId: string) => Promise<void>;
+  // Mercado Pago del instructor (OAuth, KAN-54)
+  obtenerCuentaMercadoPago: () => Promise<CuentaMercadoPago>;
+  iniciarVinculacionMercadoPago: () => Promise<string>;
   listarMisInscripciones: (estado?: EstadoInscripcion) => Promise<MiInscripcion[]>;
   listarRosterClase: (claseId: string) => Promise<RosterClase>;
   listarMisClases: () => Promise<MiClaseInstructor[]>;
@@ -1041,6 +1050,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const confirmarCobroEfectivo = useCallback(async (inscripcionId: string) => {
     await api.post(`/api/instructor/inscripciones/${inscripcionId}/confirmar-cobro`);
+  }, []);
+
+  const obtenerCuentaMercadoPago = useCallback(
+    () => api.get<CuentaMercadoPago>("/api/instructor/mercadopago"),
+    [],
+  );
+
+  /** URL de la pantalla de consentimiento de Mercado Pago (lleva el state firmado del instructor). */
+  const iniciarVinculacionMercadoPago = useCallback(async () => {
+    const { url } = await api.get<{ url: string }>("/api/instructor/mercadopago/vinculo");
+    return url;
   }, []);
 
 
@@ -1395,6 +1415,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       inscribirse,
       cancelarInscripcion,
       confirmarCobroEfectivo,
+      obtenerCuentaMercadoPago,
+      iniciarVinculacionMercadoPago,
       listarMisInscripciones,
       listarRosterClase,
       listarMisClases,
@@ -1490,6 +1512,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       inscribirse,
       cancelarInscripcion,
       confirmarCobroEfectivo,
+      obtenerCuentaMercadoPago,
+      iniciarVinculacionMercadoPago,
       listarMisInscripciones,
       listarRosterClase,
       listarMisClases,

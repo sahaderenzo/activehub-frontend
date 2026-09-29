@@ -12,6 +12,7 @@ import { useData } from "../../context/DataContext";
 import type { InscripcionMiClase, MiClaseInstructor, ReseniaInstructor } from "../../context/DataContext";
 import { formatFecha, formatHora, disponibilidad } from "../../lib/mockData";
 import { claseStatusType } from "../../lib/status";
+import TarjetaMercadoPago from "../../components/pago/TarjetaMercadoPago";
 
 const WEEKDAY_LETTERS = ["D", "L", "M", "M", "J", "V", "S"];
 
@@ -187,6 +188,8 @@ export default function InstructorPanel() {
         </button>
       </div>
       <div style={s("padding:26px 32px 50px;")}>
+        {/* Fuera del "cargando" del panel: tiene su propia carga y no depende de las clases. */}
+        {puede("mercadopago.vincular") && <TarjetaMercadoPago />}
         {/* Nada del panel hasta tenerlo entero: gráficos vacíos y alertas en cero mienten. */}
         {cargando ? (
           <CargandoSeccion seccion="el panel" />

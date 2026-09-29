@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import Logo from "../../components/Logo";
-import { CargandoAccion, CargandoSeccion } from "../../components/Cargando";
+import { CargandoSeccion } from "../../components/Cargando";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
@@ -67,12 +67,8 @@ export default function AlumnoInscripcion() {
     setMetodo(m);
     setEnviando(true);
     try {
-<<<<<<< HEAD
-      await inscribirse(clase, currentUser.id, m);
-=======
       await inscribirse(clase, currentUser.id, m, datosPago);
       setMetodo(m);
->>>>>>> main
       setConfirmado(true);
       setModalMpAbierto(false);
     } catch (err) {
@@ -259,13 +255,8 @@ export default function AlumnoInscripcion() {
                   <div style={s("font:700 15px Manrope,sans-serif;color:#0E2A47;")}>Pagar con MercadoPago</div>
                 </div>
                 <p style={s("font-size:13.5px;line-height:1.55;color:#65788C;margin:0 0 16px;")}>
-<<<<<<< HEAD
-                  Vas a ser redirigido a la pasarela segura de MercadoPago para completar el pago. Tu lugar queda tomado mientras
-                  tanto.
-=======
                   Vas a completar los datos de tu tarjeta en una ventana segura de MercadoPago. Tu lugar queda confirmado cuando el
                   pago se aprueba.
->>>>>>> main
                 </p>
                 <button
                   type="button"
@@ -276,11 +267,7 @@ export default function AlumnoInscripcion() {
                     `width:100%;background:#009EE3;color:#fff;border:none;border-radius:12px;padding:15px;font:700 15.5px Manrope,sans-serif;cursor:pointer;box-shadow:0 8px 18px rgba(0,158,227,.28);opacity:${enviando ? ".7" : "1"};`,
                   )}
                 >
-<<<<<<< HEAD
-                  {enviando ? "Procesando…" : `Pagar $${clase.precio.toLocaleString("es-AR")} con MercadoPago`}
-=======
                   Pagar ${actividad.precio.toLocaleString("es-AR")} con MercadoPago
->>>>>>> main
                 </button>
               </div>
             ) : (
@@ -351,16 +338,6 @@ export default function AlumnoInscripcion() {
           </div>
         </div>
       </div>
-<<<<<<< HEAD
-      {/*
-        Bloquea la pantalla mientras el pago viaja. El botón ya se deshabilitaba, pero acá el
-        doble click cuesta una inscripción y un cobro de más: el overlay no deja llegar ni el
-        segundo click ni un Enter perdido.
-      */}
-      <CargandoAccion
-        activo={enviando}
-        mensaje={metodo === "Mercado Pago" ? "Procesando tu pago" : "Confirmando tu inscripción"}
-=======
 
       <ModalPagoMercadoPago
         isOpen={modalMpAbierto}
@@ -369,7 +346,6 @@ export default function AlumnoInscripcion() {
         payerEmail={currentUser?.email}
         title={`Pago: ${actividad.nombre}`}
         onSubmitPago={(datosPago) => confirmarPago("Mercado Pago", datosPago)}
->>>>>>> main
       />
     </div>
   );
