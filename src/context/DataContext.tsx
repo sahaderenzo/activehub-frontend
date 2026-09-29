@@ -15,7 +15,11 @@ import type {
   NivelIntensidad,
   RolNombre,
   TipoActividad,
+<<<<<<< HEAD
+  DatosPagoMercadoPago,
+=======
   TipoPenalizacion,
+>>>>>>> 41b6694527d7b1385820f51674b674d6ab602f7e
 } from "../lib/types";
 import type { DestinoNotificacion } from "../lib/notificaciones";
 import { api } from "../lib/api";
@@ -682,7 +686,12 @@ interface DataContextValue {
   eliminarCategoria: (id: string) => Promise<void>;
 
   // inscripción / pago real
-  inscribirse: (clase: Clase, alumnoId: string, metodo?: "Mercado Pago" | "Efectivo") => Promise<void>;
+  inscribirse: (
+    clase: Clase,
+    alumnoId: string,
+    metodo?: "Mercado Pago" | "Efectivo",
+    datosPago?: DatosPagoMercadoPago,
+  ) => Promise<void>;
   cancelarInscripcion: (id: string) => Promise<void>;
   confirmarCobroEfectivo: (inscripcionId: string) => Promise<void>;
   listarMisInscripciones: (estado?: EstadoInscripcion) => Promise<MiInscripcion[]>;
@@ -1008,12 +1017,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const inscribirse = useCallback(
-    async (clase: Clase, _alumnoId: string, metodo?: "Mercado Pago" | "Efectivo") => {
+    async (
+      clase: Clase,
+      _alumnoId: string,
+      metodo?: "Mercado Pago" | "Efectivo",
+      datosPago?: DatosPagoMercadoPago,
+    ) => {
       void _alumnoId;
       if (!metodo) {
         await api.post(`/api/alumno/clases/${clase.id}/preinscripciones`);
       } else {
-        await api.post(`/api/alumno/clases/${clase.id}/inscripciones`, { metodoPago: metodo });
+        const body = datosPago ? { metodoPago: metodo, datosPago } : { metodoPago: metodo };
+        await api.post(`/api/alumno/clases/${clase.id}/inscripciones`, body);
       }
       setClases((prev) => prev.map((c) => (c.id === clase.id ? { ...c, cuposOcupados: c.cuposOcupados + (metodo ? 1 : 0) } : c)));
     },
