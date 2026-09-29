@@ -53,6 +53,12 @@ function instructorItems(color: (on: boolean) => string, activeKey: string): Nav
       '<path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/>',
     ],
     [
+      "historial",
+      "Historial",
+      "/instructor/historial",
+      '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    ],
+    [
       "resenias",
       "Reseñas",
       "/instructor/resenas",

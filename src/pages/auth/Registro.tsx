@@ -63,11 +63,23 @@ export default function Registro() {
     if (!form.email.trim()) e.email = "Este campo es obligatorio.";
     else if (!EMAIL_RE.test(form.email)) e.email = "Ingresá un correo electrónico válido.";
     if (!form.telefono.trim()) e.telefono = "Este campo es obligatorio.";
+<<<<<<< Updated upstream
     if (!form.password || !passwordStrength(form.password).ok) e.password = "La contraseña necesita al menos 8 caracteres, una letra y un número.";
+=======
+    if (!form.password || !passwordStrength(form.password).ok)
+      e.password = "La contraseña necesita al menos 8 caracteres, una mayúscula y un número.";
+    if (!confirmPassword) e.confirmPassword = "Confirmá tu contraseña.";
+    else if (form.password !== confirmPassword) e.confirmPassword = "Las contraseñas no coinciden.";
+>>>>>>> Stashed changes
     if (rol === "ALUMNO" && !form.fechaNacimiento) {
       e.fechaNacimiento = "Este campo es obligatorio.";
     }
     if (rol === "INSTRUCTOR" && !form.especialidad.trim()) e.especialidad = "Este campo es obligatorio.";
+    // La documentación es obligatoria: sin ella el backend no crea la cuenta, así que
+    // conviene avisarlo acá antes de mandar el request.
+    if (rol === "INSTRUCTOR" && archivos.length === 0) {
+      e.documentos = "Adjuntá al menos un documento de certificación para crear tu cuenta.";
+    }
     if (!form.aceptaTerminos) e.aceptaTerminos = "Tenés que aceptar los términos para crear tu cuenta.";
     return e;
   };
@@ -94,6 +106,7 @@ export default function Registro() {
         });
         navigate(HOME_BY_ROL[user.rol]);
       } else {
+<<<<<<< Updated upstream
         const user = await registerInstructor({
           nombre: form.nombre,
           apellido: form.apellido,
@@ -107,6 +120,31 @@ export default function Registro() {
           aceptaTerminos: form.aceptaTerminos,
         });
         navigate(HOME_BY_ROL[user.rol]);
+=======
+        // Los archivos van en el mismo request que los datos: si la subida falla, el
+        // backend hace rollback y NO queda ninguna cuenta creada (E1A-HU04 criterio 9).
+        setSubiendo(true);
+        try {
+          const user = await registerInstructor(
+            {
+              nombre: form.nombre,
+              apellido: form.apellido,
+              email: form.email,
+              telefono: form.telefono,
+              password: form.password,
+              fechaNacimiento: form.fechaNacimiento || undefined,
+              especialidad: form.especialidad,
+              aniosExperiencia: form.aniosExperiencia ? Number(form.aniosExperiencia) : undefined,
+              descripcion: form.descripcion || undefined,
+              aceptaTerminos: form.aceptaTerminos,
+            },
+            archivos,
+          );
+          navigate(HOME_BY_ROL[user.rol]);
+        } finally {
+          setSubiendo(false);
+        }
+>>>>>>> Stashed changes
       }
     } catch (err) {
       if (err instanceof ApiError && err.fieldErrors) setErrors(err.fieldErrors);
@@ -388,6 +426,42 @@ export default function Registro() {
                   </div>
                   <div style={s("font-size:12px;color:#8194A8;margin-top:4px;")}>PDF, JPG o PNG · hasta 5 MB</div>
                 </div>
+<<<<<<< Updated upstream
+=======
+                {(archivosError || errors.documentos) && (
+                  <div style={s("font-size:12px;color:#E5484D;font-weight:600;margin-top:8px;")}>
+                    {archivosError ?? errors.documentos}
+                  </div>
+                )}
+                {archivos.length > 0 && (
+                  <div style={s("display:flex;flex-direction:column;gap:8px;margin-top:12px;")}>
+                    {archivos.map((archivo) => (
+                      <div
+                        key={archivo.name}
+                        style={s(
+                          "display:flex;align-items:center;gap:10px;border:1px solid #E7EDF3;border-radius:10px;padding:9px 12px;",
+                        )}
+                      >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2D5BC8" strokeWidth={2} style={s("flex:none;")}>
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                          <path d="M14 2v6h6" />
+                        </svg>
+                        <div style={s("flex:1;min-width:0;font:700 12.5px Manrope;color:#0E2A47;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;")}>
+                          {archivo.name}
+                        </div>
+                        <span style={s("font-size:11px;color:#90A1B2;font-weight:600;flex:none;")}>{formatTamanio(archivo.size)}</span>
+                        <span
+                          onClick={() => quitarArchivo(archivo.name)}
+                          className="ah-btn"
+                          style={s("cursor:pointer;color:#BE3A3E;font-weight:700;font-size:12px;flex:none;")}
+                        >
+                          Quitar
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+>>>>>>> Stashed changes
               </div>
             </div>
           )}

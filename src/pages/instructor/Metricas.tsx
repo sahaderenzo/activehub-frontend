@@ -1,9 +1,10 @@
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
+import type { InscripcionMiClase, MiClaseInstructor } from "../../context/DataContext";
 
 const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 const PALETTE = ["#12B5A5", "#3A6FF0", "#F5A623", "#7A52D9", "#FF6A2B", "#0FB8A9"];
@@ -25,22 +26,55 @@ export default function InstructorMetricas() {
     if (currentUser && !aprobado) navigate("/instructor/solicitud", { replace: true });
   }, [currentUser, aprobado, navigate]);
 
+  const [misClases, setMisClases] = useState<MiClaseInstructor[]>([]);
+  const [inscripciones, setInscripciones] = useState<InscripcionMiClase[]>([]);
+  const [errorCarga, setErrorCarga] = useState(false);
+
+  const cargar = useCallback(() => {
+    if (!aprobado) return;
+    setErrorCarga(false);
+    Promise.all([data.listarMisClases(), data.listarInscripcionesMisClases()])
+      .then(([clases, inscs]) => {
+        setMisClases(clases);
+        setInscripciones(inscs);
+      })
+      .catch(() => setErrorCarga(true));
+  }, [aprobado, data.listarMisClases, data.listarInscripcionesMisClases]);
+
+  useEffect(() => {
+    cargar();
+  }, [cargar]);
+
   const stats = useMemo(() => {
     if (!currentUser) return null;
-    const misActividades = data.actividades.filter((a) => a.instructorId === currentUser.id);
-    const misActividadIds = new Set(misActividades.map((a) => a.id));
-    const misClases = data.clases.filter((c) => misActividadIds.has(c.actividadId));
-    const misClaseIds = new Set(misClases.map((c) => c.id));
-    const misInscripciones = data.inscripciones.filter((i) => misClaseIds.has(i.claseId) && i.estado !== "Cancelada");
+    // Todo sale de los endpoints del instructor: `misClases` e `inscripciones` ya vienen
+    // acotados a este instructor por el backend. Antes esto se derivaba de la caché
+    // parcial `data.clases` y del dataset mock `data.inscripciones`/`data.pagos`, cuyos
+    // ids ni siquiera podían cruzarse con los reales, así que todo daba cero.
+    const misInscripciones = inscripciones.filter((i) => i.estado !== "Cancelada");
+
+    // Nombres de actividad únicos a partir de las clases propias.
+    const nombrePorActividad = new Map<string, string>();
+    for (const c of misClases) nombrePorActividad.set(c.actividadId, c.actividadNombre);
+    const misActividades = Array.from(nombrePorActividad, ([id, nombre]) => ({ id, nombre }));
 
     const totalAlumnos = new Set(misInscripciones.map((i) => i.alumnoId)).size;
 
-    const ingresosEstimados = data.pagos.reduce((sum, p) => {
-      if (p.estado === "Cancelado") return sum;
-      const insc = data.inscripciones.find((i) => i.id === p.inscripcionId);
-      if (!insc || !misClaseIds.has(insc.claseId)) return sum;
-      return sum + p.monto;
-    }, 0);
+    // E2I-HU10 criterio 6: los ingresos consideran ÚNICAMENTE los pagos ya acreditados
+    // al instructor — Liberado (Mercado Pago, tras finalizar la clase y pasar el período
+    // de denuncias) o Efectivo (cobrado mano a mano). Los Retenido todavía no son plata
+    // del instructor y los Cancelado se reintegraron.
+    const ingresosAcreditados = inscripciones.reduce(
+      (sum, i) => (i.pagoEstado === "Liberado" || i.pagoEstado === "Efectivo" ? sum + (i.pagoMonto ?? 0) : sum),
+      0,
+    );
+
+    // Lo que está por acreditarse: se muestra aparte para que un instructor con pagos
+    // retenidos no lea un cero y crea que perdió la plata.
+    const ingresosPendientes = inscripciones.reduce(
+      (sum, i) => (i.pagoEstado === "Retenido" ? sum + (i.pagoMonto ?? 0) : sum),
+      0,
+    );
 
     const ocupacionProm = misClases.length
       ? Math.round(
@@ -65,10 +99,7 @@ export default function InstructorMetricas() {
 
     const porActividad = misActividades
       .map((a, i) => {
-        const count = misInscripciones.filter((insc) => {
-          const clase = data.clases.find((c) => c.id === insc.claseId);
-          return clase?.actividadId === a.id;
-        }).length;
+        const count = misInscripciones.filter((insc) => insc.actividadId === a.id).length;
         return { l: a.nombre, count, c: PALETTE[i % PALETTE.length] };
       })
       .sort((a, b) => b.count - a.count);
@@ -89,13 +120,14 @@ export default function InstructorMetricas() {
 
     return {
       totalAlumnos,
-      ingresosEstimados,
+      ingresosAcreditados,
+      ingresosPendientes,
       ocupacionProm,
       monthBars,
       reservasPorActividad,
       ocupacionPorActividad,
     };
-  }, [currentUser, data.actividades, data.clases, data.inscripciones, data.pagos]);
+  }, [currentUser, misClases, inscripciones]);
 
   if (!currentUser || !aprobado || !stats) return null;
 
@@ -115,9 +147,12 @@ export default function InstructorMetricas() {
     },
     {
       tint: "#E7F8F5",
-      value: `$${stats.ingresosEstimados.toLocaleString("es-AR")}`,
-      label: "Ingresos estimados",
-      caption: "Suma de pagos registrados",
+      value: `$${stats.ingresosAcreditados.toLocaleString("es-AR")}`,
+      label: "Ingresos acreditados",
+      caption:
+        stats.ingresosPendientes > 0
+          ? `$${stats.ingresosPendientes.toLocaleString("es-AR")} pendientes de acreditación`
+          : "Pagos liberados y cobros en efectivo",
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0C8576" strokeWidth={2}>
           <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
@@ -158,6 +193,26 @@ export default function InstructorMetricas() {
         </div>
       </div>
       <div style={s("padding:26px 32px 50px;")}>
+        {errorCarga && (
+          <div
+            style={s(
+              "background:#FBEAEB;border:1px solid #F3D2D3;border-radius:14px;padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;",
+            )}
+          >
+            <span style={s("color:#BE3A3E;font-weight:700;font-size:13.5px;")}>
+              No se pudieron cargar las métricas.
+            </span>
+            <button
+              className="ah-btn"
+              onClick={cargar}
+              style={s(
+                "background:#fff;border:1px solid #D6DEE7;border-radius:10px;padding:8px 14px;font:700 13px Manrope;color:#41566B;cursor:pointer;",
+              )}
+            >
+              Reintentar
+            </button>
+          </div>
+        )}
         <div className="ah-grid-3" style={s("display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-bottom:24px;")}>
           {kpis.map((k) => (
             <div

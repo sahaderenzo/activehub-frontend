@@ -464,7 +464,13 @@ export function getInscripcionesDeAlumno(alumnoId: string): Inscripcion[] {
   return inscripciones.filter((i) => i.alumnoId === alumnoId);
 }
 
-export function disponibilidad(clase: Clase): { label: string; type: "disponible" | "ultimos" | "sincupos" } {
+/**
+ * Disponibilidad calculada (nunca persistida). Recibe cualquier objeto con cupos para que
+ * sirva tanto a `Clase` del catálogo como a `MiClaseInstructor` del endpoint del instructor.
+ */
+export function disponibilidad(
+  clase: { cuposMax: number; cuposOcupados: number },
+): { label: string; type: "disponible" | "ultimos" | "sincupos" } {
   const libres = clase.cuposMax - clase.cuposOcupados;
   if (libres <= 0) return { label: "Sin cupos", type: "sincupos" };
   if (libres <= 3) return { label: `${libres} cupos · Últimos`, type: "ultimos" };

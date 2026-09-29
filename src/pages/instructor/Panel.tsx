@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
 import StatusBadge from "../../components/StatusBadge";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
-import type { ReseniaInstructor } from "../../context/DataContext";
+import type { InscripcionMiClase, MiClaseInstructor, ReseniaInstructor } from "../../context/DataContext";
 import { formatFecha, formatHora, disponibilidad } from "../../lib/mockData";
 import { claseStatusType } from "../../lib/status";
 
@@ -27,15 +27,30 @@ export default function InstructorPanel() {
     if (aprobado) data.listarResenasInstructor().then(setResenasInstructor).catch(() => {});
   }, [aprobado, data.listarResenasInstructor]);
 
-  const misActividades = useMemo(
-    () => (currentUser ? data.actividades.filter((a) => a.instructorId === currentUser.id) : []),
-    [data.actividades, currentUser],
-  );
-  const misActividadIds = useMemo(() => new Set(misActividades.map((a) => a.id)), [misActividades]);
-  const misClases = useMemo(
-    () => data.clases.filter((c) => misActividadIds.has(c.actividadId)),
-    [data.clases, misActividadIds],
-  );
+  // Datos reales del instructor. Antes el panel derivaba todo de `data.clases` (caché
+  // parcial que sólo se llena al visitar el detalle de una actividad) y de
+  // `data.inscripciones` (mock), así que al entrar por login mostraba siempre cero.
+  const [misClases, setMisClases] = useState<MiClaseInstructor[]>([]);
+  const [inscripciones, setInscripciones] = useState<InscripcionMiClase[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState(false);
+
+  const cargar = useCallback(() => {
+    if (!aprobado) return;
+    setCargando(true);
+    setErrorCarga(false);
+    Promise.all([data.listarMisClases(), data.listarInscripcionesMisClases()])
+      .then(([clases, inscs]) => {
+        setMisClases(clases);
+        setInscripciones(inscs);
+      })
+      .catch(() => setErrorCarga(true))
+      .finally(() => setCargando(false));
+  }, [aprobado, data.listarMisClases, data.listarInscripcionesMisClases]);
+
+  useEffect(() => {
+    cargar();
+  }, [cargar]);
 
   const { bars, weekDays, deltaLabel } = useMemo(() => {
     const today = new Date();
@@ -45,13 +60,12 @@ export default function InstructorPanel() {
       d.setDate(d.getDate() - (6 - i));
       return d;
     });
+    // `inscripciones` ya viene acotado a las clases del instructor por el backend.
     const countFor = (d: Date) =>
-      data.inscripciones.filter((insc) => {
-        if (insc.estado === "Cancelada") return false;
-        const clase = data.clases.find((c) => c.id === insc.claseId);
-        if (!clase || !misActividadIds.has(clase.actividadId)) return false;
-        return new Date(insc.createdAt).toDateString() === d.toDateString();
-      }).length;
+      inscripciones.filter(
+        (insc) =>
+          insc.estado !== "Cancelada" && new Date(insc.createdAt).toDateString() === d.toDateString(),
+      ).length;
     const counts = days.map(countFor);
     const max = Math.max(1, ...counts);
     const bars = counts.map((c) => `${Math.max(8, Math.round((c / max) * 100))}%`);
@@ -68,19 +82,17 @@ export default function InstructorPanel() {
     const deltaLabel = `${delta >= 0 ? "+" : ""}${delta}%`;
 
     return { bars, weekDays, deltaLabel };
-  }, [data.inscripciones, data.clases, misActividadIds]);
+  }, [inscripciones]);
 
   const alertas = useMemo(() => {
-    const list: { dot: string; text: string }[] = [];
+    const list: { dot: string; text: string; claseId?: string }[] = [];
 
-    const pendientes = data.inscripciones.filter((insc) => {
-      if (insc.estado !== "PagoPendiente") return false;
-      const clase = data.clases.find((c) => c.id === insc.claseId);
-      return !!clase && misActividadIds.has(clase.actividadId);
-    });
+    const pendientes = inscripciones.filter((insc) => insc.estado === "PagoPendiente");
     if (pendientes.length > 0) {
       list.push({
         dot: "#F5A623",
+        // Criterio 7: la alerta lleva a la gestión de la clase del alumno pendiente.
+        claseId: pendientes[0].claseId,
         text: `Tenés ${pendientes.length} pago${pendientes.length > 1 ? "s" : ""} en efectivo pendiente${
           pendientes.length > 1 ? "s" : ""
         } de confirmar.`,
@@ -93,10 +105,10 @@ export default function InstructorPanel() {
       .sort((a, b) => new Date(a.fechaHora).getTime() - new Date(b.fechaHora).getTime())
       .find((c) => disponibilidad(c).type !== "disponible");
     if (clasePocosCupos) {
-      const act = data.actividades.find((a) => a.id === clasePocosCupos.actividadId);
       list.push({
         dot: disponibilidad(clasePocosCupos).type === "sincupos" ? "#E5484D" : "#F5A623",
-        text: `"${act?.nombre ?? "Tu clase"}" del ${formatFecha(clasePocosCupos.fechaHora)} tiene ${disponibilidad(
+        claseId: clasePocosCupos.claseId,
+        text: `"${clasePocosCupos.actividadNombre}" del ${formatFecha(clasePocosCupos.fechaHora)} tiene ${disponibilidad(
           clasePocosCupos,
         ).label.toLowerCase()}.`,
       });
@@ -114,7 +126,7 @@ export default function InstructorPanel() {
       list.push({ dot: "#9AAABA", text: "No tenés alertas nuevas por el momento." });
     }
     return list.slice(0, 3);
-  }, [data.inscripciones, data.clases, data.actividades, resenasInstructor, misActividadIds, misClases]);
+  }, [inscripciones, resenasInstructor, misClases]);
 
   const proximas = useMemo(() => {
     const now = new Date();
@@ -122,17 +134,14 @@ export default function InstructorPanel() {
       .filter((c) => (c.estado === "Programada" || c.estado === "Habilitada") && new Date(c.fechaHora) >= now)
       .sort((a, b) => new Date(a.fechaHora).getTime() - new Date(b.fechaHora).getTime())
       .slice(0, 3)
-      .map((c) => {
-        const act = data.actividades.find((a) => a.id === c.actividadId);
-        return {
-          id: c.id,
-          name: act?.nombre ?? "Actividad",
-          time: `${formatFecha(c.fechaHora)} · ${formatHora(c.fechaHora)}`,
-          cupos: `${c.cuposOcupados}/${c.cuposMax}`,
-          type: claseStatusType(c.estado),
-        };
-      });
-  }, [misClases, data.actividades]);
+      .map((c) => ({
+        id: c.claseId,
+        name: c.actividadNombre,
+        time: `${formatFecha(c.fechaHora)} · ${formatHora(c.fechaHora)}`,
+        cupos: `${c.cuposOcupados}/${c.cuposMax}`,
+        type: claseStatusType(c.estado),
+      }));
+  }, [misClases]);
 
   if (!currentUser || !aprobado) return null;
 
@@ -205,22 +214,57 @@ export default function InstructorPanel() {
             )}
           >
             <div style={s("font:700 16px Space Grotesk;margin-bottom:18px;")}>Alertas y solicitudes</div>
+            {errorCarga && (
+              <div style={s("display:flex;flex-direction:column;gap:10px;align-items:flex-start;margin-bottom:16px;")}>
+                <span style={s("font-size:13.5px;color:#BE3A3E;font-weight:600;")}>
+                  No se pudo cargar la información del panel, intentá nuevamente.
+                </span>
+                <button
+                  className="ah-btn"
+                  onClick={cargar}
+                  style={s(
+                    "background:#fff;border:1px solid #D6DEE7;border-radius:10px;padding:8px 14px;font:700 13px Manrope;color:#41566B;cursor:pointer;",
+                  )}
+                >
+                  Reintentar
+                </button>
+              </div>
+            )}
             <div style={s("display:flex;flex-direction:column;gap:14px;")}>
               {alertas.map((a, i) => (
-                <div key={i} style={s("display:flex;gap:11px;align-items:flex-start;")}>
+                <div
+                  key={i}
+                  onClick={a.claseId ? () => navigate(`/instructor/clases/${a.claseId}`) : undefined}
+                  style={s(
+                    `display:flex;gap:11px;align-items:flex-start;${a.claseId ? "cursor:pointer;" : ""}`,
+                  )}
+                >
                   <span style={s(`width:9px;height:9px;border-radius:99px;background:${a.dot};flex:none;margin-top:5px;`)} />
                   <span style={s("font-size:13.5px;color:#41566B;font-weight:600;line-height:1.45;")}>{a.text}</span>
                 </div>
               ))}
             </div>
             <div style={s("height:1px;background:#EEF2F6;margin:18px 0;")} />
-            <div style={s("font:700 14px Space Grotesk;margin-bottom:14px;")}>Próximas clases</div>
+            <div style={s("display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;")}>
+              <div style={s("font:700 14px Space Grotesk;")}>Próximas clases</div>
+              <span
+                className="ah-link"
+                onClick={() => navigate("/instructor/proximas-clases")}
+                style={s("font:700 12.5px Manrope;color:#FF6A2B;cursor:pointer;")}
+              >
+                Ver todas
+              </span>
+            </div>
             <div style={s("display:flex;flex-direction:column;gap:11px;")}>
-              {proximas.length === 0 && (
+              {proximas.length === 0 && !cargando && (
                 <span style={s("font-size:13px;color:#90A1B2;font-weight:600;")}>No tenés clases próximas.</span>
               )}
               {proximas.map((p) => (
-                <div key={p.id} style={s("display:flex;align-items:center;gap:10px;")}>
+                <div
+                  key={p.id}
+                  onClick={() => navigate(`/instructor/clases/${p.id}`)}
+                  style={s("display:flex;align-items:center;gap:10px;cursor:pointer;")}
+                >
                   <div style={s("flex:1;min-width:0;")}>
                     <div
                       style={s(
