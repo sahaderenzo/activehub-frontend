@@ -8,7 +8,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import { ApiError } from "../../lib/api";
 import { formatFecha, formatHora, tipoIngreso } from "../../lib/mockData";
-import type { DatosPagoMercadoPago } from "../../lib/types";
+import type { DatosPagoMercadoPago, EstadoInscripcion } from "../../lib/types";
 import ModalPagoMercadoPago from "../../components/pago/ModalPagoMercadoPago";
 
 type Metodo = "Mercado Pago" | "Efectivo";
@@ -21,6 +21,8 @@ export default function AlumnoInscripcion() {
     useData();
   const [metodo, setMetodo] = useState<Metodo>("Mercado Pago");
   const [confirmado, setConfirmado] = useState(false);
+  // Estado REAL que devolvio el backend: con Mercado Pago puede ser "PagoPendiente" (en revision).
+  const [estadoFinal, setEstadoFinal] = useState<EstadoInscripcion | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [modalMpAbierto, setModalMpAbierto] = useState(false);
@@ -71,8 +73,9 @@ export default function AlumnoInscripcion() {
     setMetodo(m);
     setEnviando(true);
     try {
-      await inscribirse(clase, currentUser.id, m, datosPago);
+      const resultado = await inscribirse(clase, currentUser.id, m, datosPago);
       setMetodo(m);
+      setEstadoFinal(resultado?.estado ?? null);
       setConfirmado(true);
       setModalMpAbierto(false);
     } catch (err) {
@@ -85,6 +88,20 @@ export default function AlumnoInscripcion() {
   };
 
   if (confirmado) {
+    // KAN-59: el texto sale del estado que devolvio el backend, no de lo que se eligio. Con
+    // Mercado Pago "Inscripto" es pago reservado (no cobrado: se cobra despues de la clase) y
+    // "PagoPendiente" es que MP todavia lo esta revisando.
+    const enRevisionMp = metodoActual === "Mercado Pago" && estadoFinal === "PagoPendiente";
+    const titulo = enRevisionMp
+      ? "Estamos esperando la confirmación de Mercado Pago"
+      : metodoActual === "Mercado Pago"
+        ? "¡Inscripción confirmada!"
+        : "¡Inscripción registrada!";
+    const detalle = enRevisionMp
+      ? `Tu lugar en ${actividad.nombre} del ${formatFecha(clase.fechaHora)} está reservado mientras Mercado Pago revisa el pago. Te avisamos con una notificación apenas se confirme.`
+      : metodoActual === "Mercado Pago"
+        ? `Tu lugar en ${actividad.nombre} del ${formatFecha(clase.fechaHora)} quedó confirmado. El cobro se hace efectivo después de la clase: hasta entonces el monto queda reservado en tu tarjeta.`
+        : `Tu lugar en ${actividad.nombre} del ${formatFecha(clase.fechaHora)} quedó inscripto con pago pendiente. Abonalo directamente al instructor.`;
     return (
       <div className="ah-screen" style={s("min-height:100vh;background:#F4F7FA;")}>
         <header style={s("background:#fff;border-bottom:1px solid #E7EDF3;")}>
@@ -96,20 +113,25 @@ export default function AlumnoInscripcion() {
           <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:18px;padding:44px 30px;text-align:center;")}>
             <span
               style={s(
-                "display:inline-flex;width:64px;height:64px;border-radius:99px;background:#E7F8F5;align-items:center;justify-content:center;margin-bottom:18px;",
+                `display:inline-flex;width:64px;height:64px;border-radius:99px;background:${enRevisionMp ? "#FFF3E0" : "#E7F8F5"};align-items:center;justify-content:center;margin-bottom:18px;`,
               )}
             >
-              <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#0C8576" strokeWidth={2.4}>
-                <path d="M20 6 9 17l-5-5" />
-              </svg>
+              {enRevisionMp ? (
+                <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#B9741A" strokeWidth={2.4}>
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M12 7v5l3 2" />
+                </svg>
+              ) : (
+                <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#0C8576" strokeWidth={2.4}>
+                  <path d="M20 6 9 17l-5-5" />
+                </svg>
+              )}
             </span>
             <h1 style={s("font:700 24px Space Grotesk,sans-serif;color:#0E2A47;margin:0 0 8px;")}>
-              {metodoActual === "Mercado Pago" ? "¡Inscripción confirmada!" : "¡Inscripción registrada!"}
+              {titulo}
             </h1>
             <p style={s("font-size:14.5px;color:#65788C;margin:0 0 26px;max-width:420px;margin-inline:auto;")}>
-              {metodoActual === "Mercado Pago"
-                ? `Tu pago fue aprobado y tu lugar en ${actividad.nombre} del ${formatFecha(clase.fechaHora)} quedó confirmado.`
-                : `Tu lugar en ${actividad.nombre} del ${formatFecha(clase.fechaHora)} quedó inscripto con pago pendiente. Abonalo directamente al instructor.`}
+              {detalle}
             </p>
             <button
               className="ah-btn"
@@ -206,7 +228,7 @@ export default function AlumnoInscripcion() {
                   </div>
                   <div style={s("flex:1;")}>
                     <div style={s("font:700 16px Manrope,sans-serif;color:#0E2A47;")}>MercadoPago</div>
-                    <div style={s("font-size:13px;color:#65788C;font-weight:600;")}>Tarjeta de crédito, débito o dinero en cuenta</div>
+                    <div style={s("font-size:13px;color:#65788C;font-weight:600;")}>Tarjeta de crédito</div>
                   </div>
                   <span
                     style={s(
@@ -270,8 +292,8 @@ export default function AlumnoInscripcion() {
                   <div style={s("font:700 15px Manrope,sans-serif;color:#0E2A47;")}>Pagar con MercadoPago</div>
                 </div>
                 <p style={s("font-size:13.5px;line-height:1.55;color:#65788C;margin:0 0 16px;")}>
-                  Vas a completar los datos de tu tarjeta en una ventana segura de MercadoPago. Tu lugar queda confirmado cuando el
-                  pago se aprueba.
+                  Vas a completar los datos de tu tarjeta de crédito en una ventana segura de MercadoPago. El monto queda
+                  reservado en tu tarjeta y se cobra después de la clase.
                 </p>
                 <button
                   type="button"

@@ -80,6 +80,13 @@ interface RecomendacionesResp {
  * Una actividad recomendada. `motivos` es lo que la pantalla muestra debajo de la tarjeta:
  * una recomendación que no se puede explicar se lee como un error.
  */
+/** Respuesta de `POST /inscripciones`: lo que importa a la pantalla es el estado real. */
+export interface ResultadoInscripcion {
+  id: string;
+  estado: EstadoInscripcion;
+  pagoId: string | null;
+}
+
 /** Estado de la vinculación con Mercado Pago. Nunca trae tokens. */
 export interface CuentaMercadoPago {
   vinculada: boolean;
@@ -693,12 +700,17 @@ interface DataContextValue {
   eliminarCategoria: (id: string) => Promise<void>;
 
   // inscripción / pago real
+  /**
+   * Devuelve el estado REAL en que quedó la inscripción según el backend (null en una
+   * preinscripción). Con Mercado Pago no siempre es "Inscripto": si MP deja el pago en revisión
+   * vuelve "PagoPendiente" (KAN-58), y la pantalla no puede dar por aprobado lo que no lo está.
+   */
   inscribirse: (
     clase: Clase,
     alumnoId: string,
     metodo?: "Mercado Pago" | "Efectivo",
     datosPago?: DatosPagoMercadoPago,
-  ) => Promise<void>;
+  ) => Promise<ResultadoInscripcion | null>;
   cancelarInscripcion: (id: string) => Promise<void>;
   confirmarCobroEfectivo: (inscripcionId: string) => Promise<void>;
   // Mercado Pago del instructor (OAuth, KAN-54)
@@ -1039,13 +1051,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
       datosPago?: DatosPagoMercadoPago,
     ) => {
       void _alumnoId;
+      let resultado: ResultadoInscripcion | null = null;
       if (!metodo) {
         await api.post(`/api/alumno/clases/${clase.id}/preinscripciones`);
       } else {
         const body = datosPago ? { metodoPago: metodo, datosPago } : { metodoPago: metodo };
-        await api.post(`/api/alumno/clases/${clase.id}/inscripciones`, body);
+        resultado = await api.post<ResultadoInscripcion>(`/api/alumno/clases/${clase.id}/inscripciones`, body);
       }
       setClases((prev) => prev.map((c) => (c.id === clase.id ? { ...c, cuposOcupados: c.cuposOcupados + (metodo ? 1 : 0) } : c)));
+      return resultado;
     },
     [],
   );

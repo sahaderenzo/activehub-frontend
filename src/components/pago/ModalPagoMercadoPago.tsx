@@ -43,6 +43,9 @@ export default function ModalPagoMercadoPago({
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  // Se incrementa despues de un pago rechazado para volver a montar el Brick: el token de la
+  // tarjeta es de un solo uso, asi que reintentar con el mismo formulario no tiene sentido.
+  const [intento, setIntento] = useState(0);
 
   // Escuchar la tecla Escape para cerrar el modal
   useEffect(() => {
@@ -74,6 +77,7 @@ export default function ModalPagoMercadoPago({
 
       if (!containerRef.current) return;
       containerRef.current.innerHTML = "";
+      setIsLoading(true);
 
       const mp = getMercadoPago(publicKey);
       if (!mp) {
@@ -87,6 +91,13 @@ export default function ModalPagoMercadoPago({
       const bricksBuilder = mp.bricks();
 
       const settings = {
+        customization: {
+          paymentMethods: {
+            // La reserva con captura posterior (MP-01) solo existe para tarjetas de CREDITO: con
+            // debito o prepaga Mercado Pago rechaza la orden (capture_mode manual).
+            types: { excluded: ["debit_card", "prepaid_card"] },
+          },
+        },
         initialization: {
           amount,
           payer: payerEmail ? { email: payerEmail } : undefined,
@@ -122,6 +133,8 @@ export default function ModalPagoMercadoPago({
                 setErrorMessage(msg);
                 onError?.(msg);
                 setIsProcessing(false);
+                // Formulario nuevo para probar con otra tarjeta; el mensaje queda arriba.
+                setIntento((n) => n + 1);
               }
               throw err;
             }
@@ -168,7 +181,7 @@ export default function ModalPagoMercadoPago({
         controllerRef.current = null;
       }
     };
-  }, [isOpen, amount, publicKey, payerEmail, onSubmitPago, onError]);
+  }, [isOpen, amount, publicKey, payerEmail, onSubmitPago, onError, intento]);
 
   if (!isOpen) return null;
 
@@ -196,7 +209,7 @@ export default function ModalPagoMercadoPago({
               {title}
             </h2>
             <div style={s("font-size:13px;color:#65788C;font-weight:600;")}>
-              Completá los datos de tu tarjeta para confirmar el pago
+              Completá los datos de tu tarjeta de crédito para confirmar el pago
             </div>
           </div>
           <div style={s("display:flex;align-items:center;gap:12px;")}>
