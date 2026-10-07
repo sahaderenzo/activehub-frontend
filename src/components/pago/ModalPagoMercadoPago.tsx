@@ -47,6 +47,17 @@ export default function ModalPagoMercadoPago({
   // tarjeta es de un solo uso, asi que reintentar con el mismo formulario no tiene sentido.
   const [intento, setIntento] = useState(0);
 
+  // Los callbacks se leen de refs y NO son dependencias del efecto que crea el Brick. El padre
+  // los pasa como funciones inline (nuevas en cada render): como dependencias, el primer
+  // setState del padre al empezar a pagar volvia a montar el Brick EN MEDIO del pago, el Brick
+  // que estaba pagando quedaba "disposed" y, si el pago fallaba, nunca apagaba el "procesando".
+  const onSubmitPagoRef = useRef(onSubmitPago);
+  const onErrorRef = useRef(onError);
+  useEffect(() => {
+    onSubmitPagoRef.current = onSubmitPago;
+    onErrorRef.current = onError;
+  }, [onSubmitPago, onError]);
+
   // Escuchar la tecla Escape para cerrar el modal
   useEffect(() => {
     if (!isOpen) return;
@@ -123,7 +134,7 @@ export default function ModalPagoMercadoPago({
             };
 
             try {
-              await onSubmitPago(payload);
+              await onSubmitPagoRef.current(payload);
             } catch (err) {
               const msg =
                 err instanceof ApiError
@@ -131,7 +142,7 @@ export default function ModalPagoMercadoPago({
                   : (err as Error)?.message || "Ocurrió un error al procesar el pago. Intentá nuevamente.";
               if (!isDisposed) {
                 setErrorMessage(msg);
-                onError?.(msg);
+                onErrorRef.current?.(msg);
                 setIsProcessing(false);
                 // Formulario nuevo para probar con otra tarjeta; el mensaje queda arriba.
                 setIntento((n) => n + 1);
@@ -181,7 +192,7 @@ export default function ModalPagoMercadoPago({
         controllerRef.current = null;
       }
     };
-  }, [isOpen, amount, publicKey, payerEmail, onSubmitPago, onError, intento]);
+  }, [isOpen, amount, publicKey, payerEmail, intento]);
 
   if (!isOpen) return null;
 
