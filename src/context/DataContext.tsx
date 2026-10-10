@@ -221,6 +221,12 @@ export interface RosterAlumno {
   apellido: string;
   telefono?: string;
   estado: string;
+  /** KAN-63: null si la inscripción no tiene pago. */
+  pagoEstado: EstadoPago | null;
+  pagoMetodo: string | null;
+  pagoCapturado: boolean;
+  /** Lo que recibe el instructor por este alumno: el monto menos la comisión de la plataforma. */
+  pagoNeto: number | null;
 }
 
 /** Clase propia del instructor (GET /api/instructor/clases). Incluye Finalizadas y Canceladas. */
@@ -268,6 +274,8 @@ export interface MiPago {
   claseEstado: EstadoClase;
   inscripcionEstado: EstadoInscripcion;
   estado: EstadoPago;
+  /** KAN-63: si Mercado Pago ya lo cobró (un `Retenido` cobrado espera el período de denuncias). */
+  capturado: boolean;
   metodo: string;
   monto: number;
   createdAt: string;

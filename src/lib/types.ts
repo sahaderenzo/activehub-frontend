@@ -13,7 +13,12 @@ export type EstadoInscripcion =
 
 export type EstadoClase = "Programada" | "Habilitada" | "Cancelada" | "Finalizada";
 
-export type EstadoPago = "Retenido" | "Liberado" | "Cancelado" | "Efectivo";
+/**
+ * Los nombres tal cual los manda el backend (`EstadoPago.name()`). `Rechazado`, `Reembolsado` y
+ * `EnRevision` llegaron con Mercado Pago real (KAN-58/65); antes de KAN-63 la pantalla no los
+ * conocía y les ponía el badge por defecto ("Disponible").
+ */
+export type EstadoPago = "Retenido" | "Liberado" | "Cancelado" | "Efectivo" | "Rechazado" | "Reembolsado" | "EnRevision";
 
 export type EstadoDenuncia = "Pendiente" | "En Auditoría" | "Resuelta";
 

@@ -7,10 +7,10 @@ import { s } from "../../lib/style";
 import { useAhora } from "../../lib/ahora";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
-import type { RosterClase } from "../../context/DataContext";
+import type { RosterAlumno, RosterClase } from "../../context/DataContext";
 import { ApiError } from "../../lib/api";
 import { disponibilidad, formatFecha, formatHora } from "../../lib/mockData";
-import { inscripcionStatusType } from "../../lib/status";
+import { explicarPagoInstructor, inscripcionStatusType } from "../../lib/status";
 import type { EstadoInscripcion } from "../../lib/types";
 
 export default function InstructorGestionClase() {
@@ -73,6 +73,8 @@ export default function InstructorGestionClase() {
   const pagoAprobado = alumnos.filter((a) => a.estado === "Inscripto").length;
   const pendienteDePago = alumnos.filter((a) => a.estado === "PagoPendiente").length;
   const preinscriptos = roster?.cantidadPreInscripcion ?? 0;
+  // KAN-63: lo que el instructor va a recibir, ya sin la comisión de la plataforma.
+  const totalARecibir = alumnos.filter(cuentaParaCobrar).reduce((acum, a) => acum + (a.pagoNeto ?? 0), 0);
 
   const confirmarCobro = async (inscripcionId: string) => {
     setError(null);
@@ -258,12 +260,14 @@ export default function InstructorGestionClase() {
           <div
             className="ah-grid-4"
             style={s(
-              "display:grid;grid-template-columns:1.6fr 1fr 1fr 150px;padding:11px 22px;background:#F7FAFC;border-top:1px solid #EEF2F6;border-bottom:1px solid #EEF2F6;font:700 11.5px Manrope;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;",
+              "display:grid;grid-template-columns:1.5fr .9fr 1fr 1.6fr .8fr 150px;padding:11px 22px;background:#F7FAFC;border-top:1px solid #EEF2F6;border-bottom:1px solid #EEF2F6;font:700 11.5px Manrope;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;",
             )}
           >
             <span>Alumno</span>
             <span>Contacto</span>
             <span>Estado inscripción</span>
+            <span>Pago</span>
+            <span>A recibir</span>
             <span>Pago efectivo</span>
           </div>
           {cargandoRoster && (
@@ -284,7 +288,7 @@ export default function InstructorGestionClase() {
                 key={a.inscripcionId}
                 className="ah-grid-4"
                 style={s(
-                  "display:grid;grid-template-columns:1.6fr 1fr 1fr 150px;padding:14px 22px;border-bottom:1px solid #F1F4F8;align-items:center;",
+                  "display:grid;grid-template-columns:1.5fr .9fr 1fr 1.6fr .8fr 150px;padding:14px 22px;border-bottom:1px solid #F1F4F8;align-items:center;",
                 )}
               >
                 <div style={s("display:flex;align-items:center;gap:11px;")}>
@@ -299,6 +303,10 @@ export default function InstructorGestionClase() {
                 </div>
                 <span style={s("font-size:13px;color:#65788C;font-weight:600;")}>{a.telefono ?? "—"}</span>
                 <StatusBadge type={inscripcionStatusType(a.estado as EstadoInscripcion)} />
+                <PagoCelda alumno={a} />
+                <span style={s("font:700 14px Space Grotesk;color:#0E2A47;")}>
+                  {cuentaParaCobrar(a) ? `$${(a.pagoNeto ?? 0).toLocaleString("es-AR")}` : "—"}
+                </span>
                 <div>
                   {esPendiente && (
                     <button
@@ -318,10 +326,42 @@ export default function InstructorGestionClase() {
               </div>
             );
           })}
+          {totalARecibir > 0 && (
+            <div style={s("display:flex;justify-content:flex-end;gap:8px;padding:14px 22px;background:#F7FAFC;font-size:13px;color:#65788C;font-weight:600;")}>
+              Total a recibir por esta clase:
+              <strong style={s("font:700 14px Space Grotesk;color:#0E2A47;")}>${totalARecibir.toLocaleString("es-AR")}</strong>
+            </div>
+          )}
         </div>
       </div>
       {/* Confirmar un cobro mueve plata: el doble click no puede llegar. */}
       <CargandoAccion activo={confirmandoCobro} mensaje="Confirmando el cobro" />
     </DashLayout>
+  );
+}
+
+/**
+ * KAN-63: un pago cuenta para "A recibir" si es plata del instructor o va a serlo: reservado,
+ * cobrado o en efectivo. En revisión todavía no está aprobado, y los devueltos o rechazados no
+ * son de nadie.
+ */
+function cuentaParaCobrar(a: RosterAlumno): boolean {
+  return a.pagoNeto != null && (a.pagoEstado === "Retenido" || a.pagoEstado === "Liberado" || a.pagoEstado === "Efectivo");
+}
+
+function PagoCelda({ alumno }: { alumno: RosterAlumno }) {
+  if (!alumno.pagoEstado) {
+    return <span style={s("font-size:13px;color:#90A1B2;font-weight:600;")}>—</span>;
+  }
+  const { type, label, detalle } = explicarPagoInstructor({
+    estado: alumno.pagoEstado,
+    metodo: alumno.pagoMetodo ?? "",
+    capturado: alumno.pagoCapturado,
+  });
+  return (
+    <div style={s("display:flex;flex-direction:column;align-items:flex-start;gap:5px;")}>
+      <StatusBadge type={type} label={label} />
+      <span style={s("font-size:12px;line-height:1.35;color:#7A8C9E;font-weight:600;")}>{detalle}</span>
+    </div>
   );
 }

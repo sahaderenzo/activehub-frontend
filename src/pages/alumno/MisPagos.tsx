@@ -8,7 +8,7 @@ import { useData } from "../../context/DataContext";
 import type { MiPago } from "../../context/DataContext";
 import { ApiError } from "../../lib/api";
 import { formatFecha } from "../../lib/mockData";
-import { pagoStatusType } from "../../lib/status";
+import { explicarPagoAlumno } from "../../lib/status";
 
 export default function AlumnoMisPagos() {
   const { currentUser } = useAuth();
@@ -35,10 +35,17 @@ export default function AlumnoMisPagos() {
     cargar();
   }, [currentUser, cargar]);
 
-  const acreditado = filas.filter((f) => f.estado === "Liberado" || f.estado === "Efectivo");
-  const totalPagado = acreditado.reduce((acum, f) => acum + f.monto, 0);
-  const totalRetenido = filas.filter((f) => f.estado === "Retenido").reduce((acum, f) => acum + f.monto, 0);
-  const totalReintegrado = filas.filter((f) => f.estado === "Cancelado").reduce((acum, f) => acum + f.monto, 0);
+  // KAN-63: un Retenido ya capturado es plata cobrada (espera el período de denuncias), no
+  // reservada. Y "reintegrado" es lo que se le devolvió o nunca se le cobró por Mercado Pago:
+  // un efectivo cancelado lo devuelve el instructor en mano, no la plataforma.
+  const sumar = (lista: MiPago[]) => lista.reduce((acum, f) => acum + f.monto, 0);
+  const totalPagado = sumar(
+    filas.filter((f) => f.estado === "Liberado" || f.estado === "Efectivo" || (f.estado === "Retenido" && f.capturado)),
+  );
+  const totalRetenido = sumar(filas.filter((f) => f.estado === "Retenido" && !f.capturado));
+  const totalReintegrado = sumar(
+    filas.filter((f) => f.estado === "Reembolsado" || (f.estado === "Cancelado" && f.metodo !== "Efectivo")),
+  );
 
   return (
     <div className="ah-screen" style={s("min-height:100vh;background:#F4F7FA;")}>
@@ -91,7 +98,7 @@ export default function AlumnoMisPagos() {
             <div
               className="ah-grid-5"
               style={s(
-                "display:grid;grid-template-columns:2fr 1.3fr 1.1fr 1fr 130px;padding:12px 22px;background:#F7FAFC;border-bottom:1px solid #EEF2F6;font:700 11.5px Manrope,sans-serif;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;",
+                "display:grid;grid-template-columns:1.8fr 1.1fr 1fr .8fr 1.7fr;padding:12px 22px;background:#F7FAFC;border-bottom:1px solid #EEF2F6;font:700 11.5px Manrope,sans-serif;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;",
               )}
             >
               <span>Actividad</span>
@@ -104,7 +111,7 @@ export default function AlumnoMisPagos() {
               <div
                 key={r.pagoId}
                 className="ah-grid-5"
-                style={s("display:grid;grid-template-columns:2fr 1.3fr 1.1fr 1fr 130px;padding:14px 22px;border-bottom:1px solid #F1F4F8;align-items:center;")}
+                style={s("display:grid;grid-template-columns:1.8fr 1.1fr 1fr .8fr 1.7fr;padding:14px 22px;border-bottom:1px solid #F1F4F8;align-items:center;")}
               >
                 <div>
                   <div style={s("font:700 14px Manrope,sans-serif;color:#0E2A47;")}>{r.actividadNombre}</div>
@@ -124,7 +131,7 @@ export default function AlumnoMisPagos() {
                   {r.metodo}
                 </span>
                 <span style={s("font:700 14px Space Grotesk,sans-serif;color:#0E2A47;")}>${r.monto.toLocaleString("es-AR")}</span>
-                <StatusBadge type={pagoStatusType(r.estado)} />
+                <EstadoPagoCelda pago={r} />
               </div>
             ))}
           </div>
@@ -136,11 +143,21 @@ export default function AlumnoMisPagos() {
             <path d="M12 16v-4M12 8h.01" />
           </svg>
           <span style={s("font-size:13px;line-height:1.5;color:#2D5BC8;font-weight:600;")}>
-            En Mercado Pago el dinero queda <strong>Retenido</strong> hasta que la clase se dicta; luego pasa a <strong>Liberado</strong>.
-            Si la clase se cancela, se reintegra.
+            Con Mercado Pago, el pago queda <strong>reservado en tu tarjeta</strong> hasta que se dicta la clase y recién ahí se te cobra.
+            Si la clase se cancela antes, la reserva se libera y no se te cobra nada; si ya se te había cobrado, se te reembolsa.
           </span>
         </div>
       </div>
+    </div>
+  );
+}
+
+function EstadoPagoCelda({ pago }: { pago: MiPago }) {
+  const { type, label, detalle } = explicarPagoAlumno(pago);
+  return (
+    <div style={s("display:flex;flex-direction:column;align-items:flex-start;gap:5px;")}>
+      <StatusBadge type={type} label={label} />
+      <span style={s("font-size:12px;line-height:1.35;color:#7A8C9E;font-weight:600;")}>{detalle}</span>
     </div>
   );
 }

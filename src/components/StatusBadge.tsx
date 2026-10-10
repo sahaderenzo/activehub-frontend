@@ -16,6 +16,7 @@ export type StatusType =
   | "liberado"
   | "efectivo"
   | "pagocancelado"
+  | "reembolsado"
   | "aprobado"
   | "pendiente"
   | "rechazado"
@@ -43,6 +44,7 @@ const MAP: Record<StatusType, [bg: string, fg: string, bd: string, dot: string, 
   liberado: ["#E7F8F5", "#0C8576", "#CBEDE7", "#12B5A5", "Liberado"],
   efectivo: ["#EFEAFB", "#6A3FC4", "#E1D7F6", "#7A52D9", "Efectivo"],
   pagocancelado: ["#FBEAEB", "#BE3A3E", "#F3D2D3", "#E5484D", "Pago cancelado"],
+  reembolsado: ["#EEF1F4", "#637687", "#DEE4EA", "#9AA8B6", "Reembolsado"],
   aprobado: ["#E7F8F5", "#0C8576", "#CBEDE7", "#12B5A5", "Pago aprobado"],
   pendiente: ["#FFF3E0", "#B9741A", "#F6E2C0", "#F5A623", "Pendiente de pago"],
   rechazado: ["#FBEAEB", "#BE3A3E", "#F3D2D3", "#E5484D", "Pago rechazado"],
