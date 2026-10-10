@@ -112,3 +112,15 @@ export function rutaNotificacion(
   const elegida = habilitadas.find((c) => c.area === areaActual) ?? habilitadas[0];
   return elegida ? elegida.ruta(destinoId) : null;
 }
+
+/**
+ * Tipos que piden que el usuario haga algo (no son un simple aviso): la campana los muestra
+ * con un ícono de alerta en vez del punto. Los dos llegan sin destino (`NINGUNO`), así que
+ * tampoco tienen link: la acción está en otra pantalla (la tarjeta de Mercado Pago del Panel
+ * del instructor, o la Auditoría del administrador).
+ */
+const TIPOS_ALERTA: ReadonlySet<string> = new Set(["MERCADOPAGO_TOKEN_VENCIDO", "CAPTURA_PAGO_FALLIDA"]);
+
+export function esAlerta(tipo: string): boolean {
+  return TIPOS_ALERTA.has(tipo);
+}

@@ -724,6 +724,7 @@ interface DataContextValue {
   // Mercado Pago del instructor (OAuth, KAN-54)
   obtenerCuentaMercadoPago: () => Promise<CuentaMercadoPago>;
   iniciarVinculacionMercadoPago: () => Promise<string>;
+  desvincularMercadoPago: () => Promise<void>;
   listarMisInscripciones: (estado?: EstadoInscripcion) => Promise<MiInscripcion[]>;
   listarRosterClase: (claseId: string) => Promise<RosterClase>;
   listarMisClases: () => Promise<MiClaseInstructor[]>;
@@ -1091,6 +1092,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return url;
   }, []);
 
+  /**
+   * Desvincula la cuenta (KAN-55): 204 sin cuerpo. Con pagos de MP retenidos o en revisión el
+   * backend responde 409 `MERCADOPAGO_CON_PAGOS_PENDIENTES` con el mensaje ya redactado.
+   */
+  const desvincularMercadoPago = useCallback(async () => {
+    await api.delete("/api/instructor/mercadopago");
+  }, []);
+
 
   const listarMisInscripciones = useCallback(async (estado?: EstadoInscripcion) => {
     const query = estado ? `?estado=${encodeURIComponent(estado)}` : "";
@@ -1445,6 +1454,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       confirmarCobroEfectivo,
       obtenerCuentaMercadoPago,
       iniciarVinculacionMercadoPago,
+      desvincularMercadoPago,
       listarMisInscripciones,
       listarRosterClase,
       listarMisClases,
@@ -1542,6 +1552,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       confirmarCobroEfectivo,
       obtenerCuentaMercadoPago,
       iniciarVinculacionMercadoPago,
+      desvincularMercadoPago,
       listarMisInscripciones,
       listarRosterClase,
       listarMisClases,

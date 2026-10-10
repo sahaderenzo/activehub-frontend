@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ApiError } from "../../lib/api";
+import Modal from "../Modal";
 import { s } from "../../lib/style";
 import { useData } from "../../context/DataContext";
 import type { CuentaMercadoPago } from "../../context/DataContext";
@@ -17,14 +18,21 @@ const AVISOS: Record<string, { tono: "ok" | "error"; texto: string }> = {
  * Vincular la cuenta de Mercado Pago del instructor (OAuth, KAN-54). El botón no abre un
  * popup: redirige la pestaña entera a Mercado Pago, y el backend la devuelve a /instructor
  * con `?mercadopago=vinculada|cancelada|error`.
+ *
+ * Desvincular (KAN-67) se ofrece con la cuenta vinculada y también con la autorización
+ * vencida. Si quedan pagos de MP retenidos o en revisión el backend responde 409 con el
+ * mensaje ya redactado (dice cuántos son), y se muestra tal cual.
  */
 export default function TarjetaMercadoPago() {
-  const { obtenerCuentaMercadoPago, iniciarVinculacionMercadoPago } = useData();
+  const { obtenerCuentaMercadoPago, iniciarVinculacionMercadoPago, desvincularMercadoPago } = useData();
   const [params, setParams] = useSearchParams();
   const [cuenta, setCuenta] = useState<CuentaMercadoPago | null>(null);
   const [cargando, setCargando] = useState(true);
   const [redirigiendo, setRedirigiendo] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmando, setConfirmando] = useState(false);
+  const [desvinculando, setDesvinculando] = useState(false);
+  const [errorDesvincular, setErrorDesvincular] = useState<string | null>(null);
   const [aviso] = useState(() => AVISOS[params.get("mercadopago") ?? ""] ?? null);
 
   // El aviso se lee una vez y el parámetro se limpia: al recargar no tiene que volver a aparecer.
@@ -59,6 +67,28 @@ export default function TarjetaMercadoPago() {
       setError(err instanceof ApiError ? err.message : "No pudimos iniciar la vinculación. Intentá de nuevo.");
       setRedirigiendo(false);
     }
+  };
+
+  const desvincular = async () => {
+    setErrorDesvincular(null);
+    setDesvinculando(true);
+    try {
+      await desvincularMercadoPago();
+      setConfirmando(false);
+      cargar();
+    } catch (err) {
+      setErrorDesvincular(
+        err instanceof ApiError ? err.message : "No pudimos desvincular tu cuenta. Intentá de nuevo.",
+      );
+    } finally {
+      setDesvinculando(false);
+    }
+  };
+
+  const cerrarConfirmacion = () => {
+    if (desvinculando) return;
+    setConfirmando(false);
+    setErrorDesvincular(null);
   };
 
   const vinculada = cuenta?.vinculada === true;
@@ -118,7 +148,79 @@ export default function TarjetaMercadoPago() {
             {redirigiendo ? "Abriendo Mercado Pago…" : vencida ? "Volver a vincular" : "Vincular Mercado Pago"}
           </button>
         )}
+        {!cargando && (vinculada || vencida) && (
+          <button
+            type="button"
+            className="ah-btn"
+            onClick={() => setConfirmando(true)}
+            style={s(
+              "background:#fff;color:#BE3A3E;border:1px solid #F3D2D3;border-radius:12px;padding:10px 16px;font:700 13.5px Manrope;cursor:pointer;",
+            )}
+          >
+            Desvincular
+          </button>
+        )}
       </div>
+
+      {confirmando && (
+        <Modal onClose={cerrarConfirmacion}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="titulo-desvincular-mp"
+            style={s(
+              "width:100%;max-width:420px;background:#fff;border-radius:16px;padding:22px;box-shadow:0 26px 64px rgba(0,0,0,.3);",
+            )}
+          >
+            <div
+              id="titulo-desvincular-mp"
+              style={s("font:700 16px Space Grotesk,sans-serif;color:#0E2A47;margin-bottom:10px;")}
+            >
+              ¿Desvincular tu cuenta de Mercado Pago?
+            </div>
+            <div style={s("font-size:13.5px;color:#41566B;line-height:1.5;")}>
+              Desde ese momento tus clases solo van a aceptar pagos en efectivo. Podés volver a vincularla cuando
+              quieras.
+            </div>
+            {errorDesvincular && (
+              <div
+                role="alert"
+                style={s(
+                  "background:#FBEAEB;border:1px solid #F3D2D3;color:#BE3A3E;border-radius:12px;padding:12px 14px;margin-top:14px;font:600 13px Manrope;line-height:1.45;",
+                )}
+              >
+                {errorDesvincular}
+              </div>
+            )}
+            <div style={s("display:flex;gap:10px;margin-top:20px;")}>
+              <button
+                type="button"
+                className="ah-btn"
+                onClick={cerrarConfirmacion}
+                disabled={desvinculando}
+                style={s(
+                  "flex:1;background:#F4F7FA;color:#41566B;border:none;border-radius:10px;padding:11px;font:700 13.5px Manrope,sans-serif;cursor:pointer;",
+                )}
+              >
+                {errorDesvincular ? "Cerrar" : "Cancelar"}
+              </button>
+              {!errorDesvincular && (
+                <button
+                  type="button"
+                  className="ah-btn"
+                  onClick={desvincular}
+                  disabled={desvinculando}
+                  style={s(
+                    "flex:1;background:#BE3A3E;color:#fff;border:none;border-radius:10px;padding:11px;font:700 13.5px Manrope,sans-serif;cursor:pointer;",
+                  )}
+                >
+                  {desvinculando ? "Desvinculando…" : "Sí, desvincular"}
+                </button>
+              )}
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

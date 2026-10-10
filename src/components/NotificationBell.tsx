@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { s } from "../lib/style";
 import ErrorReintentar from "./ErrorReintentar";
-import { rutaNotificacion } from "../lib/notificaciones";
+import { esAlerta, rutaNotificacion } from "../lib/notificaciones";
 import type { Area } from "../lib/areas";
 import { useAuth } from "../context/AuthContext";
 import { useData } from "../context/DataContext";
@@ -130,11 +130,30 @@ export default function NotificationBell({ variant = "light", align = "right", a
                       `padding:12px 16px;border-bottom:1px solid #F5F7FA;display:flex;gap:9px;align-items:flex-start;background:${n.leida ? "transparent" : "#F7FBFA"};cursor:${ruta ? "pointer" : "default"};`,
                     )}
                   >
-                    <span
-                      style={s(
-                        `width:8px;height:8px;border-radius:99px;margin-top:5px;flex:none;background:${n.leida ? "transparent" : "#12B5A5"};`,
-                      )}
-                    />
+                    {esAlerta(n.tipo) ? (
+                      // Avisos que piden una acción (ej. la cuenta de Mercado Pago venció): el
+                      // ícono reemplaza al punto y se ve también cuando ya está leída.
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="#D9822B"
+                        strokeWidth={2.2}
+                        aria-label="Requiere tu atención"
+                        style={s("flex:none;margin-top:1px;")}
+                      >
+                        <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                        <path d="M12 9v4" />
+                        <path d="M12 17h.01" />
+                      </svg>
+                    ) : (
+                      <span
+                        style={s(
+                          `width:8px;height:8px;border-radius:99px;margin-top:5px;flex:none;background:${n.leida ? "transparent" : "#12B5A5"};`,
+                        )}
+                      />
+                    )}
                     <div style={s("min-width:0;flex:1;")}>
                       <div style={s("font-size:13px;color:#33485E;font-weight:600;line-height:1.4;")}>{n.mensaje}</div>
                       <div style={s("font-size:11px;color:#90A1B2;font-weight:600;margin-top:4px;")}>
