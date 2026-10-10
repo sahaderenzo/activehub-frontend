@@ -31,13 +31,36 @@ Hasta este tramo el frontend **no tenía ninguna** (el backend sí: 842). Hoy ha
 - **Sin `globals`**: cada archivo importa `describe`/`it`/`expect`/`vi` de `"vitest"`. A cambio no hay identificadores que ESLint no conozca ni tipos globales que declarar.
 - **Las pruebas de pantalla mockean los contextos** (`vi.mock` de `AuthContext` y `DataContext`): montar los proveedores de verdad arrastra la sesión y la API, que no son lo que se está probando. Se consulta por lo que ve la persona (texto del botón, placeholder del campo), nunca por clases CSS.
 - **La regla**: si se reporta un bug y se arregla, **la prueba va en el mismo cambio**. Varias de las que hay son exactamente eso — la carrera del `onToggle` de las guías de Ayuda, el aterrizaje del admin parcial, el reporte de soporte que no guardaba nada — y el comentario de cada una dice qué se rompió.
-- **Lo que no se prueba todavía**, a propósito: el flujo de inscripción y pago, hasta que esté la integración real con Mercado Pago (hoy habla con `MockPaymentGateway` y habría que reescribirla enseguida).
+- **Lo que no se prueba todavía**: el flujo de inscripción y pago. La integración real con Mercado Pago ya está (ver "Pagos con Mercado Pago"), así que ya no hay motivo para postergarlo; lo que sí está cubierto es la traducción de cada estado de pago a su etiqueta y su frase (`lib/status.test.ts`).
 
 ## CI: `.github/workflows/ci.yml`
 
 En cada push y cada Pull Request sobre `integracion` y `main` corren, en este orden y los cuatro bloqueantes: **ESLint → `tsc -b` → `npm test` → `npm run build`**. Primero lo que falla en segundos, al final lo que tarda.
 
 Las **advertencias** de ESLint no hacen fallar el trabajo; los errores sí. Hoy hay 11 advertencias, todas de `react-hooks/exhaustive-deps` y todas preexistentes: poner `--max-warnings 0` ahora dejaría la rama en rojo permanente y el chequeo se dejaría de mirar. Se agrega cuando esas 11 estén resueltas, no antes.
+
+## Pagos con Mercado Pago
+
+El backend integra Mercado Pago real como **marketplace**: cada instructor cobra con su propia cuenta. Del lado del cliente:
+
+- **El SDK de MP se carga en `index.html`** (`https://sdk.mercadopago.com/js/v2`) y `lib/mercadopago.ts` lo inicializa con `getMercadoPago(publicKey)`, una instancia por clave.
+- **La public key es la del INSTRUCTOR**, no una de la plataforma: en un marketplace la tarjeta se tokeniza con la clave del vendedor. Llega en el detalle de la actividad (`aceptaMercadoPago`, `mpPublicKey`). Si el instructor no tiene la cuenta vinculada, `mpPublicKey` viene vacía y `alumno/Inscripcion.tsx` sólo ofrece Efectivo.
+- **No hace falta ninguna variable de entorno para pagar.** `VITE_MERCADOPAGO_PUBLIC_KEY` está declarada en `vite-env.d.ts` pero **no se usa**: es de antes del marketplace.
+- `components/pago/ModalPagoMercadoPago.tsx` es el Card Payment Brick: tokeniza la tarjeta y le pasa los datos a `inscribirse`. Solo tarjeta de crédito.
+- `components/pago/TarjetaMercadoPago.tsx`, en el Panel del instructor y con el permiso `mercadopago.vincular`, vincula la cuenta por OAuth. Al volver, MP redirige con `?mercadopago=vinculada|cancelada|error`.
+- **Inscribirse no cobra: reserva.** El pago queda `Retenido` (autorizado) y MP lo cobra cuando la clase empieza. La pantalla de resultado y "Mis pagos" lo dicen así; nunca "Tu pago fue aprobado".
+
+### Estados de pago: `explicarPagoAlumno` / `explicarPagoInstructor` (KAN-63)
+
+`EstadoPago` (`lib/types.ts`) tiene los **siete** estados del backend: `Retenido`, `Liberado`, `Cancelado`, `Efectivo`, `Rechazado`, `Reembolsado`, `EnRevision`. Antes tenía cuatro, y `pagoStatusType` devolvía `undefined` para los otros tres, que `StatusBadge` pintaba con su estilo por defecto: **un pago reembolsado decía "Disponible"**.
+
+El estado solo no alcanza para explicarle a la persona qué pasó con su plata, así que `lib/status.ts` tiene dos funciones que devuelven `{ type, label, detalle }` a partir de `{ estado, metodo, capturado }`:
+
+- **`Retenido` son dos cosas distintas** según `capturado`: reservado en la tarjeta ("Retenido hasta la clase") o ya cobrado esperando el período de denuncias ("Cobrado"). El backend manda `capturado` en `listarmispagos` y `pagoCapturado` en el roster.
+- **`Cancelado` depende del método:** con Mercado Pago es "Retención liberada" (nunca se cobró); en efectivo, "Pago cancelado" (la devolución la coordina el instructor).
+- **El instructor lo lee distinto:** le importa si la plata ya es suya. Su texto de `Retenido` cobrado nombra las 24 h del período de denuncias (`VentanaPagos.PERIODO_DENUNCIAS` del backend): si cambia allá, cambia acá.
+
+Las usan `alumno/MisPagos.tsx` (columna "Estado pago", y los totales separan lo cobrado de lo reservado) e `instructor/GestionClase.tsx` (columnas "Pago" y "A recibir", más el total de la clase; el neto es `pagoNeto`, monto menos comisión, que hoy es 0).
 
 ## Patrón establecido para cablear una pantalla a datos reales
 1. En `DataContext.tsx`: agregar la interfaz de respuesta (`XxxResp`/`Xxx`), la función (`useCallback`) que llama a `api.get/post/put/delete`, agregarla a `DataContextValue` y a **los dos lugares** del `useMemo` final (el objeto `value` y su array de deps — es fácil olvidar el segundo).

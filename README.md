@@ -30,6 +30,8 @@ VITE_API_URL=http://localhost:8080
 
 Si no se crea este archivo, el cliente HTTP (`src/lib/api.ts`) usa `http://localhost:8080` por defecto — que es el puerto por defecto del backend, así que en el caso más común (todo corriendo en la misma máquina) este paso es opcional.
 
+**Pagos con Mercado Pago: no hace falta ninguna variable acá.** La plataforma es un marketplace: cada instructor vincula su cuenta de Mercado Pago desde su Panel, y la clave pública con la que se tokeniza la tarjeta es la del instructor, que llega desde la API en el detalle de la actividad. Las credenciales de Mercado Pago van solo en el backend (ver su `.env.example`). `VITE_MERCADOPAGO_PUBLIC_KEY`, declarada en `src/vite-env.d.ts`, no se usa.
+
 ## 4. Ejecutar en modo desarrollo
 
 ```bash
@@ -63,7 +65,7 @@ Todas las pantallas de los 3 roles existen; lo que cambió en las últimas seman
 - **Denuncias**: el alumno reporta la inasistencia de un instructor desde "Mis clases"; el admin las resuelve (reintegro, suspensión, penalización o desestimar) desde el panel de auditoría.
 - **Gestión de usuarios**: listado real de usuarios del admin, con activar/suspender.
 - **Auditoría y trazabilidad**: pantalla `Trazabilidad` conectada al registro real del backend (filtro por rol/acción/búsqueda libre).
-- **Dashboard y Reportes (admin)**: métricas reales, ya no mockeadas (instructor y alumno siguen con dashboard mock, fuera de alcance por ahora).
+- **Dashboard y Reportes (admin)**: métricas reales, ya no mockeadas. Los paneles de instructor y alumno también leen datos reales.
 - **Notificaciones**: campana con datos reales, incluida la notificación de ausencia de profesor.
 - **Taxonomía**: ABM real de categorías desde el panel de admin.
 - **Explorar actividades**: filtro de "Tipo de actividad" ahora aparece en cascada según la(s) categoría(s) seleccionada(s), en vez de mostrar siempre todos los tipos.
@@ -88,12 +90,12 @@ Ver la matriz de trazabilidad abajo para el estado módulo por módulo, y `CLAUD
 | — | Condición de salud del alumno + confirmar/mostrar contraseña | ✅ Hecho | `auth/Registro` | API real |
 | — | Documentación de instructores (subir/ver) | ✅ Hecho | `auth/Registro`, `admin/ValidarInstructor` | API real |
 | — | Login sin accesos de demo | ✅ Hecho | `auth/Login` | — |
-| 8 | Motor de recomendaciones en Búsqueda | 🟡 Parcial | `alumno/Explorar` | Filtro tradicional (categoría → tipo en cascada), sin recomendación |
-| 9 | Geolocalización real | ⏳ Pendiente | — | — |
-| 10 | Imágenes reales de actividades | ⏳ Pendiente | — | `photoTint` (color placeholder) |
-| 11 | Asistente de IA / chatbot | ⏳ Pendiente | — | Simulado con `setTimeout` |
-| 12 | Integración real de Mercado Pago | ⏳ Pendiente | — | Flujo de pago simulado (mock backend) |
-| — | Dashboards de instructor y alumno | ⏳ Pendiente (fuera de alcance por ahora) | `instructor/Dashboard`, `alumno/Dashboard` | Mock |
-| — | Inscripciones/pagos/penalizaciones de alcance amplio (analítica histórica) | ⏳ Pendiente | — | Mock (`DataContext.tsx`, sección "fuera de alcance") |
+| 8 | Motor de recomendaciones | ✅ Hecho | `alumno/Home` ("Recomendado para vos") | API real (`/api/alumno/recomendaciones`); Explorar mantiene el filtro tradicional |
+| 9 | Geolocalización real | ✅ Hecho | `alumno/Home`, `alumno/Explorar`, detalle de actividad | OpenStreetMap + Leaflet + Nominatim |
+| 10 | Imágenes reales de actividades | ✅ Hecho | actividades, perfil, documentos | API real (disco o Supabase Storage) |
+| 11 | Asistente de IA / chatbot | ✅ Hecho | burbuja "¿Dudas?", detalle de actividad | API real (Groq); sin clave cae a FAQs y plantillas |
+| 12 | Integración real de Mercado Pago | 🟡 Implementada, en prueba | `alumno/Inscripcion`, `alumno/MisPagos`, Panel y detalle de clase del instructor | API real (sandbox de MP); faltan pruebas manuales y la renovación de tokens (KAN-55) |
+| — | Dashboards de instructor y alumno | ✅ Hecho | paneles de instructor y alumno | API real |
+| — | Inscripciones/pagos/penalizaciones de alcance amplio (analítica histórica) | ✅ Hecho | pantallas del admin | API real (ya no hay datos simulados en `DataContext.tsx`) |
 
-*Última actualización: 25/08/2026.*
+*Última actualización: 10/10/2026.*
