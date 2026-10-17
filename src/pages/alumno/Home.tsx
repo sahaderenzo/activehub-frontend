@@ -10,6 +10,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import type { RecomendacionAlumno } from "../../context/DataContext";
 import { haversineKm, useGeolocation } from "../../lib/geo";
+import ActivarUbicacion from "../../components/ActivarUbicacion";
 import type { Actividad, Categoria, TipoActividad } from "../../lib/types";
 
 /** Criterio 5: menos de esto no dispara la búsqueda. */
@@ -283,21 +284,30 @@ export default function AlumnoHome() {
     <div className="ah-screen" style={s("min-height:100vh;background:#F4F7FA;")}>
       <AlumnoNav active="home" />
       <div style={s("max-width:1240px;margin:0 auto;padding:30px 28px 60px;")}>
+        {/*
+          El recorte (overflow:hidden) va en una capa aparte, sólo para los dos círculos de
+          fondo. Estaba en la tarjeta entera y cortaba también el desplegable del buscador, que
+          cae por debajo de la tarjeta: se veía el primer resultado y el resto quedaba "debajo"
+          de lo que sigue. z-index:5 deja la tarjeta (y su desplegable) por encima de los
+          filtros rápidos y las secciones de abajo.
+        */}
         <div
           style={s(
-            "background:linear-gradient(135deg,#0E2A47,#143A5E);border-radius:24px;padding:34px 38px;position:relative;overflow:hidden;margin-bottom:34px;",
+            "background:linear-gradient(135deg,#0E2A47,#143A5E);border-radius:24px;padding:34px 38px;position:relative;z-index:5;margin-bottom:34px;",
           )}
         >
-          <div
-            style={s(
-              "position:absolute;top:-70px;right:-30px;width:280px;height:280px;border-radius:50%;background:radial-gradient(circle,rgba(18,181,165,.28),transparent 70%);",
-            )}
-          />
-          <div
-            style={s(
-              "position:absolute;bottom:-90px;right:160px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(255,106,43,.16),transparent 70%);",
-            )}
-          />
+          <div style={s("position:absolute;inset:0;border-radius:24px;overflow:hidden;pointer-events:none;")}>
+            <div
+              style={s(
+                "position:absolute;top:-70px;right:-30px;width:280px;height:280px;border-radius:50%;background:radial-gradient(circle,rgba(18,181,165,.28),transparent 70%);",
+              )}
+            />
+            <div
+              style={s(
+                "position:absolute;bottom:-90px;right:160px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(255,106,43,.16),transparent 70%);",
+              )}
+            />
+          </div>
           <div style={s("position:relative;")}>
             <div style={s("font:700 13px Manrope,sans-serif;color:#9DB3C9;margin-bottom:8px;text-transform:capitalize;")}>
               {fechaHoy} · Mendoza
@@ -364,7 +374,7 @@ export default function AlumnoHome() {
             {buscadorEnFoco && termino.length > 0 && (
               <div
                 style={s(
-                  "position:absolute;top:calc(100% + 8px);left:0;right:0;background:#fff;border-radius:14px;box-shadow:0 18px 40px rgba(0,0,0,.22);overflow:hidden;z-index:20;",
+                  "position:absolute;top:calc(100% + 8px);left:0;right:0;background:#fff;border-radius:14px;box-shadow:0 18px 40px rgba(0,0,0,.22);overflow:hidden;z-index:20;max-height:420px;overflow-y:auto;",
                 )}
               >
                 {termino.length < MIN_BUSQUEDA ? (
@@ -608,7 +618,11 @@ export default function AlumnoHome() {
             Ver más →
           </span>
         </div>
-        {cerca.length === 0 ? (
+        {cerca.length === 0 && geolocation.status === "denied" ? (
+          <div style={s("margin-bottom:42px;")}>
+            <ActivarUbicacion geolocation={geolocation} para="ver las actividades que tenés cerca" />
+          </div>
+        ) : cerca.length === 0 ? (
           <div
             style={s(
               "background:#fff;border:1px dashed #D6DEE7;border-radius:16px;padding:28px 20px;text-align:center;color:#7A8C9E;font-weight:600;font-size:13.5px;margin-bottom:42px;",

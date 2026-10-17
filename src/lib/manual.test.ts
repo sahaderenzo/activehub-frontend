@@ -52,6 +52,24 @@ describe("estructura", () => {
   });
 });
 
+describe("viñetas anidadas (sub)", () => {
+  it("si un bloque trae sub, tiene una entrada por ítem", () => {
+    for (const bloque of apartados.flatMap((a) => a.bloques)) {
+      if ((bloque.tipo === "pasos" || bloque.tipo === "lista") && bloque.sub) {
+        expect(bloque.sub).toHaveLength(bloque.items.length);
+      }
+    }
+  });
+
+  it("los tres resultados de la inscripción cuelgan del paso 4 de 2.6 y entran al buscador", () => {
+    const pasos = apartados.find((a) => a.id === "a-2-6")!.bloques.find((b) => b.tipo === "pasos");
+    expect(pasos?.tipo).toBe("pasos");
+    if (pasos?.tipo !== "pasos") return;
+    expect(pasos.sub?.[3]).toHaveLength(3);
+    expect(textoDeBloque(pasos)).toContain("Estamos esperando la confirmación de Mercado Pago");
+  });
+});
+
 describe("marcado", () => {
   it("los asteriscos de negrita están balanceados en todo el manual", () => {
     // Un `**` suelto se vería como asteriscos literales en la pantalla.

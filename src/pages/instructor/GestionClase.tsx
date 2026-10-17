@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
 import { CargandoAccion, CargandoSeccion } from "../../components/Cargando";
 import StatusBadge from "../../components/StatusBadge";
@@ -7,11 +7,22 @@ import { s } from "../../lib/style";
 import { useAhora } from "../../lib/ahora";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
-import type { RosterAlumno, RosterClase } from "../../context/DataContext";
+import type { MiClaseInstructor, RosterAlumno, RosterClase } from "../../context/DataContext";
 import { ApiError } from "../../lib/api";
 import { disponibilidad, formatFecha, formatHora } from "../../lib/mockData";
-import { explicarPagoInstructor, inscripcionStatusType } from "../../lib/status";
-import type { EstadoInscripcion } from "../../lib/types";
+import { claseStatusType, explicarPagoInstructor, inscripcionStatusType } from "../../lib/status";
+import type { EstadoClase, EstadoInscripcion } from "../../lib/types";
+
+/** Lo que la pantalla necesita de la clase, venga de la caché del detalle o del listado propio. */
+interface ClaseVista {
+  id: string;
+  actividadId: string;
+  fechaHora: string;
+  estado: EstadoClase;
+  cuposMax: number;
+  cuposOcupados: number;
+  precio: number;
+}
 
 export default function InstructorGestionClase() {
   const ahora = useAhora();
@@ -19,24 +30,72 @@ export default function InstructorGestionClase() {
   const { currentUser } = useAuth();
   const data = useData();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  // Desde el Historial se abre la MISMA pantalla, pero el "Volver" lleva al historial.
+  const desdeHistorial = searchParams.get("desde") === "historial";
 
   const aprobado = currentUser?.perfilInstructor?.estadoVerificacion === "APROBADO";
   useEffect(() => {
     if (currentUser && !aprobado) navigate("/instructor/solicitud", { replace: true });
   }, [currentUser, aprobado, navigate]);
 
-  const clase = data.clases.find((c) => c.id === id);
-  const actividad = clase ? data.actividades.find((a) => a.id === clase.actividadId) : undefined;
+  /*
+   * `data.clases` es una caché que sólo llena el detalle de una actividad, y ese detalle excluye
+   * las clases Finalizadas y Canceladas. Entrando desde el Historial (o desde Próximas clases sin
+   * haber visitado antes la actividad) la clase no está ahí y la pantalla rebotaba a "Mis
+   * actividades". En ese caso se busca en el listado propio del instructor, que trae todas.
+   */
+  const claseCache = data.clases.find((c) => c.id === id);
+  const [miClase, setMiClase] = useState<MiClaseInstructor | null>(null);
+  const [buscandoClase, setBuscandoClase] = useState(!claseCache);
 
   useEffect(() => {
-    if (!clase || !actividad) {
-      navigate("/instructor/actividades", { replace: true });
+    if (claseCache || !id) return;
+    data
+      .listarMisClases()
+      .then((clases) => setMiClase(clases.find((c) => c.claseId === id) ?? null))
+      .catch(() => setMiClase(null))
+      .finally(() => setBuscandoClase(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, claseCache?.id]);
+
+  const clase = useMemo<ClaseVista | undefined>(
+    () =>
+      claseCache
+        ? claseCache
+        : miClase
+          ? {
+              id: miClase.claseId,
+              actividadId: miClase.actividadId,
+              fechaHora: miClase.fechaHora,
+              estado: miClase.estado,
+              cuposMax: miClase.cuposMax,
+              cuposOcupados: miClase.cuposOcupados,
+              precio: miClase.precio,
+            }
+          : undefined,
+    [claseCache, miClase],
+  );
+  // La actividad puede no estar en el catálogo (una clase cancelada de una actividad que después
+  // se eliminó): ahí se muestran el nombre y el lugar que trae el listado del instructor.
+  const actividad = clase ? data.actividades.find((a) => a.id === clase.actividadId) : undefined;
+
+  const volverA = desdeHistorial
+    ? "/instructor/historial"
+    : actividad
+      ? `/instructor/actividades/${actividad.id}`
+      : "/instructor/actividades";
+
+  useEffect(() => {
+    if (buscandoClase) return;
+    if (!clase) {
+      navigate(desdeHistorial ? "/instructor/historial" : "/instructor/actividades", { replace: true });
       return;
     }
-    if (currentUser && actividad.instructorId !== currentUser.id) {
+    if (currentUser && actividad && actividad.instructorId !== currentUser.id) {
       navigate("/instructor/actividades", { replace: true });
     }
-  }, [clase, actividad, currentUser, navigate]);
+  }, [buscandoClase, clase, actividad, currentUser, navigate, desdeHistorial]);
 
   const [roster, setRoster] = useState<RosterClase | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -60,9 +119,22 @@ export default function InstructorGestionClase() {
   }, [id]);
 
   if (!currentUser || !aprobado) return null;
-  if (!clase || !actividad) return null;
+  if (!clase) {
+    return buscandoClase ? (
+      <DashLayout role="instructor" active={desdeHistorial ? "historial" : "misactividades"}>
+        <div style={s("padding:26px 32px;")}>
+          <CargandoSeccion seccion="la clase" />
+        </div>
+      </DashLayout>
+    ) : null;
+  }
 
-  const tipo = data.getTipoActividad(actividad.tipoActividadId);
+  const nombreActividad = actividad?.nombre ?? miClase?.actividadNombre ?? "Actividad";
+  const ubicacion = actividad?.ubicacion ?? miClase?.actividadUbicacion ?? "—";
+  // Una clase que ya pasó (o que se canceló) es de sólo lectura: se ve quién estaba anotado y
+  // qué pasó con cada pago, pero no hay nada que editar, cancelar ni cobrar.
+  const soloLectura = clase.estado === "Finalizada" || clase.estado === "Cancelada";
+  const tipo = actividad ? data.getTipoActividad(actividad.tipoActividadId) : undefined;
   const cat = tipo ? data.getCategoria(tipo.categoriaId) : undefined;
   const disp = disponibilidad(clase);
 
@@ -113,7 +185,7 @@ export default function InstructorGestionClase() {
     setError(null);
     setNotificando(true);
     try {
-      const mensaje = `El instructor avisó que no podrá dar la clase de "${actividad.nombre}" del ${formatFecha(clase.fechaHora)} a las ${formatHora(clase.fechaHora)} hs. La clase fue cancelada.`;
+      const mensaje = `El instructor avisó que no podrá dar la clase de "${nombreActividad}" del ${formatFecha(clase.fechaHora)} a las ${formatHora(clase.fechaHora)} hs. La clase fue cancelada.`;
       await data.notificarAusenciaProfesor(clase.id, mensaje);
       cargarRoster();
     } catch (err) {
@@ -124,17 +196,17 @@ export default function InstructorGestionClase() {
   };
 
   return (
-    <DashLayout role="instructor" active="misactividades">
+    <DashLayout role="instructor" active={desdeHistorial ? "historial" : "misactividades"}>
       <div style={s("background:#fff;border-bottom:1px solid #E7EDF3;padding:18px 32px;display:flex;align-items:center;")}>
         <span
           className="ah-link"
-          onClick={() => navigate(`/instructor/actividades/${actividad.id}`)}
+          onClick={() => navigate(volverA)}
           style={s("display:flex;align-items:center;gap:7px;font:700 14px Manrope;color:#41566B;cursor:pointer;")}
         >
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#41566B" strokeWidth={2}>
             <path d="m15 18-6-6 6-6" />
           </svg>
-          Volver a la actividad
+          {desdeHistorial ? "Volver al historial" : "Volver a la actividad"}
         </span>
       </div>
       <div style={s("padding:26px 32px 50px;")}>
@@ -143,37 +215,44 @@ export default function InstructorGestionClase() {
             "display:flex;align-items:flex-start;gap:18px;background:#fff;border:1px solid #E7EDF3;border-radius:18px;padding:22px;margin-bottom:22px;box-shadow:0 1px 2px rgba(14,42,71,.04);flex-wrap:wrap;",
           )}
         >
-          <div style={s(`width:96px;height:96px;border-radius:14px;flex:none;background:${actividad.photoTint};`)} />
+          <div style={s(`width:96px;height:96px;border-radius:14px;flex:none;background:${actividad?.photoTint ?? "#E7EDF3"};`)} />
           <div style={s("flex:1;min-width:0;")}>
             <div style={s("display:flex;align-items:center;gap:10px;margin-bottom:7px;flex-wrap:wrap;")}>
               <span style={s("font:700 11px Manrope;color:#12B5A5;text-transform:uppercase;letter-spacing:.4px;")}>
                 {cat?.nombre ?? "—"}
               </span>
-              <span
-                style={s(
-                  "font:700 11px Manrope;padding:3px 9px;border-radius:99px;background:#FBEAEB;color:#BE3A3E;border:1px solid #F3D2D3;",
-                )}
-              >
-                {actividad.nivelIntensidad}
-              </span>
-              <StatusBadge type={disp.type} label={disp.label} />
+              {actividad && (
+                <span
+                  style={s(
+                    "font:700 11px Manrope;padding:3px 9px;border-radius:99px;background:#FBEAEB;color:#BE3A3E;border:1px solid #F3D2D3;",
+                  )}
+                >
+                  {actividad.nivelIntensidad}
+                </span>
+              )}
+              {soloLectura ? (
+                <StatusBadge type={claseStatusType(clase.estado)} />
+              ) : (
+                <StatusBadge type={disp.type} label={disp.label} />
+              )}
             </div>
-            <h1 style={s("font:700 24px Space Grotesk;margin:0 0 8px;")}>{actividad.nombre}</h1>
+            <h1 style={s("font:700 24px Space Grotesk;margin:0 0 8px;")}>{nombreActividad}</h1>
             <div style={s("display:flex;flex-wrap:wrap;gap:18px;font-size:13.5px;color:#65788C;font-weight:600;")}>
               <span>
                 📅 {formatFecha(clase.fechaHora)} · {formatHora(clase.fechaHora)} hs
               </span>
-              <span>📍 {actividad.ubicacion}</span>
+              <span>📍 {ubicacion}</span>
               {/* Precio de ESTA clase (V23), no el de lista de la actividad: si la clase ya
                   tiene inscriptos quedó congelada y sigue valiendo lo que pagaron. */}
               <span>💵 ${clase.precio.toLocaleString("es-AR")} / clase</span>
-              {clase.precio !== actividad.precio && (
+              {actividad && !soloLectura && clase.precio !== actividad.precio && (
                 <span style={s("color:#B9741A;")}>
                   (la actividad hoy figura a ${actividad.precio.toLocaleString("es-AR")})
                 </span>
               )}
             </div>
           </div>
+          {!soloLectura && actividad && (
           <div style={s("display:flex;gap:9px;flex:none;")}>
             <button
               className="ah-btn"
@@ -216,7 +295,20 @@ export default function InstructorGestionClase() {
               </button>
             )}
           </div>
+          )}
         </div>
+
+        {soloLectura && (
+          <div
+            style={s(
+              "background:#F4F7FA;border:1px solid #E2E9F0;border-radius:12px;padding:12px 15px;margin-bottom:18px;font-size:13px;line-height:1.5;color:#54697E;font-weight:600;",
+            )}
+          >
+            {clase.estado === "Cancelada"
+              ? "Esta clase se canceló. Abajo están los alumnos que estaban anotados y qué pasó con cada pago."
+              : "Esta clase ya se dictó. Es un detalle de consulta: no hay acciones pendientes."}
+          </div>
+        )}
 
         {error && (
           <div
@@ -277,7 +369,7 @@ export default function InstructorGestionClase() {
           )}
           {!cargandoRoster && alumnos.length === 0 && (
             <div style={s("padding:26px 22px;color:#90A1B2;font-weight:600;font-size:13.5px;")}>
-              Todavía no hay alumnos inscriptos en esta clase.
+              {soloLectura ? "Esta clase no tuvo alumnos inscriptos." : "Todavía no hay alumnos inscriptos en esta clase."}
             </div>
           )}
           {alumnos.map((a) => {
@@ -308,7 +400,7 @@ export default function InstructorGestionClase() {
                   {cuentaParaCobrar(a) ? `$${(a.pagoNeto ?? 0).toLocaleString("es-AR")}` : "—"}
                 </span>
                 <div>
-                  {esPendiente && (
+                  {esPendiente && !soloLectura && (
                     <button
                       className="ah-btn"
                       onClick={() => confirmarCobro(a.inscripcionId)}

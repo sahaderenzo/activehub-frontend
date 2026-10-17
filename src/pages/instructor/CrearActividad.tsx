@@ -10,6 +10,7 @@ import { useData } from "../../context/DataContext";
 import { ApiError, BASE_URL } from "../../lib/api";
 import { useGeolocation } from "../../lib/geo";
 import { searchAddress, type AddressResult } from "../../lib/nominatim";
+import { PRECIO_MAXIMO } from "../../lib/limites";
 
 function parseCoord(text: string): number | undefined {
   const t = text.trim();
@@ -174,6 +175,10 @@ export default function InstructorCrearActividad() {
     const lngTrim = lngText.trim();
     if (!!latTrim !== !!lngTrim) {
       setError("Completá latitud y longitud juntas, o dejá las dos vacías.");
+      return undefined;
+    }
+    if (Number(precioRaw) > PRECIO_MAXIMO) {
+      setError(`El precio no puede superar los $${PRECIO_MAXIMO.toLocaleString("es-AR")}.`);
       return undefined;
     }
     if (!Number(duracionMin)) {

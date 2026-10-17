@@ -34,7 +34,7 @@ describe("contenido", () => {
 
     expect(screen.getByRole("heading", { level: 1, name: "Cómo usar ActiveHub" })).toBeInTheDocument();
     expect(screen.getByText("Contenido")).toBeInTheDocument();
-    for (const seccion of ["1. Primeros pasos", "2. Manual del Alumno", "3. Manual del Instructor", "4. Manual del Administrador"]) {
+    for (const seccion of ["1. Primeros pasos (común a los tres roles)", "2. Manual del Alumno", "3. Manual del Instructor", "4. Manual del Administrador"]) {
       expect(screen.getAllByText(seccion).length).toBeGreaterThan(0);
     }
   });
@@ -59,7 +59,8 @@ describe("contenido", () => {
     montar();
 
     expect(document.body.textContent).not.toContain("**");
-    expect(screen.getAllByText("Retenido:").length).toBeGreaterThan(0);
+    // "Efectivo" va en negrita en la lista de métodos de pago del apartado 2.6.
+    expect(screen.getAllByText("Efectivo", { selector: "strong" }).length).toBeGreaterThan(0);
   });
 
   it("sin sesión ofrece volver al inicio; con sesión, al panel del rol", () => {

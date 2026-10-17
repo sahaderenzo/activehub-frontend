@@ -12,6 +12,7 @@ import { useData } from "../../context/DataContext";
 import { ApiError } from "../../lib/api";
 import { formatFecha, formatHora } from "../../lib/mockData";
 import { claseStatusType } from "../../lib/status";
+import { CUPO_MAXIMO } from "../../lib/limites";
 
 function pad(n: number): string {
   return String(n).padStart(2, "0");
@@ -136,6 +137,10 @@ export default function InstructorActividadDetalle() {
 
     // El cupo ya no cae a un valor de la actividad: es obligatorio y propio de la clase.
     const cupos = Number(cuposStr);
+    if (Number.isInteger(cupos) && cupos > CUPO_MAXIMO) {
+      setError(`El cupo no puede superar las ${CUPO_MAXIMO} personas`);
+      return;
+    }
     if (!Number.isInteger(cupos) || cupos <= 0) {
       setError("El cupo debe ser un número entero mayor a 0");
       return;

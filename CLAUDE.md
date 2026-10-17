@@ -19,11 +19,12 @@ SPA de ActiveHub para los 3 roles (Alumno, Instructor, Administrador). React 19 
 - `src/lib/areas.ts` — **fuente de verdad de la navegación**: áreas, pantallas y el permiso que exige cada una. Ver "Permisos en el frontend".
 - `src/lib/mockData.ts` — catálogo de demostración + helpers de formato de fecha/hora (`formatFecha`, `formatHora`, `diasHastaClase`, `disponibilidad`, `tipoIngreso`…). **Los helpers son de formato, no de datos**, y se usan en todas las pantallas aunque ya sean 100% reales.
 - `src/lib/ia.ts` — cliente del asistente con IA (`preguntarAlAsistente`) y los dos ayudantes que clasifican el error (`esIaNoDisponible`, `esSinCuota`). Ver "Chatbot flotante".
-- Resto de `src/lib/`: `texto.ts` (búsqueda sin tildes), `geo.ts` + `nominatim.ts` (distancias y direcciones), `photos.ts`, `nivelStyle.ts`, `status.ts`, `notificaciones.ts`, `resaltado.ts`, `cargaParcial.ts`, `perfil.ts`, `faqs.ts`, `manual.ts` (el texto del Manual de usuario; ver su sección), `ahora.ts`, `exportCsv.ts`, `exportPdf.ts`, `style.ts`.
+- Resto de `src/lib/`: `texto.ts` (búsqueda sin tildes), `geo.ts` + `nominatim.ts` (distancias y direcciones), `photos.ts`, `nivelStyle.ts`, `status.ts`, `notificaciones.ts`, `resaltado.ts`, `cargaParcial.ts`, `perfil.ts`, `faqs.ts`, `manual.ts` (el texto del Manual de usuario; ver su sección), `ahora.ts`, `exportCsv.ts`, `exportPdf.ts`, `style.ts`, `denuncias.ts` (etiquetas, descripciones y acciones por tipo de las resoluciones), `limites.ts` (topes de sanciones, precio y cupo, espejo del backend) y `paginado.ts` (`usePaginado`, va con `components/Paginacion.tsx`).
+- Componentes agregados en el cierre (2026-10-16): `Paginacion`, `FiltroActividad` (selector "Actividad" de Próximas clases e Historial) y `ActivarUbicacion` (botón "Activar ubicación"). Ver "Correcciones de cierre (2026-10-16)".
 
 ## Pruebas automatizadas: existen, y una regresión reportada se cubre con una prueba
 
-Hasta este tramo el frontend **no tenía ninguna** (el backend sí: 842). Hoy hay **Vitest + jsdom + Testing Library**, 17 archivos y 145 pruebas. El detalle —qué cubre cada archivo, con qué criterio se agrega una prueba y qué falta— está en **`docs/PRUEBAS.md`**; acá va sólo lo que hay que saber antes de escribir código.
+Hasta este tramo el frontend **no tenía ninguna** (el backend sí: 842). Hoy hay **Vitest + jsdom + Testing Library**, 22 archivos y 174 pruebas (al 2026-10-17). El detalle —qué cubre cada archivo, con qué criterio se agrega una prueba y qué falta— está en **`docs/PRUEBAS.md`**; acá va sólo lo que hay que saber antes de escribir código.
 
 - **Comandos**: `npm test` (una corrida, es lo que corre CI), `npm run test:watch`, `npm run test:coverage`, `npm run typecheck`.
 - **Dónde va cada prueba**: al lado del archivo que prueba, `algo.test.ts` / `algo.test.tsx`. No hay carpeta `__tests__`.
@@ -130,7 +131,8 @@ Se descartó Google Maps Platform porque exige una cuenta de facturación con ta
   - el orden "Cercanas" y el **filtro por radio** de Explorar (`RADIOS`: cualquier distancia · menos de 2 km · 2 · 5 · 8 · 10 · más de 10 km),
   - la línea "A X de tu ubicación" del detalle y el `distanceKm` de `ActivityCard`.
 
-  `useGeolocation` es **a demanda y no automático**: arranca en `idle` y sólo pide el permiso cuando la pantalla llama a `request()`. Distingue `denied` de `unsupported` porque son dos mensajes distintos para el usuario. **Sin coordenadas propias, la distancia es `undefined` y el filtro de radio no afirma nada**: `dentroDelRadio` devuelve false para una actividad sin distancia calculable, porque no se puede sostener que esté dentro de un radio que no se pudo medir.
+  `useGeolocation` es **a demanda y no automático**: arranca en `idle` y sólo pide el permiso cuando la pantalla llama a `request()`. Distingue `denied` de `unsupported` porque son dos mensajes distintos para el usuario.
+  - **`reintentar()` y `bloqueado` (2026-10-16), para el botón "Activar ubicación"** (`components/ActivarUbicacion.tsx`, en el Home, Explorar y el detalle). `request()` no insiste después de un "no"; `reintentar()` sí, y si la persona sólo había cerrado el cartel, el navegador lo vuelve a mostrar. **Si el permiso quedó BLOQUEADO para el sitio, ningún código puede volver a mostrar el cartel ni abrir el panel de permisos de la barra de direcciones** (no existe esa API). El componente muestra igual el botón (pedido del usuario: botón, no instrucciones) y una sola línea: "Tu navegador la tiene bloqueada: habilitala desde el ícono junto a la dirección de la página." Mientras `bloqueado`, `useGeolocation` escucha `PermissionStatus.onchange` y, si lo habilitan desde la barra, pide las coordenadas sin recargar. **No usar el elemento nativo `<geolocation>`** (Chrome 144+): se probó el 2026-10-17, abre un cuadro distinto centrado en la pantalla y en Brave confirmar desde él cierra el navegador entero, incluso excluyendo Brave por `navigator.brave`/`userAgentData`. Se retiró. **Sin coordenadas propias, la distancia es `undefined` y el filtro de radio no afirma nada**: `dentroDelRadio` devuelve false para una actividad sin distancia calculable, porque no se puede sostener que esté dentro de un radio que no se pudo medir.
 
 ## Sesión: se renueva sola mientras usás la app
 
@@ -298,6 +300,7 @@ El manual existía sólo como el **Anexo 8** del informe (`Manual de usuario Act
 
 - **Ruta pública**, igual que `/ayuda` y por la misma razón: crear la cuenta, verificar el correo e iniciar sesión son justo lo que hace falta cuando todavía no se pudo entrar. Está fuera de `RequireEmailVerificado`.
 - **El contenido está en `lib/manual.ts`, no en la pantalla.** Mismo criterio que `lib/faqs.ts`: el manual lo corrige quien redacta la documentación, y una corrección de redacción no tiene que obligar a leer 400 líneas de `style={s(...)}`. La pantalla sólo sabe cómo se ve cada **tipo de bloque** (`p`, `sub`, `pasos`, `lista`, `tabla`). **Si cambia un texto de la interfaz, se transcribe literal entre comillas acá también**, igual que en el anexo.
+- **Desde el 2026-10-17 el contenido es el del manual vigente** (PARTE B de `MANUAL-ACTIVEHUB-TEXTO-VIGENTE.txt`, raíz del proyecto), idéntico palabra por palabra a la copia del asistente (`activehub-backend/src/main/resources/manual/manual-usuario-activehub.txt`). Se generó desde ese texto plano con un conversor: `- ` → `lista`, `N. ` → `pasos`, línea corta suelta → `sub`, listas "Columna: valor — Columna: valor" → `tabla`. **`pasos` y `lista` aceptan `sub`** (`sub[i]` = viñetas anidadas del ítem i, `null` si no tiene): el manual vigente cuelga opciones y mensajes de un paso (los tres resultados de inscribirse en 2.6) y la pantalla los muestra con `SubItems`. El título de la sección 1 pasó a "Primeros pasos (común a los tres roles)", como en el manual.
 - **El único marcado es `**término**` → negrita** (`conNegritas`). No se renderiza HTML del texto, justamente para que una corrección de redacción no pueda inyectar nada.
 - **El buscador usa `incluye` de `lib/texto.ts`** (sin tildes, como todo el resto) y filtra **apartados**, que es la unidad que ofrece el índice; una sección sin apartados que coincidan desaparece del índice y del cuerpo.
 - **El índice se resalta por scroll**, no con `IntersectionObserver`: alcanza con "cuál fue el último título que pasó el pliegue" (los `<h3>` llevan `data-apartado`). El listener se registra en un efecto y **nunca se ejecuta de forma síncrona ahí**, así que no cae en `react-hooks/set-state-in-effect`.
@@ -341,7 +344,7 @@ Hacer click en el nombre navegaba directo a `/alumno/perfil`. Ahora despliega un
 
 `resolverDenuncia` con `SUSPENDER` exige `diasSuspension` (mínimo 15) y acepta `montoMulta`. `admin/Gestion.tsx` ya pedía las dos cosas en un modal, pero **`admin/Auditoria.tsx` mandaba la acción pelada**: el botón "Suspender instructor denunciado" devolvía *"Indicá cuántos días dura la suspensión."* sin que hubiera ningún lado donde indicarlo. Estaba roto de punta a punta.
 
-Hoy `Auditoria.tsx` tiene el mismo formulario (días + multa, con `MIN_DIAS_SUSPENSION = 15`, espejo de `VentanaPenalizacion` del backend). **Si el mínimo cambia, son tres lugares**: las dos pantallas y la constante del backend. Las otras tres resoluciones siguen siendo un click directo.
+Hoy `Auditoria.tsx` tiene el mismo formulario (días + multa). **Los topes viven en `lib/limites.ts`** (15 a 365 días, multa de $1.000 a $500.000 o 0 = sin multa), espejo de `VentanaPenalizacion` del backend: si cambian, son dos lugares (ese archivo y la constante del backend), ya no tres. Las otras resoluciones siguen siendo un click directo.
 
 ## Baja de categoría: cascada, con confirmación que dice qué se lleva puesto
 
@@ -459,6 +462,18 @@ Tres cosas a respetar si se toca:
 
 A la izquierda de "Anterior" hay un botón que va a la **primera** página y a la derecha de "Siguiente" uno que va a la **última**, y el número del medio es un **botón que se convierte en input**: se hace click, se escribe la página y se confirma con Enter (Escape cancela, el blur también confirma). Con 200 páginas, llegar a la 137 a fuerza de "Siguiente" no es navegación. `irAPagina` clampea a `[1, totalPaginas]`, así que un número fuera de rango no rompe nada.
 
+## Correcciones de cierre (2026-10-16)
+
+Pedidas por el usuario con el sistema ya terminado. Lo que hay que saber si se toca alguna:
+
+- **Nombres del menú del admin**: la sección de denuncias (`admin/Auditoria.tsx`, key `auditoria`, ruta `/admin/auditoria`) se llama **"Gestión de denuncias"**, y la de registro de operaciones (`admin/Trazabilidad.tsx`, key `trazabilidad`, ruta `/admin/trazabilidad`) se llama **"Auditoría"**. Cambiaron sólo las etiquetas y los títulos: keys, rutas y nombres de archivo quedaron como estaban para no romper permisos ni enlaces. En este archivo, "Trazabilidad" sigue nombrando a la pantalla `Trazabilidad.tsx`.
+- **"Gestión de denuncias" filtra las acciones por tipo** (`ACCIONES_POR_TIPO` de `lib/denuncias.ts`): sobre una reseña sólo "Ocultar la reseña" y "Desestimar"; antes ofrecía las cuatro de una clase, que el backend rechaza con 400. Ganó la columna "Tipo", "Denunciado" muestra al autor de la reseña cuando corresponde y el panel cita el comentario denunciado.
+- **Paginación** en Reclamos y en las dos sub-pestañas de Reseñas de `Gestion.tsx`, y en "Gestión de denuncias": 10 por página, con `usePaginado` (`lib/paginado.ts`) + `<Paginacion>` (los mismos controles que Trazabilidad: primera, anterior, número editable, siguiente, última). La página efectiva se **deriva** (recortada a las que existen), no se sincroniza con un efecto.
+- **Topes** (`lib/limites.ts`): suspensión 15–365 días, multa $1.000–$500.000 (0 = sin multa en la suspensión), precio de actividad hasta $1.000.000, cupo de clase hasta 500. Validados también en el backend.
+- **"Inasistencia" en Mis clases del alumno** sólo aparece mientras la denuncia es posible (espejo de `creardenuncia`): clase Finalizada, desde 1 h y hasta 24 h (`HORAS_PARA_DENUNCIAR`) después del inicio. Antes aparecía en toda clase pasada, también en las finalizadas hace días, donde el backend la rechaza. El aviso gris dice "disponible al finalizar la clase" y sólo se ve con la clase ya empezada. Las clases ya denunciadas se marcan con "Reporte enviado" también después de recargar (se cruza con `listarMisDenuncias`).
+- **Historial del instructor clickeable** (modo consulta de `GestionClase`), **filtro por actividad** en Historial y Próximas clases, **botón "Activar ubicación"** y **buscador del Home**: ver sus secciones.
+- **Notificaciones por correo**: las importantes también llegan por mail. Es todo del backend (`TipoNotificacion.porCorreo`); el frontend no cambió.
+
 ## `components/Modal.tsx`: los modales van en un portal, siempre
 
 **Nunca escribas un `position:fixed;inset:0` suelto dentro de una pantalla.** Los modales se abrían "en el medio de la página" en vez de en el medio de la pantalla: con la página scrolleada quedaban arriba de todo y había que subir para encontrarlos. Pasaba en Mis reseñas del alumno, en Tipos y niveles del admin y en todos los demás.
@@ -497,7 +512,9 @@ Antes el administrador era el único de los tres roles sin pantalla de cuenta pr
 - **`instructor/Perfil.tsx` es nuevo** (`/instructor/perfil`, ítem "Mi perfil" en el sidebar). El instructor no tenía dónde cambiar su nombre, su teléfono ni su contraseña: "Mis datos" (`Solicitud.tsx`) es otra cosa —el estado de su verificación y la documentación— y su formulario sólo aparecía mientras la solicitud estaba en revisión.
 - **La foto se sube sólo desde ahí.** El `Avatar` del `DashSidebar` perdió su `onUpload`: un avatar es identidad, no un control, y estando en todas las pantallas se abría el explorador de archivos sin querer. Es la regla que ya seguía el alumno.
 - **Métricas exporta** a PDF y a CSV, con los helpers compartidos. Antes la única forma de sacar esos números era copiarlos a mano.
-- **El Historial no es clickeable.** Una clase Finalizada o Cancelada no tiene nada que gestionar, y el click llevaba a una pantalla de acciones que ahí no aplican. En su lugar, cada fila muestra la **ganancia** (precio de la clase × inscriptos; `$0` si se canceló), que sale de `MiClaseInstructor.precio` — el precio congelado de esa clase, no el actual de la actividad.
+- **El Historial vuelve a ser clickeable (2026-10-16), pero en modo consulta.** Cada fila abre `/instructor/clases/:id?desde=historial`, la MISMA pantalla `GestionClase` de "Mis actividades": quiénes se inscribieron, qué pagó cada uno y qué pasó con ese pago. Con la clase Finalizada o Cancelada la pantalla es de **sólo lectura** (`soloLectura`): sin "Editar", "Cancelar clase", "Notificar ausencia" ni "Confirmar cobro", con un cartel que lo explica, y "Volver al historial". Cada fila sigue mostrando la **ganancia** (precio de la clase × inscriptos; `$0` si se canceló), que sale de `MiClaseInstructor.precio`.
+  - **`GestionClase` ya no depende sólo de `data.clases`.** Esa caché excluye Finalizadas y Canceladas y sólo se llena visitando el detalle de la actividad, así que la pantalla rebotaba a "Mis actividades". Si la clase no está ahí, la busca en `listarMisClases()`. Lo mismo arregla entrar desde Próximas clases o el Panel sin haber pasado por la actividad.
+  - El roster de una clase **Cancelada** trae también las inscripciones canceladas (cambio del backend en `listarrosterclase`): si no, se veía vacío.
 - **El formulario de clase pide sólo fecha y hora de inicio.** La hora de fin se calcula con `actividad.duracionMin` y se muestra como texto al lado. El backend hace lo mismo: `horaFin` ya no viaja en el request.
 - **Una clase congelada no ofrece "Editar"**, muestra un chip "Congelada" con el motivo. Espejo de `VentanaInscripcion.estaCongelada`; el backend es quien lo hace cumplir.
 - **Se sacó la pasarela de 4 pasos** del alta/edición de actividad. No es un asistente: es un formulario de una página con todos los campos visibles, y los números marcaban un avance que nunca avanzaba.
@@ -512,7 +529,7 @@ La pestaña Reseñas de `admin/Gestion.tsx` tiene **Pendientes de moderación** 
 
 ## Resolver una denuncia: las cuatro opciones están descritas en pantalla
 
-`ETIQUETA_ACCION` y `DESCRIPCION_ACCION` en `admin/Gestion.tsx` son la fuente de esos textos, y **describen lo que el backend hace**, no lo que uno supondría. Aparecen en tres lugares: el panel plegable "¿Qué hace cada resolución?" arriba de la tabla de Reclamos, el `title` de cada botón y el modal de Suspender.
+`ETIQUETA_ACCION`, `DESCRIPCION_ACCION` y `ACCIONES_POR_TIPO` viven en **`lib/denuncias.ts`** (antes estaban sólo en `admin/Gestion.tsx`) y los usan las dos pantallas que resuelven. **Describen lo que el backend hace**, no lo que uno supondría. Aparecen en el panel plegable "¿Qué hace cada resolución?" de Reclamos, el `title` de cada botón (en las dos pantallas) y el modal de Suspender. La descripción de "Reintegrar" decía "alcanza sólo a esa persona", que era falso desde que el backend reintegra a toda la clase: se corrigió al moverla.
 
 - **Reintegrar el pago** — cancela la inscripción y devuelve el pago a **todos los inscriptos de la clase**, no sólo a quien denunció.
 - **Suspender al instructor** — lo inhabilita N días (mín. 15) + multa opcional, cancela sus clases del período y reintegra a esos inscriptos.
@@ -564,6 +581,8 @@ El resto de las señales (inscripciones, favoritos, reseñas, intereses) ya est�
 
 ## Home del alumno (E3A-HU01)
 
+**El desplegable del buscador se cortaba** (2026-10-16): la tarjeta del saludo tenía `overflow:hidden` para recortar sus dos círculos de fondo, y eso recortaba también los resultados, que caen por debajo de la tarjeta — se veía el primero y el resto quedaba "debajo" de lo que sigue. El recorte pasó a una capa propia de los círculos (`inset:0;overflow:hidden;pointer-events:none`), la tarjeta lleva `z-index:5` y el desplegable tiene `max-height` con scroll. **No vuelvas a poner `overflow:hidden` en un contenedor que tenga un desplegable adentro.**
+
 Ya cubre los criterios que faltaban: **fila de 7 filtros rápidos** (Categoría · Tipo · Nivel · Ubicación · Fecha · Horario · Precio) que no filtran en el Home sino que navegan a Explorar con la intención ya elegida (`location.state`); **buscador con resultados desplegables** debajo del campo, con "Ingresá al menos 2 caracteres" y "No se encontraron actividades con esos criterios"; **estado vacío** de "Recomendado para vos" con botón "Explorar actividades"; y **banner "No se pudo cargar el inicio" con Reintentar**, alimentado por `errorCatalogo`/`refrescarCatalogo` del `DataContext` (antes el catálogo fallaba en silencio y se veía igual que una plataforma sin actividades).
 
 Para que Fecha y Horario existan de verdad, `Explorar.tsx` ganó esos dos filtros (sobre la próxima clase de cada actividad, en hora local) y su nav-state acepta `tipoActividadId`, `nivel`, `maxPrecio`, `fecha` y `franja`.
@@ -614,7 +633,7 @@ El avatar de `AlumnoNav` **no** sube foto: es identidad, no un control. El únic
 ## Penalizaciones: los dos tipos son combinables y la suspensión pide plazo
 
 - El formulario de `admin/Penalizaciones.tsx` pasó de un `select` excluyente a **dos checkboxes**: se puede multar y suspender en la misma sanción. Se manda `tipos: [...]` y el backend guarda una penalización por cada tipo.
-- **Mínimo 15 días** de suspensión, validado en el cliente y en el servidor (`MIN_DIAS_SUSPENSION`, espejo de `VentanaPenalizacion` del backend).
+- **Entre 15 y 365 días** de suspensión y **multa entre $1.000 y $500.000**, validado en el cliente (`lib/limites.ts`: `errorDiasSuspension`, `errorMulta`) y en el servidor (`VentanaPenalizacion`). El `<input type="date">` de "Fecha fin" lleva `min`/`max` calculados desde "Fecha inicio", así el calendario ni ofrece una fecha fuera de rango.
 - El listado muestra monto, vigencia y **cuántos días dura**, y viene ordenado de la más antigua a la más reciente.
 - **"Suspender al instructor" ya no se resuelve con un `prompt`**: abre un modal que pide días (mínimo 15) y monto de multa (puede ser 0 = solo suspensión). Eso viaja como `resolverDenuncia(id, "SUSPENDER", detalle, { montoMulta, diasSuspension })`.
 
@@ -665,7 +684,7 @@ Cada una de esas pantallas tiene ahora su estado de error con botón "Reintentar
 
 ## Pantalla de Historial de clases (instructor)
 
-`pages/instructor/HistorialClases.tsx`, ruta `/instructor/historial`, ítem "Historial" en el sidebar. Muestra las clases Finalizadas y Canceladas, más recientes primero, con filtro por estado.
+`pages/instructor/HistorialClases.tsx`, ruta `/instructor/historial`, ítem "Historial" en el sidebar. Muestra las clases Finalizadas y Canceladas, más recientes primero, con filtro por estado y **por actividad** (`components/FiltroActividad`; los contadores de estado se calculan sobre la actividad elegida). "Próximas clases" tiene el mismo selector. Las opciones salen de las clases cargadas, no del catálogo: una actividad eliminada no está en el catálogo pero sí en el historial.
 
 Existe porque el instructor no tenía dónde ver sus clases pasadas: "Próximas clases" sólo lista futuras y el detalle de actividad las excluye a propósito (`ObtenerActividadService.ESTADOS_EXCLUIDOS`), así que una clase dictada desaparecía de su vista.
 
@@ -692,6 +711,8 @@ Los datos ya son reales: la pantalla se alimenta de `listarMisClases()` y `lista
 
 ## Sistema de notificaciones (campana)
 `NotificationBell.tsx` es compartido por los 3 roles — ya está insertado en `AlumnoNav` (reemplazó un ícono decorativo que no hacía nada) y en `DashSidebar` (instructor/admin, con `variant="dark" align="left"` para que quede bien en el sidebar oscuro y no se salga de pantalla). Hace polling on-mount vía `listarNotificaciones()` y se re-lee al abrir el dropdown. Lleva un prop **`area`** obligatorio (`AlumnoNav` pasa `"alumno"`, `DashSidebar` pasa su `role`): sólo desempata a dónde lleva el click.
+
+**El desplegable va en un portal a `document.body`** (2026-10-17), con `position:fixed` calculada contra el botón (`calcularPosicion`, recortada a la ventana, recalculada en scroll/resize) y z-index 1100/1101. Reportado: un gráfico quedaba por encima del menú. La campana del instructor y del admin vive en `DashSidebar`, que es `position:sticky` y crea su propio contexto de apilamiento: el z-index del menú sólo competía dentro del sidebar y el contenido de la derecha se pintaba encima. Es la misma trampa de los modales y del chatbot. **1100 y no 100** porque los controles de los mapas de Leaflet llegan a 1000. Se cierra con click afuera y con Escape. Prueba: `components/NotificationBell.test.tsx`.
 
 ### Cada notificación es clickeable y lleva al asunto
 
@@ -743,7 +764,7 @@ Al terminar, siempre: `rm .env.local`, matar los procesos aislados por PID exact
 Pendientes de verdad:
 **Ítem 8 (recomendaciones): HECHO** — ver "Recomendado para vos" más arriba. El filtrado de Explorar sigue siendo tradicional a propósito (texto sin tildes, categoría, tipo en cascada, nivel, precio, cupos, fecha, franja horaria, radio, orden): ahí el alumno busca algo concreto. Lo que se recomienda es el Home.
 **Ítem 11 (IA real): HECHO y verificado contra Groq por API.** El chatbot responde con un modelo usando el manual de usuario como única fuente (`lib/ia.ts`) y el "Asistente de beneficios" pide su informe al backend. **El copy ahora sí promete IA** (etiqueta "IA" en el encabezado de la burbuja, "Responde según el manual de usuario"), y eso es correcto porque hay modelo detrás — con dos condiciones que hay que mantener: **cuando no está, las dos pantallas lo dicen** y vuelven a su comportamiento anterior; **cuando se agotó la cuota, avisan cuánto falta** en vez de quedarse en blanco. Lo único que falta del ítem es probarlo en el navegador (la clave ya está cargada en el backend del usuario).
-- **12** — Mercado Pago real, al final.
+- **12 — Mercado Pago real: HECHO.** Integrado y funcionando según el usuario (la integración y su prueba se hicieron en otra PC; ver "Pagos con Mercado Pago" y la matriz `docs/PRUEBAS-SANDBOX-MERCADOPAGO.md` del backend).
 - **Deploy** (Vercel) — el build de producción sale limpio y la URL del backend es `VITE_API_URL`, pero no se desplegó.
 **Recuperar contraseña: HECHO.** El enlace de `Login.tsx` lleva a `/recuperar-password` (`pages/auth/RecuperarPassword.tsx`) — ver la sección propia más arriba.
 

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
 import { CargandoSeccion } from "../../components/Cargando";
 import StatusBadge from "../../components/StatusBadge";
+import FiltroActividad, { TODAS_LAS_ACTIVIDADES } from "../../components/FiltroActividad";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
@@ -30,6 +31,7 @@ export default function InstructorProximasClases() {
   const [misClases, setMisClases] = useState<MiClaseInstructor[]>([]);
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState(false);
+  const [actividadId, setActividadId] = useState<string>(TODAS_LAS_ACTIVIDADES);
 
   const cargar = useCallback(() => {
     if (!aprobado) return;
@@ -47,13 +49,21 @@ export default function InstructorProximasClases() {
     cargar();
   }, [cargar]);
 
+  // Las próximas, sin filtrar por actividad: de acá salen las opciones del selector, así una
+  // actividad elegida no desaparece de la lista de opciones.
+  const futuras = useMemo(() => {
+    const now = new Date();
+    return misClases.filter(
+      (c) => (c.estado === "Programada" || c.estado === "Habilitada") && new Date(c.fechaHora) >= now,
+    );
+  }, [misClases]);
+
   const grupos = useMemo(() => {
     if (!currentUser) return [];
-    const now = new Date();
     // `misClases` viene del endpoint del instructor, así que la pantalla ya no depende
     // de haber visitado antes el detalle de una actividad.
-    const upcoming = misClases
-      .filter((c) => (c.estado === "Programada" || c.estado === "Habilitada") && new Date(c.fechaHora) >= now)
+    const upcoming = futuras
+      .filter((c) => actividadId === TODAS_LAS_ACTIVIDADES || c.actividadId === actividadId)
       .sort((a, b) => new Date(a.fechaHora).getTime() - new Date(b.fechaHora).getTime());
 
     const today = new Date();
@@ -87,7 +97,7 @@ export default function InstructorProximasClases() {
         dot: ESTADO_DOT[c.estado],
       })),
     }));
-  }, [currentUser, misClases]);
+  }, [currentUser, futuras, actividadId]);
 
   if (!currentUser || !aprobado) return null;
 
@@ -118,9 +128,16 @@ export default function InstructorProximasClases() {
           </div>
         )}
         {!errorCarga && cargando && <CargandoSeccion seccion="clases" />}
+        {!errorCarga && !cargando && futuras.length > 0 && (
+          <div style={s("margin-bottom:20px;")}>
+            <FiltroActividad clases={futuras} valor={actividadId} onChange={setActividadId} />
+          </div>
+        )}
         {!errorCarga && !cargando && grupos.length === 0 && (
           <div style={s("background:#fff;border:1px dashed #D6DEE7;border-radius:18px;padding:40px;text-align:center;color:#7A8C9E;font-weight:600;")}>
-            No tenés clases programadas próximamente.
+            {futuras.length === 0
+              ? "No tenés clases programadas próximamente."
+              : "No tenés clases próximas de esa actividad."}
           </div>
         )}
         {grupos.map((g) => (

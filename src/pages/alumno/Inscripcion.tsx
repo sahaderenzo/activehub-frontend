@@ -227,7 +227,7 @@ export default function AlumnoInscripcion() {
                     </svg>
                   </div>
                   <div style={s("flex:1;")}>
-                    <div style={s("font:700 16px Manrope,sans-serif;color:#0E2A47;")}>MercadoPago</div>
+                    <div style={s("font:700 16px Manrope,sans-serif;color:#0E2A47;")}>Mercado Pago</div>
                     <div style={s("font-size:13px;color:#65788C;font-weight:600;")}>Tarjeta de crédito</div>
                   </div>
                   <span
@@ -289,10 +289,10 @@ export default function AlumnoInscripcion() {
                       <circle cx="12" cy="12" r="2.5" />
                     </svg>
                   </div>
-                  <div style={s("font:700 15px Manrope,sans-serif;color:#0E2A47;")}>Pagar con MercadoPago</div>
+                  <div style={s("font:700 15px Manrope,sans-serif;color:#0E2A47;")}>Pagar con Mercado Pago</div>
                 </div>
                 <p style={s("font-size:13.5px;line-height:1.55;color:#65788C;margin:0 0 16px;")}>
-                  Vas a completar los datos de tu tarjeta de crédito en una ventana segura de MercadoPago. El monto queda
+                  Vas a completar los datos de tu tarjeta de crédito en una ventana segura de Mercado Pago. El monto queda
                   reservado en tu tarjeta y se cobra después de la clase.
                 </p>
                 <button
@@ -304,7 +304,7 @@ export default function AlumnoInscripcion() {
                     `width:100%;background:#009EE3;color:#fff;border:none;border-radius:12px;padding:15px;font:700 15.5px Manrope,sans-serif;cursor:pointer;box-shadow:0 8px 18px rgba(0,158,227,.28);opacity:${enviando ? ".7" : "1"};`,
                   )}
                 >
-                  {enviando ? "Procesando…" : `Pagar $${clase.precio.toLocaleString("es-AR")} con MercadoPago`}
+                  {enviando ? "Procesando…" : `Pagar $${clase.precio.toLocaleString("es-AR")} con Mercado Pago`}
                 </button>
               </div>
             ) : (

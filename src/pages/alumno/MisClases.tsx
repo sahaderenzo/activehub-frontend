@@ -14,6 +14,9 @@ import { formatFecha, formatHora } from "../../lib/mockData";
 import { claseStatusType, inscripcionStatusType } from "../../lib/status";
 import type { EstadoClase, EstadoInscripcion } from "../../lib/types";
 
+/** Espejo de `VentanaPagos.PERIODO_DENUNCIAS` del backend: pasado eso, el pago ya se acreditó. */
+const HORAS_PARA_DENUNCIAR = 24;
+
 type TabKey = EstadoInscripcion | "todas" | "finalizadas";
 
 const TABS: { key: TabKey; label: string }[] = [
@@ -33,7 +36,7 @@ export default function AlumnoMisClases() {
   // Reportar una inasistencia es el modulo de denuncias, no el de inscripciones: se puede
   // tener uno sin el otro, y sin `denuncias.crear` el POST vuelve 403.
   const puedeDenunciar = puede("denuncias.crear");
-  const { getActividad, getTipoActividad, getCategoria, instructorNombre, cancelarInscripcion, crearDenuncia, listarMisInscripciones } =
+  const { getActividad, getTipoActividad, getCategoria, instructorNombre, cancelarInscripcion, crearDenuncia, listarMisInscripciones, listarMisDenuncias } =
     useData();
   const [tab, setTab] = useState<TabKey>("todas");
   // Las dos formas en que una notificación apunta acá: por la inscripción (te confirmaron el
@@ -42,6 +45,9 @@ export default function AlumnoMisClases() {
   const resaltadoInscripcion = useResaltado("inscripcion");
   const resaltadoClase = useResaltado("clase");
   const [reportadas, setReportadas] = useState<Set<string>>(new Set());
+  // Clases que ya denunció en otra visita: sin esto, al recargar volvía a aparecer el botón y
+  // el segundo reporte terminaba en "Ya denunciaste esta clase."
+  const [clasesDenunciadas, setClasesDenunciadas] = useState<Set<string>>(new Set());
   const [todasFilas, setTodasFilas] = useState<MiInscripcion[]>([]);
   const [error, setError] = useState<string | null>(null);
   // Arranca en true: con `false`, el primer render mostraría los contadores en 0 y "No hay
@@ -61,6 +67,15 @@ export default function AlumnoMisClases() {
     if (currentUser) cargar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser]);
+
+  useEffect(() => {
+    if (!currentUser || !puedeDenunciar) return;
+    // Secundario: si falla, el peor caso es el de antes (el backend rechaza el duplicado).
+    listarMisDenuncias()
+      .then((ds) => setClasesDenunciadas(new Set(ds.filter((d) => d.tipo === "CLASE").map((d) => d.claseId))))
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser, puedeDenunciar]);
 
   // Una vez que la clase finaliza, una inscripción "Inscripto" deja de ser
   // algo vigente (no hay nada para pagar/cancelar) y pasa a ser pura
@@ -218,10 +233,21 @@ export default function AlumnoMisClases() {
 
               const puedeCancelar = claseFutura && (r.estado === "PreInscripción" || r.estado === "PagoPendiente" || r.estado === "Inscripto");
 
+              /*
+               * El botón vive sólo mientras la denuncia es posible (espejo de `creardenuncia`):
+               * desde 1 h después del inicio, con la clase ya Finalizada, y hasta
+               * HORAS_PARA_DENUNCIAR después del inicio. Antes aparecía en TODA clase pasada —
+               * también en las finalizadas hace días, donde el backend ya la rechaza porque el
+               * pago se acreditó —, y el aviso "disponible 1 h tras el inicio" salía hasta en
+               * clases de la semana que viene. Ahora el aviso sólo se ve con la clase en curso.
+               */
               const horasDesdeInicio = (ahora - new Date(r.claseFechaHora).getTime()) / (1000 * 60 * 60);
-              const yaReportada = reportadas.has(r.id);
-              const repEnabled = puedeDenunciar && r.estado === "Inscripto" && horasDesdeInicio >= 1 && !yaReportada;
-              const repDisabled = puedeDenunciar && r.estado === "Inscripto" && horasDesdeInicio < 1 && !yaReportada;
+              const yaReportada = reportadas.has(r.id) || clasesDenunciadas.has(r.claseId);
+              const enVentanaDeDenuncia = horasDesdeInicio >= 1 && horasDesdeInicio <= HORAS_PARA_DENUNCIAR;
+              const repEnabled =
+                puedeDenunciar && r.estado === "Inscripto" && r.claseEstado === "Finalizada" && enVentanaDeDenuncia && !yaReportada;
+              const repDisabled =
+                puedeDenunciar && r.estado === "Inscripto" && r.claseEstado !== "Finalizada" && horasDesdeInicio >= 0 && !yaReportada;
 
               const resaltada = resaltadoInscripcion.activo(r.id) || resaltadoClase.activo(r.claseId);
 
@@ -314,7 +340,7 @@ export default function AlumnoMisClases() {
                         <div style={s("font-size:11px;font-weight:700;color:#A6B3C0;line-height:1.35;")}>
                           Reportar inasistencia
                           <br />
-                          disponible 1 h tras el inicio
+                          disponible al finalizar la clase
                         </div>
                       </div>
                     )}

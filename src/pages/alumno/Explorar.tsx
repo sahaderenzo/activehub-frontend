@@ -7,6 +7,7 @@ import { s } from "../../lib/style";
 import { incluye } from "../../lib/texto";
 import { useData } from "../../context/DataContext";
 import { haversineKm, useGeolocation } from "../../lib/geo";
+import ActivarUbicacion from "../../components/ActivarUbicacion";
 import type { Actividad, Categoria, TipoActividad } from "../../lib/types";
 const SORTS = ["Relevancia", "Precio: menor", "Precio: mayor", "Mejor valoradas", "Cercanía"] as const;
 type Sort = (typeof SORTS)[number];
@@ -523,6 +524,11 @@ export default function AlumnoExplorar() {
               </div>
             </div>
           </div>
+          {sort === "Cercanía" && radio === "Cualquier distancia" && geolocation.status === "denied" && (
+            <div style={s("margin-bottom:16px;")}>
+              <ActivarUbicacion geolocation={geolocation} para="ordenar las actividades por cercanía" variante="linea" />
+            </div>
+          )}
           {cargandoCatalogo ? (
             // Sin esto el catálogo vacío en vuelo se veía igual que "no hay actividades
             // que coincidan", y encima con los contadores de los filtros en cero.
@@ -541,6 +547,11 @@ export default function AlumnoExplorar() {
                   <div style={s("margin-bottom:12px;")}>
                     Para filtrar por distancia necesitamos tu ubicación, y todavía no la tenemos.
                   </div>
+                  {geolocation.status === "denied" && (
+                    <div style={s("max-width:460px;margin:0 auto 12px;")}>
+                      <ActivarUbicacion geolocation={geolocation} para="filtrar por distancia" variante="linea" />
+                    </div>
+                  )}
                   <button
                     className="ah-btn"
                     onClick={() => setRadio("Cualquier distancia")}

@@ -41,6 +41,20 @@ function conNegritas(texto: string) {
 const ESTILO_P = "font-size:14.5px;line-height:1.7;color:#41566B;margin:0 0 12px;";
 const ESTILO_ITEM = "font-size:14.5px;line-height:1.7;color:#41566B;margin:0 0 8px;";
 
+/** Las viñetas que cuelgan de un paso o de un ítem (`sub` del bloque). */
+function SubItems({ items }: { items?: string[] | null }) {
+  if (!items?.length) return null;
+  return (
+    <ul style={s("margin:6px 0 0;padding-left:20px;list-style:disc;")}>
+      {items.map((it, i) => (
+        <li key={i} style={s("font-size:14px;line-height:1.65;color:#41566B;margin:0 0 6px;")}>
+          {conNegritas(it)}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function Bloque({ bloque }: { bloque: BloqueManual }) {
   if (bloque.tipo === "p") return <p style={s(ESTILO_P)}>{conNegritas(bloque.texto)}</p>;
 
@@ -53,6 +67,7 @@ function Bloque({ bloque }: { bloque: BloqueManual }) {
         {bloque.items.map((it, i) => (
           <li key={i} style={s(ESTILO_ITEM)}>
             {conNegritas(it)}
+            <SubItems items={bloque.sub?.[i]} />
           </li>
         ))}
       </ol>
@@ -64,6 +79,7 @@ function Bloque({ bloque }: { bloque: BloqueManual }) {
         {bloque.items.map((it, i) => (
           <li key={i} style={s(ESTILO_ITEM)}>
             {conNegritas(it)}
+            <SubItems items={bloque.sub?.[i]} />
           </li>
         ))}
       </ul>

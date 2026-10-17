@@ -20,10 +20,14 @@ export type BloqueManual =
   | { tipo: "p"; texto: string }
   /** Subtítulo dentro del apartado ("Cuenta de Alumno", "Mensajes frecuentes"). */
   | { tipo: "sub"; texto: string }
-  /** Lista NUMERADA: una secuencia de pasos que se hacen en orden. */
-  | { tipo: "pasos"; items: string[] }
-  /** Lista con viñetas: enumeración sin orden (opciones, estados, aclaraciones). */
-  | { tipo: "lista"; items: string[] }
+  /**
+   * Lista NUMERADA: una secuencia de pasos que se hacen en orden. `sub[i]`, si está, son las
+   * viñetas que cuelgan del paso i (las opciones de "seleccionar el método de pago", los tres
+   * mensajes posibles); `null` en los pasos que no tienen.
+   */
+  | { tipo: "pasos"; items: string[]; sub?: (string[] | null)[] }
+  /** Lista con viñetas: enumeración sin orden (opciones, estados, aclaraciones). Mismo `sub`. */
+  | { tipo: "lista"; items: string[]; sub?: (string[] | null)[] }
   /** Tabla con encabezado. Se usa en los cuadros comparativos y en el glosario. */
   | { tipo: "tabla"; cols: string[]; filas: string[][] };
 
@@ -65,8 +69,7 @@ export const MANUAL: SeccionManual[] = [
         bloques: [
           {
             tipo: "p",
-            texto:
-              "El presente manual describe el uso de ActiveHub desde la perspectiva de cada uno de sus usuarios. Se organiza por rol, replicando el recorrido real que cada persona realiza dentro de la plataforma: primero se presentan las funciones comunes a los tres roles y luego las específicas del Alumno, del Instructor y del Administrador. Para cada tarea se indica su propósito, los pasos a seguir, los campos que se solicitan y los mensajes más frecuentes que el sistema puede mostrar.",
+            texto: "El presente manual describe el uso de ActiveHub desde la perspectiva de cada uno de sus usuarios. Se organiza por rol, replicando el recorrido real que cada persona realiza dentro de la plataforma: primero se presentan las funciones comunes a los tres roles y luego las específicas del Alumno, del Instructor y del Administrador. Para cada tarea se indica su propósito, los pasos a seguir, los campos que se solicitan y los mensajes más frecuentes que el sistema puede mostrar.",
           },
         ],
       },
@@ -94,18 +97,16 @@ export const MANUAL: SeccionManual[] = [
         bloques: [
           {
             tipo: "p",
-            texto:
-              "ActiveHub es una aplicación web: no requiere instalación y puede utilizarse desde cualquier navegador actualizado, tanto en computadoras como en dispositivos móviles, con conexión a Internet.",
+            texto: "ActiveHub es una aplicación web: no requiere instalación y puede utilizarse desde cualquier navegador actualizado, tanto en computadoras como en dispositivos móviles, con conexión a Internet. Las capturas incluidas en este manual corresponden al sistema desarrollado.",
           },
         ],
       },
     ],
   },
-
   {
     id: "s-1",
     num: "1",
-    titulo: "Primeros pasos",
+    titulo: "Primeros pasos (común a los tres roles)",
     rol: "Todos",
     apartados: [
       {
@@ -115,10 +116,12 @@ export const MANUAL: SeccionManual[] = [
         bloques: [
           {
             tipo: "p",
-            texto:
-              "Cualquier persona puede crear una cuenta de Alumno o de Instructor desde la página de inicio. Las cuentas de Administrador no se crean desde este formulario: las da de alta un administrador de la plataforma.",
+            texto: "Cualquier persona puede crear una cuenta de Alumno o de Instructor desde la página de inicio. Las cuentas de Administrador no se crean desde este formulario: las da de alta un administrador de la plataforma.",
           },
-          { tipo: "sub", texto: "Cuenta de Alumno" },
+          {
+            tipo: "sub",
+            texto: "Cuenta de Alumno",
+          },
           {
             tipo: "pasos",
             items: [
@@ -130,7 +133,10 @@ export const MANUAL: SeccionManual[] = [
               'Presionar "Crear cuenta". El sistema envía un código de verificación de seis dígitos al correo informado y dirige a la pantalla de verificación (ver el apartado 1.2).',
             ],
           },
-          { tipo: "sub", texto: "Cuenta de Instructor" },
+          {
+            tipo: "sub",
+            texto: "Cuenta de Instructor",
+          },
           {
             tipo: "pasos",
             items: [
@@ -141,22 +147,28 @@ export const MANUAL: SeccionManual[] = [
               'Aceptar los términos y condiciones y presionar "Crear cuenta". Luego de verificar el correo, la cuenta queda en estado "En revisión" hasta que un administrador valide la documentación (ver el apartado 3.1).',
             ],
           },
-          { tipo: "sub", texto: "Registro con Google" },
+          {
+            tipo: "sub",
+            texto: "Registro con Google",
+          },
           {
             tipo: "lista",
             items: [
-              '**Alumno:** con la opción "Soy Alumno" seleccionada, presionar "Continuar con Google" y elegir la cuenta de Google. La cuenta se crea con el correo ya verificado y el sistema dirige a la pantalla "Terminá tu registro", donde deben completarse el teléfono y la fecha de nacimiento (obligatorios), el DNI (opcional) y los intereses deportivos. Esta pantalla no puede omitirse.',
-              '**Instructor:** con la opción "Soy Instructor" seleccionada, "Continuar con Google" no crea la cuenta de forma inmediata, porque el alta de un instructor requiere documentación que Google no provee. El formulario se completa automáticamente con el nombre, el apellido y el correo de la cuenta de Google, y el instructor debe completar el resto de los datos y adjuntar su documentación.',
+              '**Alumno**: con la opción "Soy Alumno" seleccionada, presionar "Continuar con Google" y elegir la cuenta de Google. La cuenta se crea con el correo ya verificado y el sistema dirige a la pantalla "Terminá tu registro", donde deben completarse el teléfono y la fecha de nacimiento (obligatorios), el DNI (opcional) y los intereses deportivos. Esta pantalla no puede omitirse.',
+              '**Instructor**: con la opción "Soy Instructor" seleccionada, "Continuar con Google" no crea la cuenta de forma inmediata, porque el alta de un instructor requiere documentación que Google no provee. El formulario se completa automáticamente con el nombre, el apellido y el correo de la cuenta de Google, y el instructor debe completar el resto de los datos y adjuntar su documentación.',
             ],
           },
-          { tipo: "sub", texto: "Mensajes frecuentes" },
+          {
+            tipo: "sub",
+            texto: "Mensajes frecuentes",
+          },
           {
             tipo: "lista",
             items: [
-              '**"Ingresá un correo electrónico válido":** el correo no tiene un formato correcto.',
-              '**"El teléfono debe contener solo números":** el teléfono incluye letras o símbolos.',
-              '**"Ya existe una cuenta con este correo electrónico":** el correo pertenece a una cuenta ya verificada. Una dirección que otra persona ingresó por error pero nunca confirmó no impide el registro.',
-              '**"Formato no admitido. Usá PDF, JPG o PNG" o "El archivo supera el tamaño máximo permitido.":** el archivo adjunto no cumple las condiciones de la documentación.',
+              '"Ingresá un correo electrónico válido": el correo no tiene un formato correcto.',
+              '"El teléfono debe contener solo números": el teléfono incluye letras o símbolos.',
+              '"Ya existe una cuenta con este correo electrónico": el correo pertenece a una cuenta ya verificada. Una dirección que otra persona ingresó por error pero nunca confirmó no impide el registro.',
+              '"Formato no admitido. Usá PDF, JPG o PNG" o "El archivo supera el tamaño máximo permitido.": el archivo adjunto no cumple las condiciones de la documentación.',
             ],
           },
         ],
@@ -168,8 +180,7 @@ export const MANUAL: SeccionManual[] = [
         bloques: [
           {
             tipo: "p",
-            texto:
-              "Toda cuenta creada con contraseña debe confirmar su dirección de correo antes de poder operar. Hasta que se ingresa el código, la cuenta existe pero no puede realizar ninguna operación en la plataforma.",
+            texto: "Toda cuenta creada con contraseña debe confirmar su dirección de correo antes de poder operar. Hasta que se ingresa el código, la cuenta existe pero no puede realizar ninguna operación en la plataforma.",
           },
           {
             tipo: "pasos",
@@ -179,7 +190,10 @@ export const MANUAL: SeccionManual[] = [
               "Al completar el sexto dígito, el código se envía sin necesidad de presionar ningún botón. Si es correcto, el sistema dirige al Alumno a su pantalla de inicio y al Instructor a la pantalla de estado de su solicitud.",
             ],
           },
-          { tipo: "sub", texto: "Si el correo no llega" },
+          {
+            tipo: "sub",
+            texto: "Si el correo no llega",
+          },
           {
             tipo: "lista",
             items: [
@@ -205,23 +219,49 @@ export const MANUAL: SeccionManual[] = [
           },
           {
             tipo: "p",
-            texto:
-              'También es posible ingresar con "Continuar con Google" cuando el correo de la cuenta de Google corresponde a una cuenta existente y verificada. Si no existe ninguna cuenta con ese correo, el sistema no crea una nueva: indica que primero debe realizarse el registro eligiendo si se trata de un alumno o de un instructor.',
+            texto: 'También es posible ingresar con "Continuar con Google" cuando el correo de la cuenta de Google corresponde a una cuenta existente y verificada. Si no existe ninguna cuenta con ese correo, el sistema no crea una nueva: indica que primero debe realizarse el registro eligiendo si se trata de un alumno o de un instructor.',
           },
-          { tipo: "sub", texto: "Mensajes frecuentes" },
+          {
+            tipo: "sub",
+            texto: "Mensajes frecuentes",
+          },
           {
             tipo: "lista",
             items: [
-              '**"Correo o contraseña incorrectos. Verificá tus datos e intentá de nuevo.":** el identificador o la contraseña no son correctos. Por seguridad, el mensaje no indica cuál de los dos datos es el erróneo.',
-              '**"Demasiados intentos fallidos. Esperá unos minutos antes de volver a intentarlo.":** tras cinco intentos fallidos consecutivos dentro de quince minutos, el acceso se bloquea durante quince minutos.',
-              '**"Tu cuenta fue dada de baja. Contactá al soporte si creés que es un error.":** la cuenta fue dada de baja o suspendida administrativamente.',
+              '"Correo o contraseña incorrectos. Verificá tus datos e intentá de nuevo.": el identificador o la contraseña no son correctos. Por seguridad, el mensaje no indica cuál de los dos datos es el erróneo.',
+              '"Demasiados intentos fallidos. Esperá unos minutos antes de volver a intentarlo.": tras cinco intentos fallidos consecutivos dentro de quince minutos, el acceso se bloquea durante quince minutos.',
+              '"Tu cuenta fue dada de baja. Contactá al soporte si creés que es un error.": la cuenta fue dada de baja o suspendida administrativamente.',
             ],
           },
-          { tipo: "sub", texto: "Duración de la sesión y cierre" },
+          {
+            tipo: "sub",
+            texto: "Recuperar la contraseña olvidada",
+          },
           {
             tipo: "p",
-            texto:
-              'La sesión se mantiene activa mientras el usuario opera y expira después de 30 minutos de inactividad; en ese caso es necesario volver a iniciar sesión. La opción "Cerrar sesión" finaliza la sesión de forma inmediata en los tres roles; en el área del alumno se encuentra en el menú que despliega el chip con su nombre, en la esquina superior derecha.',
+            texto: "Si no se recuerda la contraseña, no es necesario pedir ayuda a un administrador:",
+          },
+          {
+            tipo: "pasos",
+            items: [
+              'En la pantalla de inicio de sesión, presionar "¿Olvidaste tu contraseña?".',
+              'En la pantalla "Recuperar contraseña", ingresar el correo de la cuenta y presionar "Enviarme el código". El sistema informa: "Si hay una cuenta registrada con {correo}, le enviamos un código de 6 dígitos. Vence en {N} minutos.".',
+              "Abrir el correo, copiar el código de seis dígitos e ingresarlo en las seis casillas.",
+              'Escribir la contraseña nueva en "Contraseña nueva *" y repetirla en "Repetir contraseña nueva *". Debe cumplir la misma política del registro.',
+              'Presionar "Guardar contraseña nueva". La pantalla confirma con "Contraseña actualizada" y el botón "Ir a iniciar sesión".',
+            ],
+          },
+          {
+            tipo: "p",
+            texto: 'Por seguridad, el sistema responde igual exista o no la cuenta, de modo que la pantalla nunca revela quién está registrado. El código vence a los quince minutos, admite cinco intentos —el mensaje indica cuántos quedan— y es de un solo uso; el enlace "Pedir otro código" emite uno nuevo e invalida el anterior. Cambiar la contraseña no inicia la sesión automáticamente. Las cuentas creadas con "Continuar con Google" no tienen contraseña propia: en ese caso la pantalla indica ingresar con el botón de Google.',
+          },
+          {
+            tipo: "sub",
+            texto: "Duración de la sesión y cierre",
+          },
+          {
+            tipo: "p",
+            texto: 'La sesión se mantiene activa mientras el usuario opera y expira después de 30 minutos de inactividad; en ese caso es necesario volver a iniciar sesión. La opción "Cerrar sesión" finaliza la sesión de forma inmediata en los tres roles; en el área del alumno se encuentra en el menú que despliega el chip con su nombre, en la esquina superior derecha.',
           },
         ],
       },
@@ -232,10 +272,12 @@ export const MANUAL: SeccionManual[] = [
         bloques: [
           {
             tipo: "p",
-            texto:
-              'Los tres roles cuentan con una pantalla de perfil propia. El Alumno accede desde el chip de usuario ("Mi perfil"); el Instructor y el Administrador, desde "Mi perfil" en el panel lateral.',
+            texto: 'Los tres roles cuentan con una pantalla de perfil propia. El Alumno accede desde el chip de usuario ("Mi perfil"); el Instructor y el Administrador, desde "Mi perfil" en el panel lateral.',
           },
-          { tipo: "sub", texto: "Editar los datos personales" },
+          {
+            tipo: "sub",
+            texto: "Editar los datos personales",
+          },
           {
             tipo: "pasos",
             items: [
@@ -246,10 +288,12 @@ export const MANUAL: SeccionManual[] = [
           },
           {
             tipo: "p",
-            texto:
-              "El DNI puede cargarse desde el perfil aunque no se haya informado en el registro, por ejemplo en las cuentas creadas con Google; una vez guardado, habilita el ingreso con DNI.",
+            texto: "El DNI puede cargarse desde el perfil aunque no se haya informado en el registro, por ejemplo en las cuentas creadas con Google; una vez guardado, habilita el ingreso con DNI.",
           },
-          { tipo: "sub", texto: "Cambiar la contraseña" },
+          {
+            tipo: "sub",
+            texto: "Cambiar la contraseña",
+          },
           {
             tipo: "pasos",
             items: [
@@ -258,18 +302,23 @@ export const MANUAL: SeccionManual[] = [
               "Confirmar el cambio.",
             ],
           },
-          { tipo: "sub", texto: "Cambiar el correo electrónico" },
+          {
+            tipo: "sub",
+            texto: "Cambiar el correo electrónico",
+          },
           {
             tipo: "p",
-            texto:
-              "El correo se modifica desde su tarjeta específica y no desde el formulario de datos personales, porque es la credencial de acceso. El sistema solicita la contraseña actual, envía un código a la nueva dirección y solo reemplaza el correo cuando ese código se confirma. Hasta ese momento, la cuenta conserva el correo anterior.",
+            texto: "El correo se modifica desde su tarjeta específica y no desde el formulario de datos personales, porque es la credencial de acceso. El sistema solicita la contraseña actual, envía un código a la nueva dirección y solo reemplaza el correo cuando ese código se confirma. Hasta ese momento, la cuenta conserva el correo anterior.",
           },
-          { tipo: "sub", texto: "Intereses deportivos y baja de la cuenta (Alumno)" },
+          {
+            tipo: "sub",
+            texto: "Intereses deportivos y baja de la cuenta (Alumno)",
+          },
           {
             tipo: "lista",
             items: [
-              '**Intereses:** se eligen de la lista de tipos de actividad del catálogo, agrupados por categoría. Cada ficha muestra el tipo y su categoría (por ejemplo, "Trekking · Aventura").',
-              '**Baja de la cuenta:** presionar "Dar de baja mi cuenta" y confirmar en el diálogo "¿Estás seguro? Esta acción desactivará tu cuenta". La baja es lógica: la cuenta se desactiva y la sesión se cierra, pero el historial se conserva para auditoría.',
+              '**Intereses**: se eligen de la lista de tipos de actividad del catálogo, agrupados por categoría. Cada ficha muestra el tipo y su categoría (por ejemplo, "Trekking · Aventura").',
+              '**Baja de la cuenta**: presionar "Dar de baja mi cuenta" y confirmar en el diálogo "¿Estás seguro? Esta acción desactivará tu cuenta". La baja es lógica: la cuenta se desactiva y la sesión se cierra, pero el historial se conserva para auditoría.',
             ],
           },
         ],
@@ -281,8 +330,15 @@ export const MANUAL: SeccionManual[] = [
         bloques: [
           {
             tipo: "p",
-            texto:
-              "El ícono de campana, ubicado en la parte superior de la pantalla, reúne los avisos dirigidos al usuario: por ejemplo, la cancelación de una clase, la publicación de una nueva clase de una actividad favorita, una inscripción nueva en una clase del instructor o la resolución de una denuncia. Cada notificación es accionable: al presionarla, el sistema conduce directamente al asunto que la originó y resalta la fila correspondiente.",
+            texto: "El ícono de campana, ubicado en la parte superior de la pantalla, reúne los avisos dirigidos al usuario: por ejemplo, la cancelación de una clase, la publicación de una nueva clase de una actividad favorita, una inscripción nueva en una clase del instructor, el resultado de un pago que Mercado Pago estaba revisando o la resolución de una denuncia. Cada notificación es accionable: al presionarla, el sistema conduce directamente al asunto que la originó y resalta la fila correspondiente.",
+          },
+          {
+            tipo: "p",
+            texto: 'Algunos avisos no conducen a ninguna pantalla porque requieren una acción por fuera del sistema: se distinguen con un ícono de alerta, con el texto alternativo "Requiere tu atención". Es el caso del aviso al instructor cuando Mercado Pago no aceptó renovar la vinculación de su cuenta, y del aviso a la administración cuando un cobro no pudo completarse.',
+          },
+          {
+            tipo: "p",
+            texto: 'Avisos por correo electrónico. Además de la campana, los avisos importantes se envían al correo de la cuenta: la cancelación de una clase (también cuando el instructor avisa que no puede dictarla), la cancelación de una inscripción con el reintegro correspondiente, la eliminación de una actividad, la resolución de una denuncia, una suspensión o una penalización, la aprobación o el rechazo de la cuenta de instructor, el vencimiento de la vinculación con Mercado Pago y, para la administración, un cobro que no pudo completarse. El correo repite el mismo texto de la notificación e incluye el botón "Abrir ActiveHub". Los avisos rutinarios (una inscripción nueva, una reseña, una clase nueva de un favorito) se muestran solo en la campana.',
           },
         ],
       },
@@ -298,18 +354,21 @@ export const MANUAL: SeccionManual[] = [
           {
             tipo: "lista",
             items: [
-              "**Preguntas frecuentes:** un buscador que ignora tildes y un listado de preguntas y respuestas sobre el uso de la plataforma.",
-              "**Guías rápidas:** accesos que despliegan y resaltan la respuesta correspondiente a las dudas más comunes.",
-              "**Reportar un problema:** un formulario con asunto, detalle y correo de contacto. Puede enviarse sin sesión iniciada, pensando en quienes no pudieron registrarse o ingresar; en ese caso el reporte se registra como anónimo.",
-              '**Chat de asistencia:** el botón flotante "¿Dudas?", ubicado en la esquina inferior derecha de las pantallas del alumno y de la pantalla de Ayuda, responde consultas frecuentes a partir de la misma base de preguntas.',
-              "**Manual de usuario:** esta misma pantalla, que reúne el recorrido completo de los tres roles.",
+              "**Preguntas frecuentes**: un buscador que ignora tildes y un listado de preguntas y respuestas sobre el uso de la plataforma.",
+              "**Guías rápidas**: accesos que despliegan y resaltan la respuesta correspondiente a las dudas más comunes.",
+              "**Reportar un problema**: un formulario con asunto, detalle y correo de contacto. Puede enviarse sin sesión iniciada, pensando en quienes no pudieron registrarse o ingresar; en ese caso el reporte se registra como anónimo.",
+              '**Chat de asistencia**: el botón flotante "¿Dudas?", ubicado en la esquina inferior derecha de las pantallas del alumno y de la pantalla de Ayuda, abre el "Asistente de ActiveHub", que responde con inteligencia artificial utilizando este manual como única fuente. Se puede preguntar con las palabras propias ("¿cómo cancelo?", "¿puedo pagar en efectivo?") y debajo de cada respuesta se indica de qué sección del manual salió. Ante una consulta que el manual no cubre, el asistente responde que esa información no se encuentra disponible y ofrece las preguntas frecuentes o el contacto con el equipo. Si el asistente no está disponible, responde con las preguntas frecuentes y lo aclara; si recibió muchas consultas seguidas, avisa cuánto hay que esperar y deja disponibles las preguntas frecuentes mientras tanto.',
+              '**Manual de usuario**: la tarjeta "Manual de usuario" abre, con el botón "Abrir el manual", la pantalla que contiene este manual completo, con índice navegable, buscador que ignora tildes, enlace directo a cada apartado y la opción "Imprimir / PDF". También se accede desde el enlace "Manual de usuario" del pie de página.',
             ],
+          },
+          {
+            tipo: "p",
+            texto: "El pie de página aparece al final de todas las pantallas y reúne los accesos a Explorar, Categorías, Ayuda, preguntas frecuentes, contacto y manual de usuario. En los paneles del Instructor y del Administrador se muestra en su versión compacta.",
           },
         ],
       },
     ],
   },
-
   {
     id: "s-2",
     num: "2",
@@ -323,18 +382,28 @@ export const MANUAL: SeccionManual[] = [
         bloques: [
           {
             tipo: "p",
-            texto:
-              'Al iniciar sesión, el alumno accede a su pantalla de inicio. La barra superior permite navegar entre "Inicio", "Explorar", "Calendario", "Favoritos" y "Mis clases". El chip con el nombre del usuario, en la esquina superior derecha, despliega el acceso a "Mi perfil", "Mis reseñas" y "Cerrar sesión"; desde el perfil se accede además a "Mis pagos" y "Mis denuncias".',
+            texto: 'Al iniciar sesión, el alumno accede a su pantalla de inicio. La barra superior permite navegar entre "Inicio", "Explorar", "Calendario", "Favoritos" y "Mis clases". El chip con el nombre del usuario, en la esquina superior derecha, despliega el acceso a "Mi perfil", "Mis reseñas" y "Cerrar sesión"; desde el perfil se accede además a "Mis pagos" y "Mis denuncias".',
           },
-          { tipo: "p", texto: "La pantalla de inicio incluye:" },
+          {
+            tipo: "p",
+            texto: "La pantalla de inicio incluye:",
+          },
           {
             tipo: "lista",
             items: [
-              "**Buscador:** muestra los resultados debajo del campo a medida que se escribe; al presionar un resultado se abre el detalle de la actividad. Se requieren al menos 2 caracteres.",
-              '**Filtros rápidos:** conducen a la pantalla "Explorar" con el filtro ya aplicado.',
-              '**"Recomendado para vos":** actividades sugeridas a partir de los intereses deportivos declarados en el perfil.',
-              "**Actividades cercanas:** si el usuario autoriza el acceso a su ubicación, el sistema muestra la distancia a cada actividad.",
+              "**Buscador**: muestra los resultados debajo del campo a medida que se escribe; al presionar un resultado se abre el detalle de la actividad. Se requieren al menos 2 caracteres.",
+              '**Filtros rápidos**: conducen a la pantalla "Explorar" con el filtro ya aplicado.',
+              '"Recomendado para vos": actividades elegidas para esa persona y ordenadas por afinidad. El sistema tiene en cuenta seis señales: los intereses deportivos declarados, las clases a las que se inscribió, sus favoritos, las reseñas que escribió, las actividades cuyo detalle abrió y lo que buscó. Debajo de cada actividad aparecen hasta dos carteles que explican el motivo, por ejemplo "Coincide con tu interés en Yoga" o "Bien calificada por otros alumnos (4,4)". Si todavía no hay ninguna señal, el sistema no inventa recomendaciones: muestra "Todavía no sabemos qué recomendarte." con los botones "Cargar mis intereses" y "Explorar actividades".',
+              "**Actividades cercanas**: si el usuario autoriza el acceso a su ubicación, el sistema muestra la distancia a cada actividad.",
             ],
+          },
+          {
+            tipo: "p",
+            texto: 'Activar la ubicación. Si la ubicación está desactivada, en lugar de las actividades cercanas aparece el mensaje "Activá tu ubicación para ver las actividades que tenés cerca." con el botón "Activar ubicación", que abre el cartel del navegador para permitir el acceso. Al elegir "Permitir", la pantalla muestra las actividades cercanas sin necesidad de recargarla. Si el navegador tiene la ubicación bloqueada para ActiveHub, el cartel no puede abrirse desde la página: debajo del botón aparece "Tu navegador la tiene bloqueada: habilitala desde el ícono junto a la dirección de la página." Al habilitarla desde ese ícono, la pantalla muestra las actividades cercanas sin necesidad de recargarla.',
+          },
+          {
+            tipo: "p",
+            texto: 'El mismo botón aparece en "Explorar" al filtrar por distancia o al ordenar por cercanía, y en el detalle de la actividad, junto a la distancia.',
           },
         ],
       },
@@ -358,8 +427,7 @@ export const MANUAL: SeccionManual[] = [
           },
           {
             tipo: "p",
-            texto:
-              'El sistema muestra las actividades que cumplen todos los criterios a la vez. El enlace "Limpiar" restablece los filtros. El filtro por radio de cercanía (menos de 2 km, 2, 5, 8 y 10 km, o más de 10 km) requiere autorizar el acceso a la ubicación del navegador; las actividades cuya distancia no puede calcularse quedan fuera de ese filtro. Si ninguna actividad cumple los criterios, se muestra el mensaje "No se encontraron actividades con esos criterios".',
+            texto: 'El sistema muestra las actividades que cumplen todos los criterios a la vez. El enlace "Limpiar" restablece los filtros. El filtro por radio de cercanía (menos de 2 km, 2, 5, 8 y 10 km, o más de 10 km) requiere autorizar el acceso a la ubicación del navegador; las actividades cuya distancia no puede calcularse quedan fuera de ese filtro. Si ninguna actividad cumple los criterios, se muestra el mensaje "No se encontraron actividades con esos criterios".',
           },
         ],
       },
@@ -370,22 +438,20 @@ export const MANUAL: SeccionManual[] = [
         bloques: [
           {
             tipo: "p",
-            texto:
-              'El detalle presenta la galería de imágenes, la categoría, la calificación, la ubicación sobre un mapa, la duración, el nivel de intensidad, la tarjeta del instructor, la descripción y las fechas disponibles. Cada clase muestra su fecha y hora de inicio y fin, su disponibilidad de cupos ("Disponible", "Últimos cupos" o "Sin cupos") y el botón de acción que corresponde según la fecha:',
+            texto: 'El detalle presenta la galería de imágenes, la categoría, la calificación, la ubicación sobre un mapa, la duración, el nivel de intensidad, la tarjeta del instructor, la descripción y las fechas disponibles. Cada clase muestra su fecha y hora de inicio y fin, su disponibilidad de cupos ("Disponible", "Últimos cupos" o "Sin cupos") y el botón de acción que corresponde según la fecha:',
           },
           {
             tipo: "lista",
             items: [
-              '**"Preinscribirme":** para las clases que se dictan dentro de más de 4 días.',
-              '**"Inscribirme y pagar":** para las clases que se dictan dentro de 4 días o menos y tienen cupos disponibles, hasta 1 hora antes del inicio.',
-              '**"Sin cupos":** botón deshabilitado cuando la clase está completa.',
+              '"Preinscribirme": para las clases que se dictan dentro de más de 4 días.',
+              '"Inscribirme y pagar": para las clases que se dictan dentro de 4 días o menos y tienen cupos disponibles, hasta 1 hora antes del inicio.',
+              '"Sin cupos": botón deshabilitado cuando la clase está completa.',
               'Las clases canceladas se muestran con la etiqueta "Cancelada" y sin acciones.',
             ],
           },
           {
             tipo: "p",
-            texto:
-              'El importe que se muestra corresponde al precio de la clase seleccionada. Al pie de la pantalla se encuentran las reseñas de la actividad, con la calificación promedio, los comentarios y las respuestas del instructor. La sección "Asistente de beneficios y prevenciones" permite generar, con el botón "Generar beneficios y prevenciones", un texto informativo sobre la actividad en relación con el perfil del alumno; su función es exclusivamente orientativa y nunca impide la inscripción.',
+            texto: 'El importe que se muestra corresponde al precio de la clase seleccionada. Al pie de la pantalla se encuentran las reseñas de la actividad, con la calificación promedio, los comentarios y las respuestas del instructor. La sección "Asistente de beneficios y prevenciones" permite generar, con el botón "Generar beneficios y prevenciones", un informe elaborado con inteligencia artificial que cruza los datos de la actividad y de la clase elegida con el perfil del alumno: intereses declarados, edad, condición de salud si la cargó e historial de actividades y reseñas. El informe incluye un resumen breve, una etiqueta de afinidad ("Afinidad alta", "Afinidad media" o "Afinidad baja"), los beneficios y las prevenciones a considerar, y puede volver a generarse con "Actualizar informe". Su función es exclusivamente orientativa: no es un diagnóstico médico, no indica ejercicios ni tratamientos y nunca impide la inscripción. Si el asistente no está disponible o recibió muchas consultas seguidas, la sección muestra igualmente los beneficios y prevenciones generales del nivel de intensidad, con un aviso que lo aclara e indica cuándo volver a intentarlo.',
           },
         ],
       },
@@ -394,10 +460,18 @@ export const MANUAL: SeccionManual[] = [
         num: "2.4",
         titulo: "Favorito, preinscripción e inscripción: diferencias",
         bloques: [
-          { tipo: "p", texto: "ActiveHub ofrece tres mecanismos distintos, que no deben confundirse:" },
+          {
+            tipo: "p",
+            texto: "ActiveHub ofrece tres mecanismos distintos, que no deben confundirse:",
+          },
           {
             tipo: "tabla",
-            cols: ["Mecanismo", "Sobre qué se aplica", "Cuándo está disponible", "Qué produce"],
+            cols: [
+              "Mecanismo",
+              "Sobre qué se aplica",
+              "Cuándo está disponible",
+              "Qué produce",
+            ],
             filas: [
               [
                 "Favorito",
@@ -437,8 +511,7 @@ export const MANUAL: SeccionManual[] = [
           },
           {
             tipo: "p",
-            texto:
-              'Cuando la clase pase a estar dentro de los 4 días previos, la inscripción definitiva se habilita desde "Mis clases". Si la clase se cancela, la preinscripción pasa a estado Cancelada y el sistema lo notifica.',
+            texto: 'Cuando la clase pase a estar dentro de los 4 días previos, la inscripción definitiva se habilita desde "Mis clases". Si la clase se cancela, la preinscripción pasa a estado Cancelada y el sistema lo notifica.',
           },
         ],
       },
@@ -451,20 +524,39 @@ export const MANUAL: SeccionManual[] = [
             tipo: "pasos",
             items: [
               'Presionar "Inscribirme y pagar" en una clase que se dicte dentro de 4 días o menos, o desde la preinscripción correspondiente en "Mis clases".',
-              'En la pantalla "Inscripción y pago", seleccionar el método de pago: con **Mercado Pago**, el pago se procesa a través de la pasarela y, al aprobarse, la inscripción queda en estado Inscripto y el pago en estado Retenido; con **Efectivo**, el pago se abona directamente al instructor y la inscripción queda en estado PagoPendiente hasta que el instructor confirma el cobro, momento en que pasa a Inscripto.',
-              'Confirmar la operación. Mientras se procesa, la pantalla muestra "Procesando tu pago" y se bloquea para evitar inscripciones duplicadas.',
-              'Al finalizar, el sistema muestra la confirmación y la clase aparece en "Mis clases".',
+              'En la pantalla "Inscripción y pago", seleccionar el método de pago:',
+              'Si se eligió Mercado Pago, presionar "Pagar $[importe] con Mercado Pago". Se abre la ventana "Pago seguro con tarjeta", donde se completan los datos de la tarjeta de crédito. Mientras se procesa, el botón muestra "Procesando…" y la pantalla se bloquea para evitar inscripciones duplicadas. Si se eligió Efectivo, presionar "Confirmar inscripción (pago en efectivo)".',
+              'Al finalizar, el sistema muestra la confirmación y la clase aparece en "Mis clases". Hay tres mensajes posibles:',
+            ],
+            sub: [
+              null,
+              [
+                '**Mercado Pago**: pago con tarjeta de crédito dentro de ActiveHub. El panel aclara: "Vas a completar los datos de tu tarjeta de crédito en una ventana segura de Mercado Pago. El monto queda reservado en tu tarjeta y se cobra después de la clase."',
+                "**Efectivo**: el pago se abona directamente al instructor. La inscripción queda en estado PagoPendiente hasta que el instructor confirma el cobro, momento en que pasa a Inscripto.",
+              ],
+              null,
+              [
+                '"¡Inscripción confirmada!", cuando el pago quedó reservado: el lugar está confirmado y el cobro se hace efectivo después de la clase.',
+                '"Estamos esperando la confirmación de Mercado Pago", cuando Mercado Pago necesita revisar el pago: el lugar queda reservado y llega una notificación en cuanto se resuelva.',
+                '"¡Inscripción registrada!", en el caso del pago en efectivo: la inscripción queda con pago pendiente hasta que el instructor confirme el cobro.',
+              ],
             ],
           },
           {
             tipo: "p",
-            texto:
-              'El cupo se ocupa en el mismo instante en que se confirma la inscripción: si otra persona confirma el último lugar simultáneamente, solo una de las dos inscripciones prospera y la otra recibe el aviso "La clase ya no tiene cupos disponibles". Si falta menos de 1 hora para el inicio, el sistema informa "El período de inscripción para esta clase ya finalizó". Si se abandona el proceso antes de confirmar, no se genera ninguna inscripción ni se reserva el cupo.',
+            texto: 'Si la clase solo acepta efectivo. Cuando el instructor de la clase todavía no habilitó los cobros con tarjeta, la opción de Mercado Pago no aparece: queda seleccionado Efectivo y la pantalla informa "Esta clase solo acepta pago en efectivo: el instructor todavía no habilitó los pagos con Mercado Pago."',
           },
           {
             tipo: "p",
-            texto:
-              "Los fondos abonados mediante Mercado Pago no se transfieren de inmediato al instructor: permanecen retenidos hasta que la clase finaliza y vence el período de denuncias. La integración con la pasarela de Mercado Pago se encuentra en etapa de implementación, por lo que actualmente el flujo se completa mediante una implementación simulada de los pagos.",
+            texto: 'Si la tarjeta es rechazada. La ventana de pago informa el motivo —por ejemplo "La tarjeta no tiene fondos suficientes.", "Revisá el código de seguridad de la tarjeta." o "Tu banco rechazó el pago. Probá con otra tarjeta."— y vuelve a quedar lista para intentar con otra tarjeta, sin cerrar la pantalla ni perder los datos de la inscripción. La inscripción no se crea y el cupo no se ocupa. Si el problema es de comunicación con el proveedor, el mensaje lo indica ("Mercado Pago no está respondiendo. Intentá nuevamente en unos minutos.") y la operación puede reintentarse.',
+          },
+          {
+            tipo: "p",
+            texto: 'El cupo se ocupa en el mismo instante en que se confirma la inscripción: si otra persona confirma el último lugar simultáneamente, solo una de las dos inscripciones prospera y la otra recibe el aviso "La clase ya no tiene cupos disponibles". Si falta menos de 1 hora para el inicio, el sistema informa "El período de inscripción para esta clase ya finalizó". Si se abandona el proceso antes de confirmar, no se genera ninguna inscripción ni se reserva el cupo.',
+          },
+          {
+            tipo: "p",
+            texto: "Cómo funciona el dinero. El pago con Mercado Pago no se cobra al momento de inscribirse: el importe queda reservado en la tarjeta y se cobra cuando la clase se dicta. Si la clase se cancela antes, la reserva se libera y no se cobra nada; si el cobro ya se había hecho, el importe se reembolsa. ActiveHub no recibe ni guarda los datos de la tarjeta: se ingresan en la ventana segura provista por Mercado Pago, que es también quien acredita el dinero en la cuenta del instructor. Solo se acepta tarjeta de crédito, porque la reserva con cobro posterior no está disponible para tarjetas de débito ni prepagas; quien no tenga tarjeta de crédito puede inscribirse con pago en efectivo.",
           },
         ],
       },
@@ -475,21 +567,19 @@ export const MANUAL: SeccionManual[] = [
         bloques: [
           {
             tipo: "p",
-            texto:
-              'La pantalla "Mis clases" reúne todas las inscripciones del alumno, organizadas en las pestañas "Todas", "Preinscripto", "Pago pendiente", "Inscripto", "Finalizadas" y "Canceladas", cada una con su contador. Desde cada tarjeta es posible:',
+            texto: 'La pantalla "Mis clases" reúne todas las inscripciones del alumno, organizadas en las pestañas "Todas", "Preinscripto", "Pago pendiente", "Inscripto", "Finalizadas" y "Canceladas", cada una con su contador. Desde cada tarjeta es posible:',
           },
           {
             tipo: "lista",
             items: [
               "Inscribirse y pagar una preinscripción cuya clase ya se encuentra dentro de los 4 días previos.",
-              '**Cancelar una inscripción:** presionar la acción de cancelación y confirmar en el diálogo "¿Cancelar esta inscripción? Esta acción no se puede deshacer". La inscripción pasa a Cancelada, no puede reactivarse y libera el cupo. La cancelación por decisión del alumno no genera un reintegro automático del pago.',
+              '**Cancelar una inscripción**: presionar la acción de cancelación y confirmar en el diálogo "¿Cancelar esta inscripción? Esta acción no se puede deshacer". La inscripción pasa a Cancelada, no puede reactivarse y libera el cupo. La cancelación por decisión del alumno no genera la devolución de un pago ya cobrado ni de un pago en efectivo; si el pago con tarjeta todavía no se había cobrado, la reserva de la tarjeta se libera y la notificación lo informa: "Se liberó la reserva del pago en tu tarjeta: no se te va a cobrar.", de modo de saber que no queda ningún cargo pendiente.',
               "Dejar una reseña o reportar una inasistencia en las clases finalizadas en las que el alumno estuvo inscripto (ver los apartados 2.10 y 2.11).",
             ],
           },
           {
             tipo: "p",
-            texto:
-              'Cuando es el instructor quien cancela una clase, la tarjeta muestra la etiqueta "Cancelada" y, si se había realizado un pago, el texto correspondiente al reintegro. Si el pago fue en efectivo, el aviso indica coordinar la devolución con el instructor.',
+            texto: 'Cuando es el instructor quien cancela una clase, la tarjeta muestra la etiqueta "Cancelada" y, si se había realizado un pago, el texto correspondiente a la devolución. La notificación distingue qué ocurrió con el dinero: "Se liberó la reserva del pago en tu tarjeta: no se te va a cobrar." cuando el cobro todavía no se había hecho, o "Te reembolsamos el pago por Mercado Pago; según tu banco, puede tardar unos días en verse en tu tarjeta." cuando ya se había cobrado. Si el pago fue en efectivo, el aviso indica coordinar la devolución con el instructor.',
           },
         ],
       },
@@ -500,17 +590,24 @@ export const MANUAL: SeccionManual[] = [
         bloques: [
           {
             tipo: "p",
-            texto:
-              'La pantalla "Mis pagos", a la que se accede desde el perfil, presenta tarjetas de resumen (incluido el importe reintegrado), filtros por estado y por rango de fechas, y el listado de pagos con la actividad, la fecha de la clase, el método, el importe y el estado. Los estados posibles son:',
+            texto: 'La pantalla "Mis pagos", a la que se accede desde el perfil, presenta tarjetas de resumen —"Total pagado", "Retenido (Mercado Pago)" y "Reintegrado"—, filtros por estado y por rango de fechas, y el listado de pagos con la actividad, la fecha de la clase, el método, el importe y el estado. Cada estado se acompaña de una frase que explica qué pasó con el dinero:',
           },
           {
             tipo: "lista",
             items: [
-              "**Retenido:** pago con Mercado Pago aprobado; los fondos permanecen retenidos hasta que la clase finaliza y vence el período de denuncias.",
-              "**Liberado:** el pago fue acreditado al instructor. El cambio se produce de forma automática, sin intervención del instructor ni del administrador.",
-              "**Cancelado:** el pago fue reintegrado, por ejemplo por la cancelación de la clase.",
-              "**Efectivo:** pago en efectivo, abonado directamente al instructor.",
+              '"Retenido hasta la clase": "Reservado en tu tarjeta: todavía no se te cobró."',
+              '"Cobrado": "Se cobró al dictarse la clase."',
+              '"En revisión": "Mercado Pago está revisando el pago."',
+              '"Rechazado": "Mercado Pago no aprobó el pago: no se te cobró."',
+              '"Retención liberada": "No se te cobró: se liberó la reserva de tu tarjeta."',
+              '"Reembolsado": "Se te devolvió por Mercado Pago."',
+              '"Efectivo": "Se paga en mano al instructor."',
+              '"Pago cancelado" (pago en efectivo de una clase cancelada): "Coordiná con el instructor la devolución de lo que pagaste."',
             ],
+          },
+          {
+            tipo: "p",
+            texto: 'La pantalla incluye además un recuadro que resume el circuito: "Con Mercado Pago, el pago queda reservado en tu tarjeta hasta que se dicta la clase y recién ahí se te cobra. Si la clase se cancela antes, la reserva se libera y no se te cobra nada; si ya se te había cobrado, se te reembolsa.", que es el mismo circuito descripto en el apartado 2.6.',
           },
         ],
       },
@@ -521,8 +618,7 @@ export const MANUAL: SeccionManual[] = [
         bloques: [
           {
             tipo: "p",
-            texto:
-              'El calendario muestra las clases del alumno en vista mensual (por defecto) o semanal, seleccionable con el alternador "Mensual / Semanal". Las flechas permiten avanzar o retroceder de período, y el panel "Día seleccionado" detalla las clases del día elegido. Cada entrada muestra el nombre de la actividad, el horario y el importe efectivamente pagado; en el caso de una preinscripción, que todavía no generó pago, se muestra el precio de lista. Las clases que se superponen en horario se destacan de forma diferenciada, las canceladas se muestran con su estado y al presionar una clase se abre el detalle de la actividad.',
+            texto: 'El calendario muestra las clases del alumno en vista mensual (por defecto) o semanal, seleccionable con el alternador "Mensual / Semanal". Las flechas permiten avanzar o retroceder de período, y el panel "Día seleccionado" detalla las clases del día elegido. Cada entrada muestra el nombre de la actividad, el horario y el importe efectivamente pagado; en el caso de una preinscripción, que todavía no generó pago, se muestra el precio de lista. Las clases que se superponen en horario se destacan de forma diferenciada, las canceladas se muestran con su estado y al presionar una clase se abre el detalle de la actividad.',
           },
         ],
       },
@@ -533,8 +629,7 @@ export const MANUAL: SeccionManual[] = [
         bloques: [
           {
             tipo: "p",
-            texto:
-              'Solo puede reseñar una clase el alumno que estuvo inscripto en ella, una vez que la clase finalizó. La pantalla "Mis reseñas" presenta dos secciones: "Pendientes de reseñar" y "Reseñas que hiciste".',
+            texto: 'Solo puede reseñar una clase el alumno que estuvo inscripto en ella, una vez que la clase finalizó. La pantalla "Mis reseñas" presenta dos secciones: "Pendientes de reseñar" y "Reseñas que hiciste".',
           },
           {
             tipo: "pasos",
@@ -546,8 +641,7 @@ export const MANUAL: SeccionManual[] = [
           },
           {
             tipo: "p",
-            texto:
-              "Toda reseña pasa por una instancia de moderación: no se publica ni se suma al promedio de la actividad hasta que un administrador la aprueba. Una reseña propia puede editarse (al hacerlo vuelve a moderación, porque su contenido cambió) o eliminarse, previa confirmación. Si el administrador la rechaza o la oculta, el listado lo refleja con la etiqueta correspondiente.",
+            texto: "Toda reseña pasa por una instancia de moderación: no se publica ni se suma al promedio de la actividad hasta que un administrador la aprueba. Una reseña propia puede editarse (al hacerlo vuelve a moderación, porque su contenido cambió) o eliminarse, previa confirmación. Si el administrador la rechaza o la oculta, el listado lo refleja con la etiqueta correspondiente.",
           },
         ],
       },
@@ -558,27 +652,24 @@ export const MANUAL: SeccionManual[] = [
         bloques: [
           {
             tipo: "p",
-            texto:
-              'Si el instructor no se presentó o la clase no se dictó según lo acordado, el alumno inscripto puede reportarlo desde "Mis clases":',
+            texto: 'Si el instructor no se presentó o la clase no se dictó según lo acordado, el alumno inscripto puede reportarlo desde "Mis clases":',
           },
           {
             tipo: "pasos",
             items: [
-              'En la tarjeta de la clase finalizada, presionar "Inasistencia".',
+              'En la tarjeta de la clase finalizada, presionar "Inasistencia". El botón aparece solo mientras la denuncia es posible: con la clase ya finalizada y hasta 24 horas después de su inicio. Mientras la clase está en curso, la tarjeta muestra "Reportar inasistencia disponible al finalizar la clase", y si la clase ya se denunció muestra "Reporte enviado".',
               'En el cuadro "Reportar inasistencia", indicar qué ocurrió eligiendo una de las opciones: "El instructor no se presentó", "Llegó tarde y no dio la clase" o "La clase se dio en otro lugar u horario", y completar la información solicitada.',
               'Enviar la denuncia. El sistema confirma con "Denuncia registrada" y la etiqueta "Denuncia · Pendiente".',
             ],
           },
           {
             tipo: "p",
-            texto:
-              'La denuncia puede realizarse desde 1 hora después del inicio de la clase y hasta 24 horas después de su inicio. Mientras la denuncia esté abierta, el pago asociado no se acredita al instructor. El seguimiento se realiza desde "Mis denuncias", donde el estado avanza de "Pendiente" a "En Auditoría" y, finalmente, a "Resuelta"; la resolución puede consistir en un reintegro, una sanción o la desestimación del caso, y se notifica al alumno.',
+            texto: 'La denuncia puede realizarse desde 1 hora después del inicio de la clase y hasta 24 horas después de su inicio. Mientras la denuncia esté abierta, el pago asociado no se acredita al instructor. El seguimiento se realiza desde "Mis denuncias", donde el estado avanza de "Pendiente" a "En Auditoría" y, finalmente, a "Resuelta"; la resolución puede consistir en un reintegro, una sanción o la desestimación del caso, y se notifica al alumno.',
           },
         ],
       },
     ],
   },
-
   {
     id: "s-3",
     num: "3",
@@ -592,21 +683,19 @@ export const MANUAL: SeccionManual[] = [
         bloques: [
           {
             tipo: "p",
-            texto:
-              'Luego de registrarse y verificar su correo, el instructor debe esperar la validación de su documentación por parte de un administrador. Mientras tanto, al iniciar sesión se muestra la pantalla de estado de la solicitud y solo es posible acceder a "Mis datos", donde se pueden actualizar los datos personales y la documentación.',
+            texto: 'Luego de registrarse y verificar su correo, el instructor debe esperar la validación de su documentación por parte de un administrador. Mientras tanto, al iniciar sesión se muestra la pantalla de estado de la solicitud y solo es posible acceder a "Mis datos", donde se pueden actualizar los datos personales y la documentación.',
           },
           {
             tipo: "lista",
             items: [
-              "**En revisión:** la solicitud está pendiente de validación.",
-              '**Rechazada:** se muestra el motivo informado por el administrador y el botón "Volver a postularme", que reabre la solicitud y la devuelve al estado "En revisión".',
-              "**Verificado:** en el siguiente ingreso se habilita el panel completo del instructor.",
+              "**En revisión**: la solicitud está pendiente de validación.",
+              '**Rechazada**: se muestra el motivo informado por el administrador y el botón "Volver a postularme", que reabre la solicitud y la devuelve al estado "En revisión".',
+              "**Verificado**: en el siguiente ingreso se habilita el panel completo del instructor.",
             ],
           },
           {
             tipo: "p",
-            texto:
-              "Si un instructor previamente aprobado es rechazado, sus actividades dejan de mostrarse en el catálogo y sus clases dejan de aceptar inscripciones.",
+            texto: "Si un instructor previamente aprobado es rechazado, sus actividades dejan de mostrarse en el catálogo y sus clases dejan de aceptar inscripciones.",
           },
         ],
       },
@@ -617,8 +706,39 @@ export const MANUAL: SeccionManual[] = [
         bloques: [
           {
             tipo: "p",
-            texto:
-              'El panel lateral permite acceder a "Panel", "Mis actividades", "Próximas clases", "Historial", "Métricas", "Reseñas" y "Mi perfil". La pantalla principal resume las inscripciones recientes, las próximas clases y las alertas de pagos en efectivo pendientes de confirmación; al presionar una alerta, el sistema abre la gestión de la clase correspondiente con el alumno resaltado. El botón "Nueva actividad" inicia la publicación de una actividad.',
+            texto: 'El panel lateral permite acceder a "Panel", "Mis actividades", "Próximas clases", "Historial", "Métricas", "Reseñas" y "Mi perfil". La pantalla principal resume las inscripciones recientes, las próximas clases y las alertas de pagos en efectivo pendientes de confirmación; al presionar una alerta, el sistema abre la gestión de la clase correspondiente con el alumno resaltado. El botón "Nueva actividad" inicia la publicación de una actividad.',
+          },
+          {
+            tipo: "sub",
+            texto: "Cobros con Mercado Pago",
+          },
+          {
+            tipo: "p",
+            texto: 'El Panel incluye la tarjeta "Cobros con Mercado Pago", desde la cual el instructor habilita el cobro con tarjeta de sus clases. Es un paso necesario: sin la cuenta vinculada, las clases del instructor solo aceptan pago en efectivo.',
+          },
+          {
+            tipo: "pasos",
+            items: [
+              'Presionar "Vincular Mercado Pago". El navegador lleva al sitio de Mercado Pago.',
+              "Iniciar sesión con la cuenta de Mercado Pago en la que se quiere recibir el dinero y aceptar la autorización.",
+              'Mercado Pago devuelve al Panel con el mensaje "¡Listo! Vinculaste tu cuenta de Mercado Pago. Ya podés cobrar tus clases con tarjeta."',
+            ],
+          },
+          {
+            tipo: "p",
+            texto: 'Con la cuenta vinculada, la tarjeta indica desde cuándo lo está y que los pagos con tarjeta de las clases van a esa cuenta. Si se cancela la autorización en Mercado Pago, el Panel informa "Cancelaste la vinculación en Mercado Pago. Podés intentarlo de nuevo cuando quieras." y no se modifica nada. Vincular una cuenta nueva reemplaza a la anterior: cada instructor tiene una sola cuenta de cobro vigente.',
+          },
+          {
+            tipo: "p",
+            texto: 'Desvincular la cuenta. El botón "Desvincular" abre el diálogo "¿Desvincular tu cuenta de Mercado Pago?", que advierte: "Desde ese momento tus clases solo van a aceptar pagos en efectivo. Podés volver a vincularla cuando quieras." No es posible desvincular mientras haya pagos de alumnos que todavía se cobran o se devuelven con esa cuenta: en ese caso el diálogo informa cuántos son y la cuenta permanece vinculada.',
+          },
+          {
+            tipo: "p",
+            texto: 'Si la autorización vence. La vinculación se renueva de forma automática. Si Mercado Pago rechaza la renovación —por ejemplo, porque se le quitó el permiso a la aplicación—, llega la notificación "Mercado Pago no aceptó renovar la vinculación de tu cuenta. Hasta que la vuelvas a vincular desde tu Panel, tus clases solo aceptan pago en efectivo." y la tarjeta del Panel muestra "La autorización de tu cuenta venció. Volvé a vincularla para seguir cobrando con tarjeta." con el botón "Volver a vincular".',
+          },
+          {
+            tipo: "p",
+            texto: "Cuándo se recibe el dinero. El pago del alumno queda reservado en su tarjeta al inscribirse y se cobra cuando la clase pasa a Finalizada, sin ninguna acción del instructor. El dinero se acredita en la cuenta de Mercado Pago del instructor según el plazo de acreditación que tenga configurado en Mercado Pago, que es independiente de los estados que muestra ActiveHub: una clase puede figurar como cobrada o liberada en la plataforma y el dinero estar disponible en Mercado Pago unos días después.",
           },
         ],
       },
@@ -639,15 +759,17 @@ export const MANUAL: SeccionManual[] = [
           },
           {
             tipo: "p",
-            texto:
-              "El cupo máximo no se define en la actividad sino en cada clase. Si el nombre ya existe entre las actividades propias, el sistema lo advierte y permite confirmar la creación o cambiar el nombre.",
+            texto: 'El precio por clase no puede superar $1.000.000 ("El precio no puede superar los $1.000.000."). El cupo máximo no se define en la actividad sino en cada clase. Si el nombre ya existe entre las actividades propias, el sistema lo advierte y permite confirmar la creación o cambiar el nombre.',
           },
-          { tipo: "sub", texto: "Editar o eliminar una actividad" },
+          {
+            tipo: "sub",
+            texto: "Editar o eliminar una actividad",
+          },
           {
             tipo: "lista",
             items: [
-              '**Editar:** presionar "Editar" desde el listado o el detalle, modificar los datos y presionar "Guardar cambios". Un cambio de precio se aplica únicamente a las clases que todavía no están congeladas (ver el apartado 3.5).',
-              '**Eliminar:** presionar "Eliminar" y confirmar en el diálogo "¿Eliminar la actividad [nombre]? Esta acción no se puede deshacer.". Si alguna clase vigente tiene inscriptos, la eliminación se rechaza con el mensaje "No podés eliminar esta actividad porque tiene clases con inscriptos o pagos pendientes. Primero cancelá las clases correspondientes."; en ese caso, primero deben cancelarse esas clases.',
+              '**Editar**: presionar "Editar" desde el listado o el detalle, modificar los datos y presionar "Guardar cambios". Un cambio de precio se aplica únicamente a las clases que todavía no están congeladas (ver el apartado 3.5).',
+              '**Eliminar**: presionar "Eliminar" y confirmar en el diálogo "¿Eliminar la actividad [nombre]? Esta acción no se puede deshacer.". Si alguna clase vigente tiene inscriptos, la eliminación se rechaza con el mensaje "No podés eliminar esta actividad porque tiene clases con inscriptos o pagos pendientes. Primero cancelá las clases correspondientes."; en ese caso, primero deben cancelarse esas clases.',
             ],
           },
         ],
@@ -662,15 +784,14 @@ export const MANUAL: SeccionManual[] = [
             items: [
               'En el detalle de la actividad, presionar "Crear clase".',
               'En el calendario, seleccionar la fecha; el sistema muestra el día de la semana como confirmación (por ejemplo, "Lunes · 23 jun 2026").',
-              "Completar Hora de inicio* y Cupo máximo* (número entero mayor a 0). La hora de fin no se solicita: se calcula a partir de la duración de la actividad. El precio y la ubicación se toman de la actividad.",
+              "Completar Hora de inicio* y Cupo máximo* (número entero mayor a 0 y de hasta 500 personas). La hora de fin no se solicita: se calcula a partir de la duración de la actividad. El precio y la ubicación se toman de la actividad.",
               'Para repetir la clase todas las semanas, marcar "Repetir cada semana"; el sistema muestra las próximas fechas que se generarán.',
               'Presionar "Generar clases". La clase se crea en estado Programada.',
             ],
           },
           {
             tipo: "p",
-            texto:
-              'En las agendas recurrentes, cada clase se crea automáticamente una semana antes de su dictado, lo que permite dar de baja una fecha puntual con anticipación. El sistema no permite crear clases en fechas u horarios pasados ("La fecha y hora deben ser futuras") ni superpuestas con otra clase de la misma actividad ("Ya existe una clase en ese horario. Modificá la fecha o el horario antes de continuar.").',
+            texto: 'En las agendas recurrentes, cada clase se crea automáticamente una semana antes de su dictado, lo que permite dar de baja una fecha puntual con anticipación. El sistema no permite crear clases en fechas u horarios pasados ("La fecha y hora deben ser futuras") ni superpuestas con otra clase de la misma actividad ("Ya existe una clase en ese horario. Modificá la fecha o el horario antes de continuar.").',
           },
         ],
       },
@@ -681,8 +802,7 @@ export const MANUAL: SeccionManual[] = [
         bloques: [
           {
             tipo: "p",
-            texto:
-              'Una clase que tiene al menos un inscripto y se dicta dentro de 4 días o menos queda congelada: no admite cambios en sus datos ni se ve afectada por un cambio de precio de la actividad, dado que los alumnos inscriptos abonaron por unas condiciones concretas. En la grilla de clases, la acción "Editar" se reemplaza por la etiqueta "Congelada" y el precio se resalta cuando difiere del precio actual de la actividad. Si una clase congelada no va a dictarse, el camino es cancelarla (ver el apartado 3.7).',
+            texto: 'Una clase que tiene al menos un inscripto y se dicta dentro de 4 días o menos queda congelada: no admite cambios en sus datos ni se ve afectada por un cambio de precio de la actividad, dado que los alumnos inscriptos abonaron por unas condiciones concretas. En la grilla de clases, la acción "Editar" se reemplaza por la etiqueta "Congelada" y el precio se resalta cuando difiere del precio actual de la actividad. Si una clase congelada no va a dictarse, el camino es cancelarla (ver el apartado 3.7).',
           },
         ],
       },
@@ -693,20 +813,23 @@ export const MANUAL: SeccionManual[] = [
         bloques: [
           {
             tipo: "p",
-            texto:
-              'Al presionar una clase desde el detalle de la actividad, desde "Próximas clases" o desde una alerta del panel, se abre la gestión de la clase con su información y el listado de inscriptos.',
+            texto: 'Al presionar una clase desde el detalle de la actividad, desde "Próximas clases" o desde una alerta del panel, se abre la gestión de la clase con su información y el listado de inscriptos.',
           },
           {
             tipo: "lista",
             items: [
-              'Los alumnos que pagaron con Mercado Pago figuran con las etiquetas "Inscripto" y "Retenido", sin acciones adicionales.',
+              'Los alumnos que pagaron con Mercado Pago figuran con la etiqueta "Inscripto" y, en la columna "Pago", el estado de su dinero con una frase que lo explica: "Retenido · Se cobra al dictarse la clase.", "Cobrado · Se libera 24 h después de la clase si no hay denuncias.", "Liberado · Acreditado en tu cuenta." o "Reintegrado". No tienen acciones adicionales: esos pagos no se confirman a mano.',
+              'Si Mercado Pago está revisando un pago, la fila muestra "En revisión · Mercado Pago todavía no lo aprobó.". Si se intenta confirmarlo como si fuera efectivo, el sistema lo impide e informa "Este pago lo está procesando Mercado Pago: la inscripción se confirma sola cuando se apruebe."',
               'Los alumnos que eligieron pagar en efectivo figuran en estado PagoPendiente con el botón "Confirmar cobro". Una vez recibido el dinero, presionar "Confirmar cobro" y aceptar en el diálogo "¿Confirmar cobro en efectivo de [nombre]?". La inscripción pasa a Inscripto y el botón desaparece de esa fila.',
             ],
           },
           {
             tipo: "p",
-            texto:
-              "Una vez finalizada la clase, el listado queda en modo de solo lectura. La acreditación de los pagos retenidos se realiza de forma automática al finalizar la clase y vencer el período de denuncias.",
+            texto: 'El listado incluye además la columna "A recibir", con el importe que corresponde al instructor por cada alumno, y al pie el "Total a recibir por esta clase:".',
+          },
+          {
+            tipo: "p",
+            texto: "Una vez finalizada la clase, el listado queda en modo de solo lectura. El cobro de los pagos con tarjeta se realiza de forma automática en el momento en que la clase pasa a Finalizada, y el pago queda firme 24 horas después si no se registraron denuncias.",
           },
         ],
       },
@@ -724,8 +847,7 @@ export const MANUAL: SeccionManual[] = [
           },
           {
             tipo: "p",
-            texto:
-              "El sistema cancela la clase y todas sus inscripciones, reintegra los pagos retenidos y en efectivo, y notifica a cada alumno con el nombre de la actividad y la fecha y hora de la clase. En el caso de los pagos en efectivo, la notificación indica al alumno coordinar la devolución con el instructor. La operación es transaccional: si algún paso falla, no se aplica ningún cambio. Las clases finalizadas no pueden cancelarse.",
+            texto: "El sistema cancela la clase y todas sus inscripciones, devuelve los pagos y notifica a cada alumno con el nombre de la actividad y la fecha y hora de la clase. La devolución depende del momento: si el pago con tarjeta todavía no se había cobrado, se libera la reserva y al alumno no se le cobra nada; si ya se había cobrado, se le reembolsa el importe total, lo que según su banco puede tardar unos días en verse reflejado. En el caso de los pagos en efectivo, la notificación indica al alumno coordinar la devolución con el instructor. La operación es transaccional: si algún paso falla —incluida la comunicación con Mercado Pago— no se aplica ningún cambio. Las clases finalizadas no pueden cancelarse.",
           },
         ],
       },
@@ -737,9 +859,13 @@ export const MANUAL: SeccionManual[] = [
           {
             tipo: "lista",
             items: [
-              "**Próximas clases:** listado cronológico de las clases futuras, agrupadas por día, con su horario, sus inscriptos y su disponibilidad. Al presionar una clase se abre su gestión.",
-              "**Historial:** clases finalizadas y canceladas, ordenadas de la más reciente a la más antigua y filtrables por estado, con la ganancia calculada sobre el precio de cada clase.",
+              "**Próximas clases**: listado cronológico de las clases futuras, agrupadas por día, con su horario, sus inscriptos y su disponibilidad. Al presionar una clase se abre su gestión.",
+              '**Historial**: clases finalizadas y canceladas, ordenadas de la más reciente a la más antigua y filtrables por estado, con la ganancia calculada sobre el precio de cada clase. Al presionar una clase se abre su detalle, la misma pantalla de gestión de la clase en modo consulta: muestra quiénes se inscribieron, el estado de cada inscripción, el pago y el monto a recibir, sin las opciones de editar, cancelar, notificar ausencia ni confirmar cobros. Un cartel lo aclara: "Esta clase ya se dictó. Es un detalle de consulta: no hay acciones pendientes." o, en una clase cancelada, "Esta clase se canceló. Abajo están los alumnos que estaban anotados y qué pasó con cada pago.". El enlace "Volver al historial" regresa al listado.',
             ],
+          },
+          {
+            tipo: "p",
+            texto: 'Las dos pantallas tienen el filtro "Actividad", que permite ver solo las clases de una actividad; la opción "Todas las actividades" quita el filtro. En el historial, la cantidad de clases de cada estado se calcula sobre la actividad elegida.',
           },
         ],
       },
@@ -750,8 +876,7 @@ export const MANUAL: SeccionManual[] = [
         bloques: [
           {
             tipo: "p",
-            texto:
-              'La pantalla "Métricas" presenta los indicadores "Clases publicadas", "Inscripciones activas", "Inscriptos" e "Ingresos acreditados" para el período elegido en el selector, junto con gráficos de evolución y la calificación promedio de las clases.',
+            texto: 'La pantalla "Métricas" presenta los indicadores "Clases publicadas", "Inscripciones activas", "Inscriptos" e "Ingresos acreditados" para el período elegido en el selector, junto con gráficos de evolución y la calificación promedio de las clases.',
           },
           {
             tipo: "lista",
@@ -770,14 +895,13 @@ export const MANUAL: SeccionManual[] = [
         bloques: [
           {
             tipo: "p",
-            texto:
-              'La pantalla "Reseñas" muestra a la izquierda las actividades del instructor, con su cantidad de reseñas y su calificación promedio, y a la derecha las reseñas de la actividad seleccionada. Cada reseña puede tener una de las siguientes etiquetas: "Pendiente de moderación", "Denunciada · en revisión", "Oculta" o "Respondida".',
+            texto: 'La pantalla "Reseñas" muestra a la izquierda las actividades del instructor, con su cantidad de reseñas y su calificación promedio, y a la derecha las reseñas de la actividad seleccionada. Cada reseña puede tener una de las siguientes etiquetas: "Pendiente de moderación", "Denunciada · en revisión", "Oculta" o "Respondida".',
           },
           {
             tipo: "lista",
             items: [
-              '**Responder:** presionar "Responder" en una reseña publicada, escribir la respuesta y enviarla. La respuesta es pública y el alumno la ve en el detalle de la actividad y en "Mis reseñas". No es posible responder reseñas en moderación u ocultas.',
-              '**Denunciar una reseña inapropiada:** presionar "Denunciar reseña", completar el campo obligatorio "Motivo del reporte" y presionar "Enviar reporte". La denuncia se envía a la bandeja del administrador, y una misma reseña no puede denunciarse dos veces.',
+              '**Responder**: presionar "Responder" en una reseña publicada, escribir la respuesta y enviarla. La respuesta es pública y el alumno la ve en el detalle de la actividad y en "Mis reseñas". No es posible responder reseñas en moderación u ocultas.',
+              '**Denunciar una reseña inapropiada**: presionar "Denunciar reseña", completar el campo obligatorio "Motivo del reporte" y presionar "Enviar reporte". La denuncia se envía a la bandeja del administrador, y una misma reseña no puede denunciarse dos veces.',
             ],
           },
         ],
@@ -789,14 +913,12 @@ export const MANUAL: SeccionManual[] = [
         bloques: [
           {
             tipo: "p",
-            texto:
-              "Ante incumplimientos, el administrador puede aplicar al instructor una penalización económica, una suspensión temporal o ambas. La suspensión tiene una duración mínima de 15 días y no impide el ingreso a la plataforma, para que el instructor pueda consultar su sanción y sus datos, pero durante su vigencia no es posible crear ni editar actividades o clases. Siguen habilitadas la confirmación de cobros, la consulta de inscriptos, la respuesta a reseñas y la cancelación de clases. Las clases programadas dentro del período de suspensión se cancelan automáticamente, con el reintegro correspondiente a sus inscriptos. Al vencer la suspensión, la cuenta recupera su operatoria habitual de forma automática.",
+            texto: "Ante incumplimientos, el administrador puede aplicar al instructor una penalización económica, una suspensión temporal o ambas. La suspensión dura entre 15 y 365 días y no impide el ingreso a la plataforma, para que el instructor pueda consultar su sanción y sus datos, pero durante su vigencia no es posible crear ni editar actividades o clases. Siguen habilitadas la confirmación de cobros, la consulta de inscriptos, la respuesta a reseñas y la cancelación de clases. Las clases programadas dentro del período de suspensión se cancelan automáticamente, con el reintegro correspondiente a sus inscriptos. Al vencer la suspensión, la cuenta recupera su operatoria habitual de forma automática.",
           },
         ],
       },
     ],
   },
-
   {
     id: "s-4",
     num: "4",
@@ -810,13 +932,11 @@ export const MANUAL: SeccionManual[] = [
         bloques: [
           {
             tipo: "p",
-            texto:
-              'El panel lateral permite acceder a "Dashboard", "Gestión", "Tipos y niveles", "Roles y permisos", "Penalizaciones", "Auditoría", "Trazabilidad", "Reportes" y "Mi perfil". Cada usuario ve únicamente las secciones que sus permisos habilitan.',
+            texto: 'El panel lateral permite acceder a "Dashboard", "Gestión", "Tipos y niveles", "Roles y permisos", "Penalizaciones", "Gestión de denuncias", "Auditoría", "Reportes" y "Mi perfil". Cada usuario ve únicamente las secciones que sus permisos habilitan.',
           },
           {
             tipo: "p",
-            texto:
-              'El dashboard presenta las tarjetas "Usuarios activos", "Instructores" (con la cantidad en revisión), "Actividades publicadas", "Inscripciones del período" y "Reclamos pendientes". Cada tarjeta es presionable y conduce a la sección que permite resolver el caso. El selector de período recorta los flujos, como las inscripciones y las altas, pero no los indicadores que reflejan el estado actual, como los usuarios activos o las actividades publicadas.',
+            texto: 'El dashboard presenta las tarjetas "Usuarios activos", "Instructores" (con la cantidad en revisión), "Actividades publicadas", "Inscripciones del período" y "Reclamos pendientes". Cada tarjeta es presionable y conduce a la sección que permite resolver el caso. El selector de período recorta los flujos, como las inscripciones y las altas, pero no los indicadores que reflejan el estado actual, como los usuarios activos o las actividades publicadas.',
           },
         ],
       },
@@ -831,13 +951,21 @@ export const MANUAL: SeccionManual[] = [
               'Ingresar a "Gestión" y seleccionar la pestaña "Instructores". El listado puede filtrarse por estado de validación.',
               'Presionar "Ver información" en la solicitud a revisar.',
               "Revisar los datos personales, la especialidad y la documentación adjunta; cada archivo puede descargarse desde su enlace.",
-              'Resolver la solicitud: **Aprobar**, con lo que el perfil pasa a "Verificado" y el instructor queda habilitado para publicar actividades y gestionar clases; o **Rechazar**, completando el campo obligatorio "Motivo del rechazo" y presionando "Confirmar rechazo", con lo que el instructor verá el motivo en su pantalla de estado y podrá volver a postularse.',
+              "Resolver la solicitud:",
+            ],
+            sub: [
+              null,
+              null,
+              null,
+              [
+                '**Aprobar**: el perfil pasa a "Verificado" y el instructor queda habilitado para publicar actividades y gestionar clases.',
+                '**Rechazar**: completar el campo obligatorio "Motivo del rechazo" y presionar "Confirmar rechazo". El instructor verá el motivo en su pantalla de estado y podrá volver a postularse.',
+              ],
             ],
           },
           {
             tipo: "p",
-            texto:
-              "Rechazar a un instructor previamente aprobado retira su oferta del catálogo público y bloquea las inscripciones a sus clases. Todas las decisiones quedan registradas en auditoría.",
+            texto: "Rechazar a un instructor previamente aprobado retira su oferta del catálogo público y bloquea las inscripciones a sus clases. Todas las decisiones quedan registradas en auditoría.",
           },
         ],
       },
@@ -848,21 +976,19 @@ export const MANUAL: SeccionManual[] = [
         bloques: [
           {
             tipo: "p",
-            texto:
-              'En "Gestión", pestaña "Usuarios", el administrador puede buscar y filtrar cuentas por nombre, correo o rol, y ejecutar las siguientes acciones:',
+            texto: 'En "Gestión", pestaña "Usuarios", el administrador puede buscar y filtrar cuentas por nombre, correo o rol, y ejecutar las siguientes acciones:',
           },
           {
             tipo: "lista",
             items: [
-              '**Editar:** abre un formulario con nombre, apellido, correo, teléfono y rol. Al guardar, el sistema confirma con "Datos actualizados correctamente".',
-              "**Suspender o reactivar:** requiere confirmación. La suspensión administrativa impide el ingreso a la plataforma y no debe confundirse con la penalización de suspensión temporal, que sí permite ingresar.",
-              "**Dar de baja:** la baja es siempre lógica y conserva el historial para auditoría.",
+              '**Editar**: abre un formulario con nombre, apellido, correo, teléfono y rol. Al guardar, el sistema confirma con "Datos actualizados correctamente".',
+              "**Suspender o reactivar**: requiere confirmación. La suspensión administrativa impide el ingreso a la plataforma y no debe confundirse con la penalización de suspensión temporal, que sí permite ingresar.",
+              "**Dar de baja**: la baja es siempre lógica y conserva el historial para auditoría.",
             ],
           },
           {
             tipo: "p",
-            texto:
-              "Por seguridad, el sistema no permite que un administrador se suspenda a sí mismo, cambie su propio rol ni modifique el rol de la última cuenta administradora, de modo que la plataforma nunca quede sin administración.",
+            texto: "Por seguridad, el sistema no permite que un administrador se suspenda a sí mismo, cambie su propio rol ni modifique el rol de la última cuenta administradora, de modo que la plataforma nunca quede sin administración.",
           },
         ],
       },
@@ -871,27 +997,39 @@ export const MANUAL: SeccionManual[] = [
         num: "4.4",
         titulo: "Administrar categorías, tipos de actividad y niveles de intensidad",
         bloques: [
-          { tipo: "p", texto: 'La sección "Tipos y niveles" cuenta con dos pestañas.' },
-          { tipo: "sub", texto: "Tipos de actividad y categorías" },
+          {
+            tipo: "p",
+            texto: 'La sección "Tipos y niveles" cuenta con dos pestañas.',
+          },
+          {
+            tipo: "sub",
+            texto: "Tipos de actividad y categorías",
+          },
           {
             tipo: "lista",
             items: [
-              '**Crear o editar una categoría:** completar el campo "Nombre*" y guardar.',
-              "**Crear o editar un tipo de actividad:** completar Nombre* y seleccionar la Categoría* a la que pertenece.",
+              '**Crear o editar una categoría**: completar el campo "Nombre*" y guardar.',
+              "**Crear o editar un tipo de actividad**: completar Nombre* y seleccionar la Categoría* a la que pertenece.",
               "El sistema impide duplicar nombres: la comparación ignora mayúsculas y minúsculas y se realiza contra los registros vigentes.",
-              '**Eliminar un tipo:** no es posible si tiene actividades asociadas ("No podés eliminar este Tipo porque tiene actividades asociadas. Primero reasigná o eliminá esas actividades.").',
-              "**Eliminar una categoría:** si alguno de sus tipos tiene actividades publicadas, la operación se rechaza y el mensaje indica qué tipos lo impiden. Si ninguno las tiene, la categoría se elimina junto con sus tipos, previa confirmación que indica cuántos tipos se darán de baja.",
+              '**Eliminar un tipo**: no es posible si tiene actividades asociadas ("No podés eliminar este Tipo porque tiene actividades asociadas. Primero reasigná o eliminá esas actividades.").',
+              "**Eliminar una categoría**: si alguno de sus tipos tiene actividades publicadas, la operación se rechaza y el mensaje indica qué tipos lo impiden. Si ninguno las tiene, la categoría se elimina junto con sus tipos, previa confirmación que indica cuántos tipos se darán de baja.",
             ],
           },
-          { tipo: "sub", texto: "Niveles de intensidad" },
+          {
+            tipo: "sub",
+            texto: "Niveles de intensidad",
+          },
           {
             tipo: "lista",
             items: [
-              "**Crear o editar un nivel:** completar Nombre* y Descripción* y guardar. El nuevo nivel queda disponible de inmediato para los instructores.",
-              '**Eliminar un nivel:** no es posible si tiene actividades asociadas. En caso contrario, se confirma en el diálogo "¿Eliminar el nivel [nombre]?".',
+              "**Crear o editar un nivel**: completar Nombre* y Descripción* y guardar. El nuevo nivel queda disponible de inmediato para los instructores.",
+              '**Eliminar un nivel**: no es posible si tiene actividades asociadas. En caso contrario, se confirma en el diálogo "¿Eliminar el nivel [nombre]?".',
             ],
           },
-          { tipo: "p", texto: "Todas las bajas son lógicas y quedan registradas en auditoría." },
+          {
+            tipo: "p",
+            texto: "Todas las bajas son lógicas y quedan registradas en auditoría.",
+          },
         ],
       },
       {
@@ -901,11 +1039,10 @@ export const MANUAL: SeccionManual[] = [
         bloques: [
           {
             tipo: "p",
-            texto:
-              'En "Gestión", pestaña "Reseñas", el administrador dispone de la cola de reseñas pendientes de moderación y del listado de reseñas publicadas. Una reseña puede salir de circulación por tres vías distintas:',
+            texto: 'En "Gestión", pestaña "Reseñas", el administrador dispone de la cola de reseñas pendientes de moderación y del listado de reseñas publicadas. Una reseña puede salir de circulación por tres vías distintas:',
           },
           {
-            tipo: "lista",
+            tipo: "pasos",
             items: [
               'El alumno autor la elimina en cualquier momento desde "Mis reseñas".',
               "El administrador la rechaza mientras se encuentra en la cola de moderación, antes de publicarse.",
@@ -914,7 +1051,7 @@ export const MANUAL: SeccionManual[] = [
           },
           {
             tipo: "p",
-            texto: "Aprobar una reseña la publica en el detalle de la actividad y la suma al promedio de calificación.",
+            texto: 'Aprobar una reseña la publica en el detalle de la actividad y la suma al promedio de calificación. Los dos listados muestran 10 reseñas por página, con los botones "« Primera", "Anterior", "Siguiente" y "Última »"; al presionar el número de página es posible escribir directamente la página a la que se quiere ir.',
           },
         ],
       },
@@ -925,31 +1062,30 @@ export const MANUAL: SeccionManual[] = [
         bloques: [
           {
             tipo: "p",
-            texto:
-              'La sección "Auditoría" (y la pestaña "Reclamos" de "Gestión") lista las denuncias con su identificador, su denunciante, su motivo, el objeto denunciado (una clase o una reseña) y su estado.',
+            texto: 'La sección "Gestión de denuncias" (y la pestaña "Reclamos" de "Gestión") lista las denuncias con su identificador, su denunciante, su motivo, el objeto denunciado (una clase o una reseña) y su estado. En "Gestión de denuncias", la columna "Tipo" indica si la denuncia es sobre una "Clase" o una "Reseña", y la columna "Denunciado" muestra al instructor o, en una denuncia de reseña, al alumno que la escribió; al abrir una denuncia de reseña se muestra además el comentario denunciado. Los dos listados muestran 10 denuncias por página, con los mismos controles de paginación que la moderación de reseñas.',
           },
           {
             tipo: "pasos",
             items: [
               'Presionar una denuncia para abrir su detalle. Al abrir una denuncia Pendiente, su estado pasa a "En Auditoría".',
               "Revisar quién realizó el reporte, sobre qué y el motivo.",
-              "Elegir una de las acciones de resolución.",
+              "Elegir una de las acciones de resolución:",
             ],
-          },
-          {
-            tipo: "lista",
-            items: [
-              "**Reintegrar el pago:** cancela las inscripciones y reintegra el pago de todos los inscriptos de la clase, no solo de quien denunció, y notifica a cada alumno.",
-              "**Suspender al instructor:** solicita la cantidad de días de suspensión (mínimo 15) y, opcionalmente, un monto de multa. Cancela las clases del instructor dentro del período, con sus reintegros.",
-              "**Aplicar penalización económica:** registra únicamente la multa, sin cancelar clases ni devolver pagos.",
-              "**Desestimar:** cierra el caso sin consecuencias y notifica al denunciado.",
-              "En las denuncias sobre una reseña, se agrega la acción **Ocultar la reseña**.",
+            sub: [
+              null,
+              null,
+              [
+                "**Reintegrar el pago**: cancela las inscripciones y reintegra el pago de todos los inscriptos de la clase, no solo de quien denunció, y notifica a cada alumno.",
+                "**Suspender al instructor**: solicita la cantidad de días de suspensión (entre 15 y 365) y, opcionalmente, un monto de multa (entre $1.000 y $500.000; en 0 no se aplica multa). Cancela las clases del instructor dentro del período, con sus reintegros.",
+                "**Aplicar penalización económica**: registra únicamente la multa, sin cancelar clases ni devolver pagos.",
+                "**Desestimar**: cierra el caso sin consecuencias y notifica al denunciado.",
+                'En las denuncias sobre una reseña, las únicas acciones disponibles son "Ocultar la reseña" y "Desestimar": las que tocan el pago o al instructor no se muestran porque no aplican.',
+              ],
             ],
           },
           {
             tipo: "p",
-            texto:
-              'Cada resolución deja la denuncia en estado "Resuelta", genera un registro de auditoría y deshabilita las acciones sobre ese caso. La operación es transaccional: si falla, la denuncia conserva su estado y no se ejecutan reintegros ni penalizaciones parciales.',
+            texto: 'Cada resolución deja la denuncia en estado "Resuelta", genera un registro de auditoría y deshabilita las acciones sobre ese caso. La operación es transaccional: si falla, la denuncia conserva su estado y no se ejecutan reintegros ni penalizaciones parciales.',
           },
         ],
       },
@@ -964,14 +1100,13 @@ export const MANUAL: SeccionManual[] = [
               'En "Penalizaciones", presionar "Nueva penalización".',
               "Buscar y seleccionar el usuario. Solo se ofrecen usuarios que pueden dictar clases, dado que la sanción corresponde a incumplimientos en el dictado.",
               'Marcar el tipo de penalización: "Económica", "Suspensión temporal" o ambas.',
-              'Completar el "Motivo" (obligatorio) y, según el tipo, el "Monto" o los "Días de suspensión" (mínimo 15).',
+              'Completar el "Motivo" (obligatorio) y, según el tipo, el "Monto" (entre $1.000 y $500.000) o las fechas de la suspensión (entre 15 y 365 días; el calendario no permite elegir una fecha de fin fuera de ese rango).',
               "Confirmar la aplicación. La penalización es irreversible, por lo que el sistema solicita una confirmación explícita.",
             ],
           },
           {
             tipo: "p",
-            texto:
-              "La pantalla resume la cantidad de usuarios penalizados, las suspensiones vigentes y el monto total de las multas. Cuando una penalización surge de una denuncia resuelta, queda vinculada automáticamente a ella. Las suspensiones vencidas se levantan solas.",
+            texto: "La pantalla resume la cantidad de usuarios penalizados, las suspensiones vigentes y el monto total de las multas. Cuando una penalización surge de una denuncia resuelta, queda vinculada automáticamente a ella. Las suspensiones vencidas se levantan solas.",
           },
         ],
       },
@@ -987,14 +1122,13 @@ export const MANUAL: SeccionManual[] = [
           {
             tipo: "lista",
             items: [
-              '**"Roles y permisos" (qué puede hacer un rol):** seleccionar el rol en el selector superior, marcar o desmarcar los permisos, agrupados por módulo, y guardar. El cambio impacta de inmediato sobre todos los usuarios con ese rol. El botón de creación de rol solicita el "Nombre del rol*" y una descripción opcional; el rol nuevo nace sin permisos asignados.',
-              '**"Roles de los usuarios" (qué rol tiene una persona):** permite asignar un rol a cada cuenta, incluidos los roles creados por el administrador.',
+              '"Roles y permisos" (qué puede hacer un rol): seleccionar el rol en el selector superior, marcar o desmarcar los permisos, agrupados por módulo, y guardar. El cambio impacta de inmediato sobre todos los usuarios con ese rol. El botón de creación de rol solicita el "Nombre del rol*" y una descripción opcional; el rol nuevo nace sin permisos asignados.',
+              '"Roles de los usuarios" (qué rol tiene una persona): permite asignar un rol a cada cuenta, incluidos los roles creados por el administrador.',
             ],
           },
           {
             tipo: "p",
-            texto:
-              'El sistema impide quitar al rol Administrador sus permisos críticos ("Quitar este permiso dejaría al rol Administrador sin capacidad de gestión. Esta acción no está permitida."), cambiar el propio rol y modificar el rol de la última cuenta administradora.',
+            texto: 'El sistema impide quitar al rol Administrador sus permisos críticos ("Quitar este permiso dejaría al rol Administrador sin capacidad de gestión. Esta acción no está permitida."), cambiar el propio rol y modificar el rol de la última cuenta administradora.',
           },
         ],
       },
@@ -1012,7 +1146,10 @@ export const MANUAL: SeccionManual[] = [
               'Exportar la vista con los botones "PDF" (abre la vista previa de impresión, con el gráfico incluido) o "CSV" (archivo compatible con Excel en la configuración regional argentina).',
             ],
           },
-          { tipo: "p", texto: "El encabezado de cada reporte refleja el período y el alcance efectivamente aplicados." },
+          {
+            tipo: "p",
+            texto: "El encabezado de cada reporte refleja el período y el alcance efectivamente aplicados.",
+          },
         ],
       },
       {
@@ -1022,13 +1159,11 @@ export const MANUAL: SeccionManual[] = [
         bloques: [
           {
             tipo: "p",
-            texto:
-              'La sección "Trazabilidad" presenta el listado inalterable de todas las operaciones críticas del sistema, con indicadores de resumen, un buscador por palabra clave y filtros por rol y por tipo de acción. La columna "Detalle" describe cada operación en lenguaje natural, y el listado admite paginación y ordenamiento por columna. Las operaciones ejecutadas por tareas programadas figuran con el autor "Sistema", y también se registran los intentos de acceso denegado.',
+            texto: 'La sección "Auditoría" presenta el listado inalterable de todas las operaciones críticas del sistema, con indicadores de resumen, un buscador por palabra clave y filtros por rol y por tipo de acción. La columna "Detalle" describe cada operación en lenguaje natural, y el listado admite paginación y ordenamiento por columna. Las operaciones ejecutadas por tareas programadas figuran con el autor "Sistema", y también se registran los intentos de acceso denegado.',
           },
           {
             tipo: "p",
-            texto:
-              'El registro puede exportarse con "Exportar esta página" o "Exportar todo"; en este último caso, el sistema informa la cantidad de registros y solicita confirmación. La exportación respeta los filtros y el orden elegidos. Ningún registro puede modificarse ni eliminarse.',
+            texto: 'El registro puede exportarse con "Exportar esta página" o "Exportar todo"; en este último caso, el sistema informa la cantidad de registros y solicita confirmación. La exportación respeta los filtros y el orden elegidos. Ningún registro puede modificarse ni eliminarse.',
           },
         ],
       },
@@ -1039,14 +1174,12 @@ export const MANUAL: SeccionManual[] = [
         bloques: [
           {
             tipo: "p",
-            texto:
-              'En "Gestión", pestaña "Soporte", se encuentran los reportes enviados desde la pantalla pública de Ayuda, con su autor (o la indicación "Sin cuenta" cuando el reporte es anónimo), el detalle, el estado y la respuesta. Para cerrar un reporte, se puede incluir opcionalmente una respuesta; el cierre no puede deshacerse.',
+            texto: 'En "Gestión", pestaña "Soporte", se encuentran los reportes enviados desde la pantalla pública de Ayuda, con su autor (o la indicación "Sin cuenta" cuando el reporte es anónimo), el detalle, el estado y la respuesta. Para cerrar un reporte, se puede incluir opcionalmente una respuesta; el cierre no puede deshacerse.',
           },
         ],
       },
     ],
   },
-
   {
     id: "s-5",
     num: "5",
@@ -1060,12 +1193,15 @@ export const MANUAL: SeccionManual[] = [
         bloques: [
           {
             tipo: "p",
-            texto:
-              "La siguiente tabla resume los estados que el usuario encuentra en las distintas pantallas del sistema y su significado.",
+            texto: "La siguiente tabla resume los estados que el usuario encuentra en las distintas pantallas del sistema y su significado.",
           },
           {
             tipo: "tabla",
-            cols: ["Entidad", "Estado", "Significado para el usuario"],
+            cols: [
+              "Entidad",
+              "Estado",
+              "Significado para el usuario",
+            ],
             filas: [
               [
                 "Inscripción",
@@ -1077,27 +1213,86 @@ export const MANUAL: SeccionManual[] = [
                 "PagoPendiente",
                 "Inscripción con pago en efectivo que el instructor todavía no confirmó. Ocupa el cupo.",
               ],
-              ["Inscripción", "Inscripto", "Inscripción confirmada, con el pago aprobado o el cobro en efectivo confirmado."],
-              ["Inscripción", "Cancelada", "Inscripción cancelada por el alumno o por el sistema. No puede reactivarse."],
-              ["Clase", "Programada", "Clase creada que se dicta dentro de más de 4 días. Solo admite preinscripciones."],
-              ["Clase", "Habilitada", "Faltan 4 días o menos para la clase. Admite inscripciones hasta 1 hora antes del inicio."],
+              [
+                "Inscripción",
+                "Inscripto",
+                "Inscripción confirmada: el pago con tarjeta quedó autorizado y reservado, o el instructor confirmó el cobro en efectivo.",
+              ],
+              [
+                "Inscripción",
+                "Cancelada",
+                "Inscripción cancelada por el alumno o por el sistema. No puede reactivarse.",
+              ],
+              [
+                "Clase",
+                "Programada",
+                "Clase creada que se dicta dentro de más de 4 días. Solo admite preinscripciones.",
+              ],
+              [
+                "Clase",
+                "Habilitada",
+                "Faltan 4 días o menos para la clase. Admite inscripciones hasta 1 hora antes del inicio.",
+              ],
               [
                 "Clase",
                 "Cancelada",
                 "Clase cancelada por el instructor o por una sanción. No admite inscripciones y genera los reintegros.",
               ],
-              ["Clase", "Finalizada", "Clase ya dictada. Habilita el historial, las reseñas y las denuncias."],
+              [
+                "Clase",
+                "Finalizada",
+                "Clase ya dictada. Habilita el historial, las reseñas y las denuncias.",
+              ],
               [
                 "Pago",
                 "Retenido",
-                "Pago con Mercado Pago aprobado, retenido hasta que finaliza la clase y vence el período de denuncias.",
+                'Pago con tarjeta autorizado. Antes de que la clase se dicte, el importe está reservado en la tarjeta del alumno y todavía no se cobró; una vez dictada, ya se cobró y espera a que venza el período de denuncias. La pantalla "Mis pagos" distingue las dos situaciones.',
               ],
-              ["Pago", "Liberado", "Pago acreditado al instructor."],
-              ["Pago", "Cancelado", "Pago reintegrado."],
-              ["Pago", "Efectivo", "Pago en efectivo, abonado directamente al instructor."],
-              ["Denuncia", "Pendiente", "Denuncia registrada, a la espera de revisión."],
-              ["Denuncia", "En Auditoría", "Denuncia en revisión por parte de un administrador."],
-              ["Denuncia", "Resuelta", "Denuncia resuelta mediante reintegro, sanción, penalización o desestimación."],
+              [
+                "Pago",
+                "Liberado",
+                "El pago quedó firme: la clase se dictó, venció el período de denuncias y no hubo denuncias abiertas. El dinero está acreditado en la cuenta de Mercado Pago del instructor, según el plazo de acreditación de esa cuenta.",
+              ],
+              [
+                "Pago",
+                "Cancelado",
+                "La reserva de la tarjeta se liberó antes de cobrarse, de modo que al alumno no se le cobró nada. También se usa para un pago en efectivo de una clase cancelada, cuya devolución se coordina con el instructor.",
+              ],
+              [
+                "Pago",
+                "Efectivo",
+                "Pago en efectivo, abonado directamente al instructor.",
+              ],
+              [
+                "Pago",
+                "En revisión",
+                "Mercado Pago está analizando el pago. El lugar del alumno queda reservado y la inscripción, con pago pendiente, hasta que el resultado se informe por notificación.",
+              ],
+              [
+                "Pago",
+                "Rechazado",
+                "Mercado Pago no aprobó el pago. No se cobró nada y el lugar no queda ocupado.",
+              ],
+              [
+                "Pago",
+                "Reembolsado",
+                "Un pago ya cobrado se devolvió al alumno por Mercado Pago. Según el banco emisor, puede tardar unos días en verse en el resumen de la tarjeta.",
+              ],
+              [
+                "Denuncia",
+                "Pendiente",
+                "Denuncia registrada, a la espera de revisión.",
+              ],
+              [
+                "Denuncia",
+                "En Auditoría",
+                "Denuncia en revisión por parte de un administrador.",
+              ],
+              [
+                "Denuncia",
+                "Resuelta",
+                "Denuncia resuelta mediante reintegro, sanción, penalización o desestimación.",
+              ],
               [
                 "Solicitud del instructor",
                 "En revisión",
@@ -1108,11 +1303,20 @@ export const MANUAL: SeccionManual[] = [
                 "Verificado",
                 "Instructor habilitado para publicar actividades y gestionar clases.",
               ],
-              ["Solicitud del instructor", "Rechazada", "Solicitud rechazada con motivo. Es posible volver a postularse."],
+              [
+                "Solicitud del instructor",
+                "Rechazada",
+                "Solicitud rechazada con motivo. Es posible volver a postularse.",
+              ],
               [
                 "Disponibilidad de cupos",
                 "Disponible · Últimos cupos · Sin cupos",
                 "Indicador calculado a partir de los cupos ocupados sobre el cupo máximo de la clase.",
+              ],
+              [
+                "Reseña",
+                "Pendiente de moderación · Oculta · Respondida",
+                "Estado de la reseña: a la espera de aprobación, retirada de circulación por el administrador o con respuesta del instructor.",
               ],
             ],
           },
@@ -1130,7 +1334,7 @@ export function textoDeBloque(b: BloqueManual): string {
       return b.texto;
     case "pasos":
     case "lista":
-      return b.items.join(" ");
+      return b.items.map((it, i) => [it, ...(b.sub?.[i] ?? [])].join(" ")).join(" ");
     case "tabla":
       return [...b.cols, ...b.filas.flat()].join(" ");
   }

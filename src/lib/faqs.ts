@@ -29,13 +29,46 @@ export const FAQS: Faq[] = [
   {
     id: "medios-de-pago",
     q: "¿Cómo pago mi inscripción?",
-    a: "Con Mercado Pago (el pago queda Retenido y se Libera al confirmarse la clase) o en efectivo directamente con tu instructor, quien confirma el cobro manualmente.",
-    claves: ["pago", "pagar", "efectivo", "mercado", "precio", "cobro", "plata"],
+    a: "Con tarjeta de crédito dentro de la plataforma, por Mercado Pago, o en efectivo abonado directamente al instructor, que confirma el cobro. No se aceptan tarjetas de débito ni prepagas.",
+    claves: ["pago", "pagar", "efectivo", "mercado", "precio", "cobro", "plata", "medios", "debito", "tarjeta"],
+  },
+  // Las cinco que siguen salen del documento del manual vigente (2026-10-16, A.6): la de
+  // arriba decía que el pago "se Libera al confirmarse la clase", que dejó de ser cierto con
+  // Mercado Pago real.
+  {
+    id: "cuando-se-cobra",
+    q: "¿Cuándo se me cobra la clase que pagué con tarjeta?",
+    a: "El monto queda reservado en tu tarjeta al inscribirte y se cobra cuando la clase se dicta. Si la clase se cancela antes, la reserva se libera y no se te cobra nada.",
+    claves: ["cobran", "cobra", "cuando", "reservado", "tarjeta", "reserva"],
+  },
+  {
+    id: "solo-efectivo",
+    q: "¿Por qué una clase solo me deja pagar en efectivo?",
+    a: "Porque el instructor de esa clase todavía no habilitó los cobros con tarjeta.",
+    claves: ["solo", "efectivo", "habilito", "tarjeta"],
+  },
+  {
+    id: "pago-en-revision",
+    q: "Mi pago figura \"En revisión\", ¿perdí el lugar?",
+    a: "No. Tu lugar queda reservado mientras Mercado Pago revisa el pago, y te avisamos con una notificación apenas se resuelva.",
+    claves: ["revision", "pendiente", "perdi", "lugar"],
+  },
+  {
+    id: "clase-cancelada-reintegro",
+    q: "Si cancelan la clase, ¿cómo recupero mi dinero?",
+    a: "Si todavía no se te había cobrado, se libera la reserva de tu tarjeta. Si ya se te había cobrado, se te reembolsa por Mercado Pago y, según tu banco, puede tardar unos días en verse.",
+    claves: ["cancelaron", "reembolso", "reintegro", "devolucion", "devuelven", "recupero", "dinero"],
+  },
+  {
+    id: "instructor-cobrar-tarjeta",
+    q: "Soy instructor, ¿qué necesito para cobrar con tarjeta?",
+    a: "Vincular tu cuenta de Mercado Pago desde la tarjeta \"Cobros con Mercado Pago\" de tu Panel. Sin la cuenta vinculada, tus clases solo aceptan efectivo.",
+    claves: ["vincular", "cobrar", "instructor", "cuenta", "mercado"],
   },
   {
     id: "cancelar-inscripcion",
     q: "¿Puedo cancelar una clase ya inscripta?",
-    a: "Sí, desde 'Mis clases' podés cancelar tu inscripción. Una vez cancelada, no puede volver a un estado anterior.",
+    a: "Sí, desde 'Mis clases' podés cancelar tu inscripción. Una vez cancelada, no puede volver a un estado anterior. Si pagaste con tarjeta y todavía no se te cobró, se libera la reserva; un pago ya cobrado o el efectivo no se devuelven.",
     claves: ["cancelar", "cancelacion", "baja", "arrepenti"],
   },
   {

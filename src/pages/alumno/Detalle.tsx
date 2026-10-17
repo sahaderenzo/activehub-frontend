@@ -15,6 +15,7 @@ import { esIaNoDisponible, esSinCuota } from "../../lib/ia";
 import { ApiError, BASE_URL } from "../../lib/api";
 import { diasHastaClase, disponibilidad, formatFecha, formatHora, tipoIngreso } from "../../lib/mockData";
 import { formatDistanciaKm, haversineKm, useGeolocation } from "../../lib/geo";
+import ActivarUbicacion from "../../components/ActivarUbicacion";
 import type { Actividad, Clase } from "../../lib/types";
 
 // Beneficios y prevenciones de respaldo, para cuando la IA no está disponible (sin credenciales
@@ -1141,6 +1142,11 @@ function BookingPanel({
           {distanciaKm !== undefined && (
             <div style={s("font-size:12.5px;color:#12B5A5;font-weight:700;margin-top:4px;")}>
               A {formatDistanciaKm(distanciaKm)} de tu ubicación
+            </div>
+          )}
+          {actividad.lat !== undefined && actividad.lng !== undefined && geolocation.status === "denied" && (
+            <div style={s("margin-top:10px;")}>
+              <ActivarUbicacion geolocation={geolocation} para="saber a qué distancia te queda" variante="linea" />
             </div>
           )}
           {actividad.lat !== undefined && actividad.lng !== undefined && (

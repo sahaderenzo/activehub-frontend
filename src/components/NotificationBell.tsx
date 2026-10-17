@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { s } from "../lib/style";
 import ErrorReintentar from "./ErrorReintentar";
@@ -25,13 +26,70 @@ interface NotificationBellProps {
   area: Area;
 }
 
-/** Campana de notificaciones, compartida por los 3 roles (alumno/instructor/admin). */
+/** Ancho del desplegable y margen mínimo contra los bordes de la ventana. */
+const ANCHO = 340;
+const MARGEN = 8;
+
+interface Posicion {
+  top: number;
+  left: number;
+  ancho: number;
+  altoMax: number;
+}
+
+/**
+ * Dónde va el desplegable, en coordenadas de la ventana, a partir del botón de la campana.
+ * Se recorta a la ventana: en un teléfono 340 px no entran, y abajo no puede pasarse del borde.
+ */
+function calcularPosicion(boton: HTMLElement, align: "left" | "right"): Posicion {
+  const r = boton.getBoundingClientRect();
+  const ancho = Math.min(ANCHO, window.innerWidth - 2 * MARGEN);
+  const deseado = align === "left" ? r.left : r.right - ancho;
+  const left = Math.max(MARGEN, Math.min(deseado, window.innerWidth - ancho - MARGEN));
+  const top = r.bottom + 8;
+  return { top, left, ancho, altoMax: Math.max(160, Math.min(420, window.innerHeight - top - MARGEN)) };
+}
+
+/**
+ * Campana de notificaciones, compartida por los 3 roles (alumno/instructor/admin).
+ *
+ * <p><b>El desplegable va en un portal a `document.body`</b>, como `Modal`. Reportado: al
+ * abrirlo sobre un gráfico, el gráfico quedaba por encima del menú. En el panel de instructor
+ * y admin la campana vive dentro de `DashSidebar`, que es `position:sticky` y por eso crea su
+ * propio contexto de apilamiento: el `z-index` del menú sólo competía DENTRO del sidebar, y
+ * todo el contenido de la derecha (gráficos, tarjetas, el `.ah-screen` animado) se pintaba
+ * encima. En el portal no le queda ningún ancestro que lo encierre, así que queda por encima
+ * de todo en cualquier pantalla. La posición se calcula contra el botón y se recalcula al
+ * scrollear o redimensionar.
+ */
 export default function NotificationBell({ variant = "light", align = "right", area }: NotificationBellProps) {
   const { listarNotificaciones, marcarNotificacionesLeidas } = useData();
   const { permisos } = useAuth();
   const navigate = useNavigate();
   const [notificaciones, setNotificaciones] = useState<Notificacion[]>([]);
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<Posicion | null>(null);
+  const botonRef = useRef<HTMLButtonElement>(null);
+
+  // Mientras está abierto, sigue al botón (scroll de la página o del sidebar, cambio de tamaño)
+  // y se cierra con Escape. El setState corre en los handlers, no en el efecto.
+  useEffect(() => {
+    if (!open) return;
+    const reubicar = () => {
+      if (botonRef.current) setPos(calcularPosicion(botonRef.current, align));
+    };
+    const alTeclear = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("resize", reubicar);
+    window.addEventListener("scroll", reubicar, true);
+    window.addEventListener("keydown", alTeclear);
+    return () => {
+      window.removeEventListener("resize", reubicar);
+      window.removeEventListener("scroll", reubicar, true);
+      window.removeEventListener("keydown", alTeclear);
+    };
+  }, [open, align]);
 
   const [errorCarga, setErrorCarga] = useState(false);
 
@@ -53,6 +111,7 @@ export default function NotificationBell({ variant = "light", align = "right", a
 
   const toggle = () => {
     const abriendo = !open;
+    if (abriendo && botonRef.current) setPos(calcularPosicion(botonRef.current, align));
     setOpen(abriendo);
     if (abriendo && noLeidas > 0) {
       marcarNotificacionesLeidas()
@@ -69,8 +128,11 @@ export default function NotificationBell({ variant = "light", align = "right", a
   return (
     <div style={s("position:relative;")}>
       <button
+        ref={botonRef}
         className="ah-btn"
         onClick={toggle}
+        aria-label="Notificaciones"
+        aria-expanded={open}
         style={s(
           variant === "dark"
             ? "position:relative;width:40px;height:40px;border-radius:11px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);cursor:pointer;display:flex;align-items:center;justify-content:center;"
@@ -92,12 +154,17 @@ export default function NotificationBell({ variant = "light", align = "right", a
         )}
       </button>
 
-      {open && (
+      {open && pos && createPortal(
         <>
-          <div style={s("position:fixed;inset:0;z-index:60;")} onClick={() => setOpen(false)} />
+          {/* z-index 1100: por encima de modales (60), chatbot (70) y de los controles de los mapas
+              de Leaflet, que llegan a 1000. Mientras está el overlay de "Procesando…" la campana
+              no se puede abrir: el overlay tapa el botón. */}
+          <div style={s("position:fixed;inset:0;z-index:1100;")} onClick={() => setOpen(false)} />
           <div
+            role="dialog"
+            aria-label="Notificaciones"
             style={s(
-              `position:absolute;top:48px;${align === "left" ? "left:0" : "right:0"};z-index:61;width:340px;max-height:420px;overflow-y:auto;background:#fff;border:1px solid #E7EDF3;border-radius:14px;box-shadow:0 12px 32px rgba(14,42,71,.14);`,
+              `position:fixed;top:${pos.top}px;left:${pos.left}px;z-index:1101;width:${pos.ancho}px;max-height:${pos.altoMax}px;overflow-y:auto;background:#fff;border:1px solid #E7EDF3;border-radius:14px;box-shadow:0 12px 32px rgba(14,42,71,.14);font-family:Manrope,system-ui,sans-serif;`,
             )}
           >
             <div style={s("padding:14px 16px;border-bottom:1px solid #F1F4F8;font:700 13.5px Manrope,sans-serif;color:#0E2A47;")}>
@@ -178,7 +245,8 @@ export default function NotificationBell({ variant = "light", align = "right", a
               })
             )}
           </div>
-        </>
+        </>,
+        document.body,
       )}
     </div>
   );

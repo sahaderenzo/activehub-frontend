@@ -8,6 +8,7 @@ import { useData } from "../../context/DataContext";
 import type { PenalizacionAdmin, UsuarioAdmin } from "../../context/DataContext";
 import { ApiError } from "../../lib/api";
 import { formatFecha } from "../../lib/mockData";
+import { MAX_DIAS_SUSPENSION, MIN_DIAS_SUSPENSION, MULTA_MAXIMA, MULTA_MINIMA, errorDiasSuspension, errorMulta } from "../../lib/limites";
 import type { TipoPenalizacion } from "../../lib/types";
 
 const TIPO_STYLE: Record<TipoPenalizacion, [string, string, string]> = {
@@ -15,8 +16,6 @@ const TIPO_STYLE: Record<TipoPenalizacion, [string, string, string]> = {
   "Suspensión temporal": ["#FBEAEB", "#BE3A3E", "#F3D2D3"],
 };
 
-/** Espejo de `VentanaPenalizacion.MINIMO_DIAS_SUSPENSION` del backend. */
-const MIN_DIAS_SUSPENSION = 15;
 
 interface FormState {
   usuarioId: string;
@@ -42,6 +41,13 @@ const FORM_VACIO: FormState = {
 /** Días enteros entre dos fechas `YYYY-MM-DD`. */
 function diasEntre(desde: string, hasta: string): number {
   return Math.round((new Date(hasta).getTime() - new Date(desde).getTime()) / 86400000);
+}
+
+/** `yyyy-mm-dd` + n días, en UTC para que el cambio de horario no corra la fecha. */
+function sumarDias(fecha: string, dias: number): string {
+  const d = new Date(fecha + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + dias);
+  return d.toISOString().slice(0, 10);
 }
 
 export default function AdminPenalizaciones() {
@@ -115,13 +121,16 @@ export default function AdminPenalizaciones() {
     if (form.economica && (!form.monto || Number(form.monto) <= 0)) {
       return setFormError("Ingresá el monto de la penalización económica.");
     }
+    if (form.economica) {
+      const errorMonto = errorMulta(Number(form.monto), false);
+      if (errorMonto) return setFormError(errorMonto);
+    }
     if (form.suspension) {
       if (!form.fechaInicio || !form.fechaFin) {
         return setFormError("Indicá la fecha de inicio y de fin de la suspensión.");
       }
-      if (diasEntre(form.fechaInicio, form.fechaFin) < MIN_DIAS_SUSPENSION) {
-        return setFormError(`La suspensión no puede durar menos de ${MIN_DIAS_SUSPENSION} días.`);
-      }
+      const errorDias = errorDiasSuspension(diasEntre(form.fechaInicio, form.fechaFin));
+      if (errorDias) return setFormError(errorDias);
     }
 
     setGuardando(true);
@@ -343,7 +352,7 @@ export default function AdminPenalizaciones() {
             {form.economica && (
               <>
                 <label style={s("display:block;font:700 12px Manrope,sans-serif;color:#41566B;margin-bottom:6px;")}>
-                  Monto ($)
+                  Monto ($) · entre {MULTA_MINIMA.toLocaleString("es-AR")} y {MULTA_MAXIMA.toLocaleString("es-AR")}
                 </label>
                 <input
                   value={form.monto}
@@ -371,13 +380,21 @@ export default function AdminPenalizaciones() {
                   <label style={s("display:block;font:700 12px Manrope,sans-serif;color:#41566B;margin-bottom:6px;")}>
                     Fecha fin
                   </label>
+                  {/* El calendario no deja elegir fuera del rango: mínimo y máximo de la suspensión. */}
                   <input
                     type="date"
+                    min={form.fechaInicio ? sumarDias(form.fechaInicio, MIN_DIAS_SUSPENSION) : undefined}
+                    max={form.fechaInicio ? sumarDias(form.fechaInicio, MAX_DIAS_SUSPENSION) : undefined}
                     value={form.fechaFin}
                     onChange={(e) => setForm({ ...form, fechaFin: e.target.value })}
                     style={s("width:100%;border:1px solid #E2E9F0;border-radius:10px;padding:10px 12px;font:600 13.5px Manrope,sans-serif;color:#0E2A47;")}
                   />
                 </div>
+              </div>
+            )}
+            {form.suspension && (
+              <div style={s("font-size:11.5px;color:#9AAABA;font-weight:600;margin:-6px 0 14px;")}>
+                La suspensión dura entre {MIN_DIAS_SUSPENSION} y {MAX_DIAS_SUSPENSION} días.
               </div>
             )}
 

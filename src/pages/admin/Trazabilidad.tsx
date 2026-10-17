@@ -363,7 +363,7 @@ export default function AdminTrazabilidad() {
       <div style={s("background:#fff;border-bottom:1px solid #E7EDF3;padding:18px 32px;display:flex;align-items:center;")}>
         <div>
           <div style={s("display:flex;align-items:center;gap:9px;")}>
-            <h1 style={s("font:700 22px Space Grotesk,sans-serif;margin:0;")}>Registro de auditoría y trazabilidad</h1>
+            <h1 style={s("font:700 22px Space Grotesk,sans-serif;margin:0;")}>Auditoría</h1>
           </div>
           <p style={s("font-size:13.5px;color:#7A8C9E;margin:3px 0 0;")}>
             Listado inalterable de todas las operaciones del sistema. Buscá por palabra clave y filtrá por rol o tipo de acción.

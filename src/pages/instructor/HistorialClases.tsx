@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
 import { CargandoSeccion } from "../../components/Cargando";
 import StatusBadge from "../../components/StatusBadge";
+import FiltroActividad, { TODAS_LAS_ACTIVIDADES } from "../../components/FiltroActividad";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
@@ -40,6 +41,7 @@ export default function InstructorHistorialClases() {
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState(false);
   const [filtro, setFiltro] = useState<Filtro>("todas");
+  const [actividadId, setActividadId] = useState<string>(TODAS_LAS_ACTIVIDADES);
 
   const cargar = useCallback(() => {
     if (!aprobado) return;
@@ -66,18 +68,25 @@ export default function InstructorHistorialClases() {
     [misClases],
   );
 
+  // El filtro de actividad va primero y los conteos de estado se calculan sobre lo que deja:
+  // "Finalizadas (3)" tiene que ser de la actividad elegida, no del historial entero.
+  const deLaActividad = useMemo(
+    () => (actividadId === TODAS_LAS_ACTIVIDADES ? pasadas : pasadas.filter((c) => c.actividadId === actividadId)),
+    [pasadas, actividadId],
+  );
+
   const visibles = useMemo(
-    () => (filtro === "todas" ? pasadas : pasadas.filter((c) => c.estado === filtro)),
-    [pasadas, filtro],
+    () => (filtro === "todas" ? deLaActividad : deLaActividad.filter((c) => c.estado === filtro)),
+    [deLaActividad, filtro],
   );
 
   const conteos = useMemo(
     () => ({
-      todas: pasadas.length,
-      Finalizada: pasadas.filter((c) => c.estado === "Finalizada").length,
-      Cancelada: pasadas.filter((c) => c.estado === "Cancelada").length,
+      todas: deLaActividad.length,
+      Finalizada: deLaActividad.filter((c) => c.estado === "Finalizada").length,
+      Cancelada: deLaActividad.filter((c) => c.estado === "Cancelada").length,
     }),
-    [pasadas],
+    [deLaActividad],
   );
 
   if (!currentUser || !aprobado) return null;
@@ -93,6 +102,11 @@ export default function InstructorHistorialClases() {
 
       <div style={s("max-width:900px;padding:26px 32px 50px;")}>
         {/* Los filtros aparecen con sus conteos ya calculados, no en (0). */}
+        {!cargando && !errorCarga && pasadas.length > 0 && (
+          <div style={s("margin-bottom:14px;")}>
+            <FiltroActividad clases={pasadas} valor={actividadId} onChange={setActividadId} />
+          </div>
+        )}
         <div style={s("display:flex;gap:9px;margin-bottom:20px;flex-wrap:wrap;")}>
           {(cargando ? [] : FILTROS).map((f) => {
             const on = filtro === f.key;
@@ -140,20 +154,28 @@ export default function InstructorHistorialClases() {
           >
             {pasadas.length === 0
               ? "Todavía no tenés clases dictadas ni canceladas."
-              : "No hay clases con ese estado."}
+              : "No hay clases con esos filtros."}
           </div>
         )}
 
         {!errorCarga && visibles.length > 0 && (
           <div style={s("display:flex;flex-direction:column;gap:11px;")}>
             {visibles.map((c) => (
-              // El historial es de LECTURA: la tarjeta ya no navega a la gestión de la clase.
-              // Una clase Finalizada o Cancelada no tiene nada que gestionar, y el click llevaba
-              // a una pantalla de acciones que ahí ya no aplican.
+              // El click abre la misma pantalla de la clase que usa "Mis actividades", en modo
+              // consulta (sin editar, cancelar ni cobrar): quiénes se inscribieron, qué pagó cada
+              // uno y qué pasó con ese pago. `desde=historial` hace que "Volver" regrese acá.
               <div
                 key={c.claseId}
+                className="ah-hov"
+                role="button"
+                tabIndex={0}
+                title="Ver el detalle de la clase"
+                onClick={() => navigate(`/instructor/clases/${c.claseId}?desde=historial`)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") navigate(`/instructor/clases/${c.claseId}?desde=historial`);
+                }}
                 style={s(
-                  `background:#fff;border:1px solid #E7EDF3;border-left:4px solid ${
+                  `cursor:pointer;background:#fff;border:1px solid #E7EDF3;border-left:4px solid ${
                     c.estado === "Cancelada" ? "#E5484D" : "#6B7B8C"
                   };border-radius:14px;padding:16px 18px;display:flex;align-items:center;gap:16px;box-shadow:0 1px 2px rgba(14,42,71,.04);`,
                 )}
@@ -190,6 +212,9 @@ export default function InstructorHistorialClases() {
                   </span>
                 </span>
                 <StatusBadge type={claseStatusType(c.estado)} />
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#C2CCD6" strokeWidth={2} style={{ flex: "none" }}>
+                  <path d="m9 18 6-6-6-6" />
+                </svg>
               </div>
             ))}
           </div>

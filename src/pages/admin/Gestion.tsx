@@ -6,6 +6,8 @@ import { s } from "../../lib/style";
 import { incluye } from "../../lib/texto";
 import Modal from "../../components/Modal";
 import { CargandoSeccion } from "../../components/Cargando";
+import Paginacion from "../../components/Paginacion";
+import { usePaginado } from "../../lib/paginado";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import type {
@@ -20,6 +22,8 @@ import type {
 } from "../../context/DataContext";
 import { ApiError } from "../../lib/api";
 import { denunciaStatusType } from "../../lib/status";
+import { ACCIONES_POR_TIPO, DESCRIPCION_ACCION, ETIQUETA_ACCION } from "../../lib/denuncias";
+import { MAX_DIAS_SUSPENSION, MIN_DIAS_SUSPENSION, MULTA_MAXIMA, MULTA_MINIMA, errorDiasSuspension, errorMulta } from "../../lib/limites";
 import { formatFecha } from "../../lib/mockData";
 import type { RolNombre } from "../../lib/types";
 
@@ -70,8 +74,11 @@ function initials(nombre: string, apellido: string): string {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/** Espejo de `VentanaPenalizacion.MINIMO_DIAS_SUSPENSION` del backend. Si cambia allá, cambialo acá. */
-const MIN_DIAS_SUSPENSION = 15;
+/**
+ * Filas por página de Reclamos y Reseñas. Las dos crecen con el uso (cada clase y cada reseña
+ * suman filas, y las resueltas no se van), y sin paginar la pestaña era una sola tira larga.
+ */
+const POR_PAGINA = 10;
 
 interface SuspensionEnCurso {
   denuncia: DenunciaAdmin;
@@ -80,44 +87,6 @@ interface SuspensionEnCurso {
   detalle: string;
 }
 
-/**
- * Las cuatro resoluciones son <b>excluyentes</b>: se elige una y el caso se cierra. Cada una
- * lleva su descripción porque el nombre solo no alcanza para decidir — "Penalizar" y
- * "Suspender" suenan parecido y hacen cosas muy distintas, y "Reintegrar" alcanza a una sola
- * persona, no a toda la clase.
- *
- * <p>Las descripciones dicen lo que el backend <i>hace</i> ({@code ResolverDenunciaService}),
- * no lo que uno esperaría que hiciera. Si cambia el comportamiento allá, cambian acá.
- */
-const ETIQUETA_ACCION: Record<AccionResolucion, string> = {
-  REINTEGRAR: "Reintegrar el pago",
-  SUSPENDER: "Suspender al instructor",
-  PENALIZAR: "Aplicar penalización económica",
-  DESESTIMAR: "Desestimar",
-  OCULTAR_RESENIA: "Ocultar la reseña",
-};
-
-const DESCRIPCION_ACCION: Record<AccionResolucion, string> = {
-  REINTEGRAR:
-    "Cancela la inscripción de quien denunció y le devuelve su pago. Alcanza sólo a esa persona: el resto de los inscriptos a la clase no se toca.",
-  SUSPENDER:
-    "Inhabilita al instructor por la cantidad de días que elijas (mínimo 15) y, si cargás un monto, además le aplica una multa. Cancela las clases que tuviera en ese período y reintegra a todos sus inscriptos. Puede seguir iniciando sesión, pero no publicar ni gestionar nada.",
-  PENALIZAR:
-    "Le aplica una multa al instructor y suma una penalización a su historial. No lo inhabilita, no cancela clases y no devuelve ningún pago.",
-  DESESTIMAR:
-    "Cierra el caso sin ninguna consecuencia: no se toca el pago, ni la inscripción, ni el instructor. Se le avisa al denunciante igual.",
-  OCULTAR_RESENIA:
-    "Saca la reseña del listado público y la descuenta del promedio de la actividad. No se borra: queda registrada.",
-};
-
-/**
- * Qué se puede hacer según qué se denunció. Sobre una reseña no aplican las acciones que
- * tocan el pago o al instructor: el backend las rechaza con 400, así que tampoco se ofrecen.
- */
-const ACCIONES_POR_TIPO: Record<DenunciaAdmin["tipo"], AccionResolucion[]> = {
-  CLASE: ["REINTEGRAR", "SUSPENDER", "PENALIZAR", "DESESTIMAR"],
-  RESENIA: ["OCULTAR_RESENIA", "DESESTIMAR"],
-};
 
 interface EdicionUsuario {
   id: string;
@@ -212,6 +181,9 @@ export default function AdminGestion() {
   const [tabsCargados, setTabsCargados] = useState<Set<Tab>>(new Set());
   const marcarCargado = (t: Tab) => setTabsCargados((prev) => (prev.has(t) ? prev : new Set(prev).add(t)));
   // "actividades" sale del catálogo del Context, no de un loader propio de esta pantalla.
+  const pagDenuncias = usePaginado(denuncias, POR_PAGINA);
+  const pagPendientes = usePaginado(resenas, POR_PAGINA);
+  const pagPublicadas = usePaginado(resenasPublicadas, POR_PAGINA);
   const cargandoTab = tab === "actividades" ? cargandoCatalogo : !tabsCargados.has(tab);
 
   const usuariosFiltrados = useMemo(() => {
@@ -390,12 +362,8 @@ export default function AdminGestion() {
     const dias = Number(suspension.dias);
     const monto = suspension.monto.trim() === "" ? 0 : Number(suspension.monto);
 
-    if (!Number.isInteger(dias) || dias < MIN_DIAS_SUSPENSION) {
-      return setErrorSuspension(`La suspensión no puede durar menos de ${MIN_DIAS_SUSPENSION} días.`);
-    }
-    if (!Number.isFinite(monto) || monto < 0) {
-      return setErrorSuspension("El monto no puede ser negativo. Dejalo en 0 si no querés aplicar multa.");
-    }
+    const errorDatos = errorDiasSuspension(dias) ?? errorMulta(monto, true);
+    if (errorDatos) return setErrorSuspension(errorDatos);
 
     setErrorSuspension(null);
     setGuardandoSuspension(true);
@@ -880,7 +848,7 @@ export default function AdminGestion() {
                   <span>Estado</span>
                   <span>Acciones</span>
                 </div>
-                {denuncias.map((d) => {
+                {pagDenuncias.visibles.map((d) => {
                   const sobreResenia = d.tipo === "RESENIA";
                   // En una denuncia de reseña el "denunciado" es el alumno que la escribió,
                   // no el instructor (que acá es justamente el denunciante).
@@ -960,6 +928,7 @@ export default function AdminGestion() {
                 {denuncias.length === 0 && (
                   <div style={s("padding:40px 22px;text-align:center;color:#90A1B2;font:600 13.5px Manrope,sans-serif;")}>No hay reclamos registrados.</div>
                 )}
+                <Paginacion {...pagDenuncias} />
               </div>
             </div>
           )}
@@ -1012,7 +981,7 @@ export default function AdminGestion() {
                   <span>Acciones</span>
                 </div>
                 {tabResenas === "pendientes" &&
-                  resenas.map((r) => (
+                  pagPendientes.visibles.map((r) => (
                   <div
                     key={r.id}
                     style={s("display:grid;grid-template-columns:1.2fr 1.2fr 80px 2fr 1fr 170px;padding:14px 22px;border-bottom:1px solid #F1F4F8;align-items:center;")}
@@ -1048,7 +1017,7 @@ export default function AdminGestion() {
                   </div>
                 ))}
                 {tabResenas === "publicadas" &&
-                  resenasPublicadas.map((r) => (
+                  pagPublicadas.visibles.map((r) => (
                     <div
                       key={r.id}
                       style={s(
@@ -1106,6 +1075,8 @@ export default function AdminGestion() {
                 {tabResenas === "pendientes" && resenas.length === 0 && (
                   <div style={s("padding:40px 22px;text-align:center;color:#90A1B2;font:600 13.5px Manrope,sans-serif;")}>No hay reseñas pendientes de moderación.</div>
                 )}
+                {tabResenas === "pendientes" && <Paginacion {...pagPendientes} />}
+                {tabResenas === "publicadas" && <Paginacion {...pagPublicadas} />}
               </div>
             </div>
           )}
@@ -1294,11 +1265,12 @@ export default function AdminGestion() {
             <div style={s("display:flex;flex-direction:column;gap:12px;")}>
               <label style={s("display:flex;flex-direction:column;gap:6px;")}>
                 <span style={s("font:700 12.5px Manrope,sans-serif;color:#41566B;")}>
-                  Días de suspensión (mínimo {MIN_DIAS_SUSPENSION})
+                  Días de suspensión (entre {MIN_DIAS_SUSPENSION} y {MAX_DIAS_SUSPENSION})
                 </span>
                 <input
                   type="number"
                   min={MIN_DIAS_SUSPENSION}
+                  max={MAX_DIAS_SUSPENSION}
                   step={1}
                   value={suspension.dias}
                   onChange={(e) => setSuspension({ ...suspension, dias: e.target.value })}
@@ -1311,13 +1283,14 @@ export default function AdminGestion() {
                 <input
                   type="number"
                   min={0}
+                  max={MULTA_MAXIMA}
                   step={100}
                   value={suspension.monto}
                   onChange={(e) => setSuspension({ ...suspension, monto: e.target.value })}
                   style={s("border:1px solid #E2E9F0;border-radius:10px;padding:11px 12px;font:600 14px Manrope,sans-serif;color:#0E2A47;")}
                 />
                 <span style={s("font-size:11.5px;color:#9AAABA;font-weight:600;")}>
-                  En 0 no se aplica penalización económica, solo la suspensión.
+                  En 0 no se aplica penalización económica, solo la suspensión. Si cargás una multa, va de ${MULTA_MINIMA.toLocaleString("es-AR")} a ${MULTA_MAXIMA.toLocaleString("es-AR")}.
                 </span>
               </label>
 
