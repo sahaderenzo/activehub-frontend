@@ -24,6 +24,23 @@ function Stars({ value, size = 13 }: { value: number; size?: number }) {
   );
 }
 
+/**
+ * Cantidad y promedio de las reseñas que CUENTAN: las no ocultas. Es el mismo criterio que
+ * `ActividadRepository.recalcularRating` del backend y que el detalle público de la actividad.
+ * Antes se promediaban todas, así que ocultar una reseña (por denuncia o desde Gestión) no
+ * cambiaba ni la calificación ni la cantidad que veía el instructor.
+ */
+function estadisticas(resenias: ReseniaInstructor[]) {
+  const visibles = resenias.filter((r) => !r.oculta);
+  const total = visibles.length;
+  const prom = total ? visibles.reduce((s2, r) => s2 + r.puntaje, 0) / total : 0;
+  const bars = [5, 4, 3, 2, 1].map((star) => {
+    const n = visibles.filter((r) => r.puntaje === star).length;
+    return { star, n, pct: total ? Math.round((n / total) * 100) : 0 };
+  });
+  return { total, prom, bars, ocultas: resenias.length - total };
+}
+
 export default function InstructorResenas() {
   const { currentUser } = useAuth();
   const data = useData();
@@ -62,9 +79,8 @@ export default function InstructorResenas() {
   const sidebar = useMemo(
     () =>
       misActividades.map((a) => {
-        const rs = misResenias.filter((r) => r.actividadId === a.id);
-        const prom = rs.length ? rs.reduce((s2, r) => s2 + r.puntaje, 0) / rs.length : 0;
-        return { id: a.id, name: a.nombre, total: rs.length, prom };
+        const { total, prom, ocultas } = estadisticas(misResenias.filter((r) => r.actividadId === a.id));
+        return { id: a.id, name: a.nombre, total, prom, ocultas };
       }),
     [misActividades, misResenias],
   );
@@ -93,7 +109,7 @@ export default function InstructorResenas() {
     }
     if (selectedId && misActividades.some((a) => a.id === selectedId)) return;
     if (misActividades.length > 0) {
-      const conResenias = sidebar.find((s2) => s2.total > 0);
+      const conResenias = sidebar.find((s2) => s2.total + s2.ocultas > 0);
       setSelectedId(conResenias?.id ?? misActividades[0].id);
     } else {
       setSelectedId(null);
@@ -110,12 +126,8 @@ export default function InstructorResenas() {
         .filter((r) => r.actividadId === selectedId)
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     : [];
-  const total = reviews.length;
-  const prom = total ? reviews.reduce((s2, r) => s2 + r.puntaje, 0) / total : 0;
-  const bars = [5, 4, 3, 2, 1].map((star) => {
-    const n = reviews.filter((r) => r.puntaje === star).length;
-    return { star, n, pct: total ? Math.round((n / total) * 100) : 0 };
-  });
+  // La lista muestra también las ocultas (con su etiqueta); los números, sólo las que cuentan.
+  const { total, prom, bars, ocultas } = estadisticas(reviews);
 
   const toggleResponder = (id: string) => {
     setAccionError(null);
@@ -248,6 +260,11 @@ export default function InstructorResenas() {
                   <Stars value={Math.round(prom)} size={15} />
                 </div>
                 <div style={s("font-size:13px;color:#7A8C9E;font-weight:600;")}>{total} reseñas</div>
+                {ocultas > 0 && (
+                  <div style={s("font-size:11.5px;color:#9AAABA;font-weight:600;margin-top:4px;")}>
+                    {ocultas === 1 ? "1 oculta, no cuenta en la calificación" : `${ocultas} ocultas, no cuentan en la calificación`}
+                  </div>
+                )}
               </div>
               <div style={s("display:flex;flex-direction:column;justify-content:center;gap:7px;")}>
                 <div style={s("font:700 14px Space Grotesk;color:#0E2A47;margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;")}>
@@ -302,7 +319,7 @@ export default function InstructorResenas() {
                     key={rv.id}
                     ref={resaltado.ref(rv.id)}
                     style={s(
-                      `background:#fff;border:1px solid ${rv.denunciada || rv.oculta ? "#F3D2D3" : rv.enModeracion ? "#F6E2C0" : "#E7EDF3"};border-radius:16px;padding:18px 20px;box-shadow:0 1px 2px rgba(14,42,71,.04);`
+                      `background:#fff;border:1px solid ${rv.denunciada || rv.oculta ? "#F3D2D3" : "#E7EDF3"};border-radius:16px;padding:18px 20px;box-shadow:0 1px 2px rgba(14,42,71,.04);`
                         + (resaltado.activo(rv.id) ? ESTILO_RESALTE : ""),
                     )}
                   >
@@ -338,23 +355,8 @@ export default function InstructorResenas() {
                     )}
 
                     <div style={s("display:flex;align-items:center;gap:9px;flex-wrap:wrap;")}>
-                      {/* "En moderación" y "Denunciada" son cosas distintas: la primera es que el
-                          admin todavía no aprobó la reseña, la segunda que vos la reportaste.
-                          Antes las dos se pintaban con el mismo cartel rojo "Reportada". */}
-                      {rv.enModeracion && (
-                        <span
-                          style={s(
-                            "font:700 11px Manrope;background:#FFF3E0;color:#B9741A;border:1px solid #F6E2C0;padding:4px 10px;border-radius:99px;display:inline-flex;align-items:center;gap:5px;",
-                          )}
-                          title="Todavía no es visible para el resto: un administrador tiene que aprobarla."
-                        >
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#B9741A" strokeWidth={2.4}>
-                            <circle cx="12" cy="12" r="9" />
-                            <path d="M12 7v5l3 2" />
-                          </svg>
-                          Pendiente de moderación
-                        </span>
-                      )}
+                      {/* Toda reseña se publica al crearse: no hay estado "en moderación". El
+                          administrador sólo interviene si la denunciás (o si la oculta él). */}
                       {rv.denunciada && (
                         <span
                           style={s(
@@ -381,18 +383,12 @@ export default function InstructorResenas() {
                       <button
                         className="ah-btn"
                         onClick={() => toggleResponder(rv.id)}
-                        disabled={rv.enModeracion || rv.oculta}
-                        title={
-                          rv.enModeracion
-                            ? "Vas a poder responder cuando el administrador apruebe la reseña."
-                            : rv.oculta
-                              ? "Esta reseña fue ocultada."
-                              : undefined
-                        }
+                        disabled={rv.oculta}
+                        title={rv.oculta ? "Esta reseña fue ocultada." : undefined}
                         style={s(
                           `background:#fff;border:1px solid #E2E9F0;border-radius:9px;padding:7px 13px;font:700 12.5px Manrope;color:#41566B;cursor:${
-                            rv.enModeracion || rv.oculta ? "not-allowed" : "pointer"
-                          };opacity:${rv.enModeracion || rv.oculta ? ".55" : "1"};display:flex;align-items:center;gap:6px;`,
+                            rv.oculta ? "not-allowed" : "pointer"
+                          };opacity:${rv.oculta ? ".55" : "1"};display:flex;align-items:center;gap:6px;`,
                         )}
                       >
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#41566B" strokeWidth={2}>

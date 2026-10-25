@@ -601,7 +601,7 @@ export default function Registro() {
                   ¿Padecés alguna enfermedad o lesión?
                 </label>
                 <div style={s("font-size:12.5px;color:#8194A8;margin-bottom:8px;")}>
-                  Opcional. Ayuda al instructor a dar la clase de forma segura para vos.
+                  Opcional. Se usa para personalizar el informe de beneficios y prevenciones de cada actividad. Podés cambiarlo después desde tu perfil.
                 </div>
                 <textarea
                   value={form.condicionSalud}

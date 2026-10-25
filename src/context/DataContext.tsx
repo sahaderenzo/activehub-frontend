@@ -392,7 +392,6 @@ export interface MiResenia {
   puntaje: number;
   /** Opcional: una reseña puede ser solo estrellas. */
   comentario: string | null;
-  enModeracion: boolean;
   /** Bajada por un administrador: sigue en la lista, pero ya no se ve en la actividad. */
   oculta: boolean;
   /** La respuesta del instructor, si contestó. Es a lo que lleva `RESENIA_RESPONDIDA`. */
@@ -411,8 +410,6 @@ export interface ReseniaInstructor {
   puntaje: number;
   /** Opcional: una reseña puede ser solo estrellas. */
   comentario: string | null;
-  /** Pendiente de aprobación del admin. NO significa "denunciada" — para eso está `denunciada`. */
-  enModeracion: boolean;
   respuestaInstructor?: string;
   respuestaInstructorAt?: string;
   /** El instructor ya la denunció y la denuncia sigue abierta. */
@@ -421,7 +418,11 @@ export interface ReseniaInstructor {
   createdAt: string;
 }
 
-export interface ReseniaPendiente {
+/**
+ * Reseña publicada (GET /api/admin/resenas/publicadas). Toda reseña se publica al crearse, así
+ * que es el único listado del admin; incluye `oculta` porque tiene que ver también lo que bajó.
+ */
+export interface ReseniaPublicada {
   id: string;
   claseId: string;
   claseFechaHora: string;
@@ -431,15 +432,8 @@ export interface ReseniaPendiente {
   puntaje: number;
   /** Opcional: una reseña puede ser solo estrellas. */
   comentario: string | null;
-  createdAt: string;
-}
-
-/**
- * Reseña **ya publicada** (GET /api/admin/resenas/publicadas). Misma forma que la pendiente
- * más `oculta`: el admin tiene que poder ver también lo que ya bajó, no sólo lo visible.
- */
-export interface ReseniaPublicada extends ReseniaPendiente {
   oculta: boolean;
+  createdAt: string;
 }
 
 
@@ -744,17 +738,14 @@ interface DataContextValue {
   subirFotoActividad: (actividadId: string, archivo: File) => Promise<{ actividadId: string }>;
 
   // reseñas real
+  /** Publica en el acto: una reseña no pasa por moderación ni se edita o elimina después. */
   crearResenia: (claseId: string, puntaje: number, comentario: string) => Promise<void>;
-  eliminarResenia: (id: string) => Promise<void>;
   listarResenasActividad: (actividadId: string) => Promise<ReseniaActividad[]>;
   listarMisResenas: () => Promise<MiResenia[]>;
   listarResenasInstructor: () => Promise<ReseniaInstructor[]>;
-  listarResenasPendientes: () => Promise<ReseniaPendiente[]>;
   listarResenasPublicadas: () => Promise<ReseniaPublicada[]>;
   /** Baja una reseña ya publicada. El motivo es obligatorio: queda en auditoría. */
   ocultarResenia: (id: string, motivo: string) => Promise<void>;
-  aprobarResenia: (id: string) => Promise<void>;
-  rechazarResenia: (id: string) => Promise<void>;
 
   // denuncias real
   crearDenuncia: (claseId: string, motivo: string) => Promise<void>;
@@ -794,7 +785,6 @@ interface DataContextValue {
    * no responde. La pantalla lo trata cayendo a sus textos por nivel de intensidad.
    */
   generarInformeActividad: (actividadId: string, claseId?: string) => Promise<InformeActividad>;
-  actualizarResenia: (id: string, puntaje: number, comentario: string) => Promise<void>;
   actualizarUsuarioAdmin: (id: string, input: ActualizarUsuarioAdminInput) => Promise<void>;
   responderResenia: (
     id: string,
@@ -1189,10 +1179,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await api.post(`/api/alumno/clases/${claseId}/resenas`, { puntaje, comentario });
   }, []);
 
-  const eliminarResenia = useCallback(async (id: string) => {
-    await api.delete(`/api/alumno/resenas/${id}`);
-  }, []);
-
   const listarResenasActividad = useCallback(async (actividadId: string) => {
     return api.get<ReseniaActividad[]>(`/api/actividades/${actividadId}/resenas`);
   }, []);
@@ -1205,24 +1191,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return api.get<ReseniaInstructor[]>("/api/instructor/resenas");
   }, []);
 
-  const listarResenasPendientes = useCallback(async () => {
-    return api.get<ReseniaPendiente[]>("/api/admin/resenas");
-  }, []);
-
   const listarResenasPublicadas = useCallback(async () => {
     return api.get<ReseniaPublicada[]>("/api/admin/resenas/publicadas");
   }, []);
 
   const ocultarResenia = useCallback(async (id: string, motivo: string) => {
     await api.post(`/api/admin/resenas/${id}/ocultar`, { motivo });
-  }, []);
-
-  const aprobarResenia = useCallback(async (id: string) => {
-    await api.post(`/api/admin/resenas/${id}/aprobar`);
-  }, []);
-
-  const rechazarResenia = useCallback(async (id: string) => {
-    await api.post(`/api/admin/resenas/${id}/rechazar`);
   }, []);
 
   const crearDenuncia = useCallback(async (claseId: string, motivo: string) => {
@@ -1307,11 +1281,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     },
     [],
   );
-
-  // Edición real: antes "editar" era borrar y volver a crear en dos requests sin transacción.
-  const actualizarResenia = useCallback(async (id: string, puntaje: number, comentario: string) => {
-    await api.put(`/api/alumno/resenas/${id}`, { puntaje, comentario });
-  }, []);
 
   // RN-19: los permisos salen de ConfiguracionRol, no de una constante del componente.
   const listarRolesPermisos = useCallback(async () => {
@@ -1471,15 +1440,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
       subirFotoPerfil,
       subirFotoActividad,
       crearResenia,
-      eliminarResenia,
       listarResenasActividad,
       listarMisResenas,
       listarResenasInstructor,
-      listarResenasPendientes,
       listarResenasPublicadas,
       ocultarResenia,
-      aprobarResenia,
-      rechazarResenia,
       crearDenuncia,
       listarMisDenuncias,
       listarDenunciasAdmin,
@@ -1489,7 +1454,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       listarRecomendaciones,
       registrarInteraccion,
       generarInformeActividad,
-      actualizarResenia,
       actualizarUsuarioAdmin,
       responderResenia,
       denunciarResenia,
@@ -1569,15 +1533,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
       subirFotoPerfil,
       subirFotoActividad,
       crearResenia,
-      eliminarResenia,
       listarResenasActividad,
       listarMisResenas,
       listarResenasInstructor,
-      listarResenasPendientes,
       listarResenasPublicadas,
       ocultarResenia,
-      aprobarResenia,
-      rechazarResenia,
       crearDenuncia,
       listarMisDenuncias,
       listarDenunciasAdmin,
@@ -1587,7 +1547,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       listarRecomendaciones,
       registrarInteraccion,
       generarInformeActividad,
-      actualizarResenia,
       actualizarUsuarioAdmin,
       responderResenia,
       denunciarResenia,

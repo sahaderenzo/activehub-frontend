@@ -15,7 +15,6 @@ import type {
   DenunciaAdmin,
   InstructorAdmin,
   ReporteSoporteAdmin,
-  ReseniaPendiente,
   ReseniaPublicada,
   UsuarioAdmin,
   RolAdmin,
@@ -123,11 +122,8 @@ export default function AdminGestion() {
     listarInstructores,
     aprobarInstructor: aprobarInstructorReal,
     rechazarInstructor: rechazarInstructorReal,
-    listarResenasPendientes,
     listarResenasPublicadas,
     ocultarResenia,
-    aprobarResenia: aprobarReseniaReal,
-    rechazarResenia: rechazarReseniaReal,
     listarUsuariosAdmin,
     actualizarEstadoUsuario,
     actualizarUsuarioAdmin,
@@ -140,7 +136,6 @@ export default function AdminGestion() {
   const [queryActividades, setQueryActividades] = useState("");
   const [instructores, setInstructores] = useState<InstructorAdmin[]>([]);
   const [errorInstructores, setErrorInstructores] = useState<string | null>(null);
-  const [resenas, setResenas] = useState<ReseniaPendiente[]>([]);
   const [errorResenas, setErrorResenas] = useState<string | null>(null);
   const [denuncias, setDenuncias] = useState<DenunciaAdmin[]>([]);
   const [errorDenuncias, setErrorDenuncias] = useState<string | null>(null);
@@ -153,11 +148,10 @@ export default function AdminGestion() {
   /** Panel que explica qué hace cada resolución. Cerrado por defecto: se consulta una vez. */
   const [ayudaResoluciones, setAyudaResoluciones] = useState(false);
   /**
-   * Sub-pestaña de Reseñas. "Pendientes" es la cola de moderación de siempre; "Publicadas" es
-   * lo que este tramo agrega: una reseña impropia que se filtró en la moderación quedaba fuera
-   * del alcance del admin — el único camino para bajarla era que el instructor la denunciara.
+   * Las reseñas se publican al crearse: no hay cola de moderación. La pestaña lista lo ya
+   * publicado para que el admin pueda ocultar algo impropio sin esperar a que el instructor lo
+   * denuncie; las denunciadas se resuelven en "Reclamos".
    */
-  const [tabResenas, setTabResenas] = useState<"pendientes" | "publicadas">("pendientes");
   const [resenasPublicadas, setResenasPublicadas] = useState<ReseniaPublicada[]>([]);
   // Suspender ya no es un botón directo: pide plazo y monto (E4Ad-HU07).
   const [suspension, setSuspension] = useState<SuspensionEnCurso | null>(null);
@@ -182,7 +176,6 @@ export default function AdminGestion() {
   const marcarCargado = (t: Tab) => setTabsCargados((prev) => (prev.has(t) ? prev : new Set(prev).add(t)));
   // "actividades" sale del catálogo del Context, no de un loader propio de esta pantalla.
   const pagDenuncias = usePaginado(denuncias, POR_PAGINA);
-  const pagPendientes = usePaginado(resenas, POR_PAGINA);
   const pagPublicadas = usePaginado(resenasPublicadas, POR_PAGINA);
   const cargandoTab = tab === "actividades" ? cargandoCatalogo : !tabsCargados.has(tab);
 
@@ -206,9 +199,6 @@ export default function AdminGestion() {
   };
 
   const cargarResenas = () => {
-    listarResenasPendientes()
-      .then(setResenas)
-      .catch((err) => setErrorResenas(err instanceof ApiError ? err.message : "No pudimos cargar las reseñas."));
     listarResenasPublicadas()
       .then(setResenasPublicadas)
       .catch((err) =>
@@ -398,26 +388,6 @@ export default function AdminGestion() {
       cargarInstructores();
     } catch (err) {
       setErrorInstructores(err instanceof ApiError ? err.message : "No pudimos rechazar al instructor.");
-    }
-  };
-
-  const aprobarResenia = async (r: ReseniaPendiente) => {
-    setErrorResenas(null);
-    try {
-      await aprobarReseniaReal(r.id);
-      cargarResenas();
-    } catch (err) {
-      setErrorResenas(err instanceof ApiError ? err.message : "No pudimos aprobar la reseña.");
-    }
-  };
-
-  const rechazarResenia = async (r: ReseniaPendiente) => {
-    setErrorResenas(null);
-    try {
-      await rechazarReseniaReal(r.id);
-      cargarResenas();
-    } catch (err) {
-      setErrorResenas(err instanceof ApiError ? err.message : "No pudimos rechazar la reseña.");
     }
   };
 
@@ -941,32 +911,16 @@ export default function AdminGestion() {
                     <span style={s("font-size:13px;color:#BE3A3E;font-weight:600;")}>{errorResenas}</span>
                   </div>
                 )}
-                <div style={s("display:flex;gap:4px;padding:14px 22px 0;")}>
-                  {([
-                    { key: "pendientes", label: "Pendientes de moderación", n: resenas.length },
-                    { key: "publicadas", label: "Publicadas", n: resenasPublicadas.length },
-                  ] as const).map((t) => {
-                    const on = tabResenas === t.key;
-                    return (
-                      <span
-                        key={t.key}
-                        onClick={() => setTabResenas(t.key)}
-                        className="ah-btn"
-                        style={s(
-                          `display:flex;align-items:center;gap:7px;padding:10px 15px;cursor:pointer;font:700 13.5px Manrope,sans-serif;color:${on ? "#0E2A47" : "#90A1B2"};border-bottom:2.5px solid ${on ? "#FF6A2B" : "transparent"};`,
-                        )}
-                      >
-                        {t.label}
-                        <span
-                          style={s(
-                            `font:700 11px Manrope,sans-serif;background:${on ? "#FFE4D5" : "#EEF1F4"};color:${on ? "#FF6A2B" : "#7A8C9E"};border-radius:99px;padding:2px 8px;`,
-                          )}
-                        >
-                          {t.n}
-                        </span>
-                      </span>
-                    );
-                  })}
+                <div style={s("padding:16px 22px 12px;")}>
+                  <div style={s("display:flex;align-items:center;gap:8px;font:700 14.5px Manrope,sans-serif;color:#0E2A47;")}>
+                    Reseñas publicadas
+                    <span style={s("font:700 11px Manrope,sans-serif;background:#FFE4D5;color:#FF6A2B;border-radius:99px;padding:2px 8px;")}>
+                      {resenasPublicadas.length}
+                    </span>
+                  </div>
+                  <div style={s("font-size:12.5px;color:#7A8C9E;font-weight:600;margin-top:4px;")}>
+                    Las reseñas se publican en el momento en que el alumno las crea. Las que denuncia un instructor se resuelven en la pestaña "Reclamos".
+                  </div>
                 </div>
                 <div
                   style={s(
@@ -980,44 +934,7 @@ export default function AdminGestion() {
                   <span>Fecha</span>
                   <span>Acciones</span>
                 </div>
-                {tabResenas === "pendientes" &&
-                  pagPendientes.visibles.map((r) => (
-                  <div
-                    key={r.id}
-                    style={s("display:grid;grid-template-columns:1.2fr 1.2fr 80px 2fr 1fr 170px;padding:14px 22px;border-bottom:1px solid #F1F4F8;align-items:center;")}
-                  >
-                    <span style={s("font:700 13.5px Manrope,sans-serif;color:#0E2A47;")}>
-                      {r.alumno.nombre} {r.alumno.apellido}
-                    </span>
-                    <span style={s("font-size:13px;color:#65788C;font-weight:600;")}>{r.actividadNombre}</span>
-                    <span style={s("display:flex;align-items:center;gap:4px;font:700 13.5px Space Grotesk,sans-serif;color:#0E2A47;")}>
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="#FFC53D" stroke="none">
-                        <path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14l-5-4.87 6.91-1.01L12 2z" />
-                      </svg>
-                      {r.puntaje}
-                    </span>
-                    <span style={s("font-size:13px;color:#65788C;font-weight:600;")}>{r.comentario?.trim() ? r.comentario : "— sin comentario —"}</span>
-                    <span style={s("font-size:13px;color:#65788C;font-weight:600;")}>{formatFecha(r.createdAt)}</span>
-                    <div style={s("display:flex;gap:7px;")}>
-                      <button
-                        className="ah-btn"
-                        onClick={() => aprobarResenia(r)}
-                        style={s("background:#E7F8F5;border:none;border-radius:8px;padding:7px 12px;font:700 12px Manrope,sans-serif;color:#0C8576;cursor:pointer;")}
-                      >
-                        Aprobar
-                      </button>
-                      <button
-                        className="ah-btn"
-                        onClick={() => rechazarResenia(r)}
-                        style={s("background:#FBEAEB;border:none;border-radius:8px;padding:7px 12px;font:700 12px Manrope,sans-serif;color:#BE3A3E;cursor:pointer;")}
-                      >
-                        Rechazar
-                      </button>
-                    </div>
-                  </div>
-                ))}
-                {tabResenas === "publicadas" &&
-                  pagPublicadas.visibles.map((r) => (
+                {pagPublicadas.visibles.map((r) => (
                     <div
                       key={r.id}
                       style={s(
@@ -1067,16 +984,12 @@ export default function AdminGestion() {
                       </div>
                     </div>
                   ))}
-                {tabResenas === "publicadas" && resenasPublicadas.length === 0 && (
+                {resenasPublicadas.length === 0 && (
                   <div style={s("padding:40px 22px;text-align:center;color:#90A1B2;font:600 13.5px Manrope,sans-serif;")}>
                     Todavía no hay reseñas publicadas.
                   </div>
                 )}
-                {tabResenas === "pendientes" && resenas.length === 0 && (
-                  <div style={s("padding:40px 22px;text-align:center;color:#90A1B2;font:600 13.5px Manrope,sans-serif;")}>No hay reseñas pendientes de moderación.</div>
-                )}
-                {tabResenas === "pendientes" && <Paginacion {...pagPendientes} />}
-                {tabResenas === "publicadas" && <Paginacion {...pagPublicadas} />}
+                <Paginacion {...pagPublicadas} />
               </div>
             </div>
           )}

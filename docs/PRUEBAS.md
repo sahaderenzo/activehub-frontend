@@ -42,14 +42,29 @@ Las pruebas viven al lado del archivo que prueban, con la extensión `.test.ts` 
 | `lib/exportCsv.test.ts` | El BOM y el separador `;`, sin los cuales el CSV no abre bien en Excel en es-AR. |
 | `lib/exportPdf.test.ts` | Regresión: una celda `null` dejaba la pestaña del PDF en blanco (Trazabilidad). También que un armado fallido no abra ventana y que devuelva `false` con el pop-up bloqueado. |
 | `lib/geo.test.ts` | Distancias y su formato (metros debajo del kilómetro). |
+| `lib/distancia.test.ts` | El filtro de distancia por rango de Explorar: extremos incluidos, el tope como "sin límite", la barra completa no filtra, y la regresión del "A menos de 25 km" del Home que se ignoraba. |
+| `pages/alumno/Perfil.test.tsx` | El perfil del alumno sin "Historial de actividades", y la tarjeta "Información de salud": muestra lo informado, aclara quién lo usa y se edita y guarda (recortado). |
+| `pages/alumno/Home.test.tsx` | Los filtros rápidos del Home: quedan Categoría, Nivel y Precio (Tipo, Ubicación, Fecha y Horario se retiraron el 2026-10-24) y Precio ofrece montos redondos. Las secciones de actividades piden y muestran hasta 6 en una fila deslizable. |
+| `components/Carrusel.test.tsx` | La fila deslizable: todas las tarjetas en una región con nombre, flecha hacia adelante al principio (avanza de a una página), hacia atrás al final y ninguna si todo entra. Simula las medidas, que jsdom no calcula. |
+| `lib/precios.test.ts` | Los montos del filtro rápido "Precio": redondos, sólo los que separan el catálogo y hasta tres repartidos (regresión de "Hasta $9.500"). |
+| `pages/alumno/Detalle.test.tsx` | El detalle de una actividad: "Ver perfil" lleva al perfil público del instructor; no vuelve la sección fija de "Preguntas frecuentes" (retirada el 2026-10-24); las opiniones se muestran todas en una lista con scroll propio, se filtran por estrellas y se ordenan. |
+| `lib/opiniones.test.ts` | El filtro y los cuatro órdenes de las opiniones del detalle (a igual puntaje, la más reciente primero), sin modificar la lista recibida. |
+| `pages/alumno/PerfilInstructor.test.tsx` | El perfil público del instructor: datos calculados del catálogo (calificación promedio sin contar las actividades sin reseñas), que no se mezclen actividades de otro instructor, paginación de a 9, buscador sin tildes, filtros por categoría y nivel, orden por próxima clase y el caso sin actividades. |
+| `pages/alumno/Explorar.test.tsx` | Que no vuelva el filtro retirado "Solo con cupos". Regresión: elegir una fecha o una franja horaria filtra en el momento (faltaban en las dependencias del `useMemo`), y "Limpiar" las borra. El mock del contexto da funciones estables a propósito: con funciones nuevas en cada render la prueba no detectaba el bug. También la paginación: 12 por página y un filtro nuevo vuelve a la página 1. |
+| `pages/alumno/Favoritos.test.tsx` | Favoritos: 12 por página ordenadas por nombre, el buscador por actividad o instructor sin tildes (con el contador "de N"), los filtros por categoría y nivel, el mensaje sin coincidencias y que quitar un favorito no vuelva a la página 1. El mock de `useAuth` es estable a propósito: `cargar` depende de `currentUser`, y un objeto nuevo por render recargaba los favoritos y hacía reaparecer el quitado. |
+| `pages/alumno/MisClases.test.tsx` | Mis clases: 10 por página, la búsqueda sin tildes y los contadores de las pestañas que la siguen, "Desde"/"Hasta" por día local, "Próximas primero", y que desde una notificación (`?inscripcion=`) abra en la página que tiene la fila. |
+| `lib/paginado.test.ts` | `usePaginado`: recorta a la última página válida si la lista se achica, la clave de reinicio vuelve a la página 1 y la página preferida (la de una notificación) se muestra hasta que el usuario navega. |
+| `components/RangoDoble.test.tsx` | La barra de dos manijas: leyenda "De … hasta …", cada manija como control propio y que no se cruzan. |
 | `lib/style.test.ts` | El parseo de las declaraciones CSS y su caché por cadena. |
-| `lib/mockData.test.ts` | La regla de los 4 días (`tipoIngreso`), la disponibilidad de cupos y el formato de fecha y hora. |
+| `lib/mockData.test.ts` | La regla de los 4 días (`tipoIngreso`), la disponibilidad de cupos, el formato de fecha y hora, y la fecha del saludo del Home (`fechaSaludo`, regresión de "24 De Octubre"). |
 | `lib/manual.test.ts` | Las invariantes del Manual de usuario: ids únicos, ningún apartado vacío, negritas balanceadas, nada de HTML en el texto. |
 | `lib/perfil.test.ts` | "Terminá tu registro" alcanza sólo a las cuentas de Google. |
 | `lib/cargaParcial.test.ts` | Un 403 de un módulo secundario no tira la pantalla entera. |
 | `lib/status.test.ts`, `lib/nivelStyle.test.ts` | Los estados del dominio y los colores de nivel, incluido el neutro para los niveles que crea el admin. |
 | `pages/public/Ayuda.test.tsx` | Los controles que alguna vez estuvieron muertos: el buscador, las guías rápidas (con la regresión del `onToggle`), el reporte de soporte real (éxito, error del backend, error inesperado, con y sin sesión) y los enlaces `mailto:`/`tel:`. |
 | `pages/public/Manual.test.tsx` | El índice, el buscador sin tildes, el glosario como tabla, las negritas, el ancla de la URL y la impresión. |
+| `pages/alumno/MisResenas.test.tsx` | Regla de V33: una reseña publicada no ofrece "Editar" ni "Eliminar" ni dice "En moderación"; la oculta por un administrador lleva su chip; el modal avisa antes de publicar que después no se puede cambiar y publica con `crearResenia`. |
+| `pages/instructor/Resenas.test.tsx` | Regresión: la cantidad y el promedio de la actividad no cuentan las reseñas ocultas (antes ocultar una no cambiaba nada en la pantalla del instructor); la oculta se sigue listando con su etiqueta. |
 
 ## Criterio para agregar pruebas
 

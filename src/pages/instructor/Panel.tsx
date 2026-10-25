@@ -130,11 +130,13 @@ export default function InstructorPanel() {
       });
     }
 
-    const enModeracion = resenasInstructor.filter((r) => r.enModeracion).length;
-    if (enModeracion > 0) {
+    // Las reseñas se publican al crearse; lo único que queda "en revisión" es lo que el
+    // instructor denunció y la administración todavía no resolvió.
+    const denunciadas = resenasInstructor.filter((r) => r.denunciada).length;
+    if (denunciadas > 0) {
       list.push({
         dot: "#3A6FF0",
-        text: `Tenés ${enModeracion} reseña${enModeracion > 1 ? "s" : ""} en revisión.`,
+        text: `Tenés ${denunciadas} reseña${denunciadas > 1 ? "s" : ""} denunciada${denunciadas > 1 ? "s" : ""} en revisión.`,
       });
     }
 

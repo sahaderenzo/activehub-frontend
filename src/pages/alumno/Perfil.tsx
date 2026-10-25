@@ -2,20 +2,16 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import AlumnoNav from "../../components/AlumnoNav";
-import StatusBadge from "../../components/StatusBadge";
 import Avatar from "../../components/Avatar";
 import CambiarEmailCard from "../../components/CambiarEmailCard";
 import ErrorReintentar from "../../components/ErrorReintentar";
-import ActivityPhoto from "../../components/ActivityPhoto";
 import { s } from "../../lib/style";
 import Modal from "../../components/Modal";
 import { useAuth, passwordStrength } from "../../context/AuthContext";
 import { siPuede } from "../../lib/cargaParcial";
 import { ApiError } from "../../lib/api";
 import { useData } from "../../context/DataContext";
-import type { MiDenuncia, MiResenia, MiInscripcion } from "../../context/DataContext";
-import { formatFecha } from "../../lib/mockData";
-import { inscripcionStatusType } from "../../lib/status";
+import type { MiDenuncia, MiResenia } from "../../context/DataContext";
 
 
 
@@ -51,14 +47,14 @@ export default function AlumnoPerfil() {
   const [claseIdsInscriptoFinalizada, setClaseIdsInscriptoFinalizada] = useState<string[]>([]);
   const [misDenuncias, setMisDenuncias] = useState<MiDenuncia[]>([]);
   const [errorResumen, setErrorResumen] = useState(false);
-  const [misInscripciones, setMisInscripciones] = useState<MiInscripcion[]>([]);
 
   // Los tres accesos rápidos muestran contadores; si la carga falla, decían "0 hechas ·
   // 0 pendientes", que es información falsa, no un estado vacío.
   const cargarResumen = useCallback(() => {
     if (!currentUser) return;
-    // Sin filtro de estado: la misma consulta alimenta el historial (todas) y el contador de
-    // reseñas pendientes (solo las Inscripto ya finalizadas).
+    // Las inscripciones alimentan el contador de reseñas pendientes (solo las Inscripto ya
+    // finalizadas). El "Historial de actividades" que también salía de acá se retiró el
+    // 2026-10-24: repetía lo que "Mis clases" muestra completo.
     // Las tres consultas son de módulos distintos (`resenias.escribir`,
     // `inscripciones.gestionar`, `denuncias.crear`) y el Perfil lo ve cualquiera que haya
     // entrado al área: sin envolverlas, a un alumno con permisos parciales el Promise.all se
@@ -70,7 +66,6 @@ export default function AlumnoPerfil() {
     ])
       .then(([resenias, inscripcionesAlumno, denuncias]) => {
         setMisResenias(resenias);
-        setMisInscripciones(inscripcionesAlumno);
         setClaseIdsInscriptoFinalizada(
           inscripcionesAlumno
             .filter((i) => i.estado === "Inscripto" && i.claseEstado === "Finalizada")
@@ -130,14 +125,6 @@ export default function AlumnoPerfil() {
     }
     return [...grupos.values()].sort((a, b) => a.categoria.localeCompare(b.categoria));
   }, [data.tiposActividad, data.getCategoria, idsElegidos]);
-
-  // Las 4 últimas inscripciones del alumno, reales. Antes esto cruzaba el dataset mock
-  // (`data.inscripciones`) con la caché parcial `data.clases`, así que para una cuenta real
-  // el bloque estaba siempre vacío.
-  const historial = useMemo(
-    () => [...misInscripciones].sort((a, b) => b.claseFechaHora.localeCompare(a.claseFechaHora)).slice(0, 4),
-    [misInscripciones],
-  );
 
   const reseniasPendientes = useMemo(() => {
     const claseIdsReseñadas = new Set(misResenias.map((r) => r.claseId));
@@ -457,27 +444,9 @@ export default function AlumnoPerfil() {
           </div>
 
           <div style={s("display:flex;flex-direction:column;gap:20px;")}>
-            <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:18px;padding:24px;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
-              <div style={s("font:700 16px Space Grotesk,sans-serif;margin-bottom:16px;")}>Historial de actividades</div>
-              {historial.length === 0 ? (
-                <p style={s("font-size:13.5px;color:#9AAABA;font-weight:600;margin:0;")}>Todavía no tenés clases registradas.</p>
-              ) : (
-                <div style={s("display:flex;flex-direction:column;gap:13px;")}>
-                  {historial.map((i) => (
-                    <div key={i.id} style={s("display:flex;align-items:center;gap:12px;")}>
-                      <span style={s("width:36px;height:36px;border-radius:10px;background:#EEF4FB;flex:none;position:relative;overflow:hidden;display:block;")}>
-                        <ActivityPhoto actividadId={i.actividadId} />
-                      </span>
-                      <div style={s("flex:1;")}>
-                        <div style={s("font:700 14px Manrope,sans-serif;color:#0E2A47;")}>{i.actividadNombre}</div>
-                        <div style={s("font-size:12.5px;color:#90A1B2;font-weight:600;")}>{formatFecha(i.claseFechaHora)}</div>
-                      </div>
-                      <StatusBadge type={inscripcionStatusType(i.estado)} />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            {/* Lo que el alumno informó al registrarse en "¿Padecés alguna enfermedad o lesión?".
+                Antes no se podía ver ni cambiar después del alta (ver InformacionSaludCard). */}
+            <InformacionSaludCard />
 
             <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:18px;padding:24px;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
               <div style={s("font:700 16px Space Grotesk,sans-serif;margin-bottom:6px;")}>Notificaciones</div>
@@ -690,5 +659,106 @@ function Field({
         style={s("border:1px solid #E2E9F0;border-radius:10px;padding:10px 12px;font:600 14px Manrope,sans-serif;color:#0E2A47;")}
       />
     </label>
+  );
+}
+
+/**
+ * "Información de salud": ver y editar lo que se informó en el alta en "¿Padecés alguna
+ * enfermedad o lesión?" (`PUT /api/usuarios/me/salud`). El dato lo usa el "Asistente de
+ * beneficios y prevenciones" del detalle de cada actividad; no lo ven el instructor ni otros
+ * alumnos, y por eso el texto lo dice así.
+ */
+function InformacionSaludCard() {
+  const { currentUser, actualizarMiCondicionSalud } = useAuth();
+  const actual = currentUser?.perfilAlumno?.condicionSalud ?? "";
+  const [editando, setEditando] = useState(false);
+  const [texto, setTexto] = useState(actual);
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [ok, setOk] = useState<string | null>(null);
+
+  const abrir = () => {
+    setTexto(actual);
+    setError(null);
+    setOk(null);
+    setEditando(true);
+  };
+
+  const guardar = async () => {
+    setGuardando(true);
+    setError(null);
+    try {
+      await actualizarMiCondicionSalud(texto.trim());
+      setEditando(false);
+      setOk("Información de salud actualizada.");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos guardar tu información de salud.");
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:18px;padding:24px;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
+      <div style={s("display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px;")}>
+        <div style={s("font:700 16px Space Grotesk,sans-serif;")}>Información de salud</div>
+        {!editando && (
+          <button
+            className="ah-btn"
+            onClick={abrir}
+            style={s("background:#fff;border:1px solid #E2E9F0;border-radius:9px;padding:6px 12px;font:700 12.5px Manrope,sans-serif;color:#41566B;cursor:pointer;")}
+          >
+            Editar
+          </button>
+        )}
+      </div>
+      <p style={s("font-size:13px;color:#8194A8;margin:0 0 14px;")}>
+        Se usa para personalizar el informe de beneficios y prevenciones de cada actividad. No la ven los instructores ni otros alumnos.
+      </p>
+      {ok && <Aviso tono="ok" texto={ok} />}
+      {error && <Aviso tono="error" texto={error} />}
+      {editando ? (
+        <>
+          <label style={s("display:block;font:700 13px Manrope,sans-serif;color:#41566B;margin-bottom:7px;")} htmlFor="condicion-salud">
+            ¿Padecés alguna enfermedad o lesión?
+          </label>
+          <textarea
+            id="condicion-salud"
+            value={texto}
+            onChange={(e) => setTexto(e.target.value)}
+            placeholder="Ej: asma, lesión de rodilla, ninguna…"
+            maxLength={500}
+            style={s(
+              "width:100%;min-height:84px;border:1px solid #D9E1EA;border-radius:11px;padding:12px 14px;font:600 14px Manrope,sans-serif;color:#0E2A47;outline:none;resize:vertical;",
+            )}
+          />
+          <div style={s("display:flex;justify-content:space-between;align-items:center;margin-top:6px;gap:10px;")}>
+            <span style={s("font-size:12px;color:#9AAABA;font-weight:600;")}>{texto.length}/500 · Dejalo vacío si no tenés nada que informar.</span>
+          </div>
+          <div style={s("display:flex;gap:10px;margin-top:12px;")}>
+            <button
+              className="ah-btn"
+              onClick={() => setEditando(false)}
+              disabled={guardando}
+              style={s("background:#fff;border:1px solid #D6DEE7;border-radius:10px;padding:9px 16px;font:700 13px Manrope,sans-serif;color:#41566B;cursor:pointer;")}
+            >
+              Cancelar
+            </button>
+            <button
+              className="ah-btn"
+              onClick={guardar}
+              disabled={guardando}
+              style={s(`background:#12B5A5;border:none;border-radius:10px;padding:9px 16px;font:700 13px Manrope,sans-serif;color:#fff;cursor:pointer;opacity:${guardando ? ".7" : "1"};`)}
+            >
+              {guardando ? "Guardando…" : "Guardar"}
+            </button>
+          </div>
+        </>
+      ) : actual ? (
+        <p style={s("font-size:14px;line-height:1.55;color:#41566B;font-weight:600;margin:0;white-space:pre-wrap;")}>{actual}</p>
+      ) : (
+        <p style={s("font-size:13.5px;color:#9AAABA;font-weight:600;margin:0;")}>No informaste ninguna enfermedad ni lesión.</p>
+      )}
+    </div>
   );
 }

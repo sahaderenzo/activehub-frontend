@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Clase } from "./types";
-import { diasHastaClase, disponibilidad, formatFecha, formatHora, tipoIngreso } from "./mockData";
+import { diasHastaClase, disponibilidad, fechaSaludo, formatFecha, formatHora, tipoIngreso } from "./mockData";
 
 /**
  * Los helpers de `mockData.ts` son de **formato y de reglas**, no de datos: los usan todas las
@@ -78,5 +78,13 @@ describe("formatFecha y formatHora", () => {
     // que no puede cambiar es que la hora y los minutos vayan con dos dígitos.
     expect(formatHora(new Date(2026, 5, 23, 9, 5).toISOString())).toMatch(/^09:05/);
     expect(formatHora(new Date(2026, 5, 23, 18, 30).toISOString())).toMatch(/^(18|06):30/);
+  });
+});
+
+describe("fechaSaludo (saludo del Home)", () => {
+  /** Regresión: con text-transform:capitalize salía "Sábado, 24 De Octubre". */
+  it("sólo la primera letra va en mayúscula", () => {
+    expect(fechaSaludo(new Date(2026, 9, 24, 12, 0))).toBe("Sábado, 24 de octubre");
+    expect(fechaSaludo(new Date(2026, 0, 5, 12, 0))).toBe("Lunes, 5 de enero");
   });
 });

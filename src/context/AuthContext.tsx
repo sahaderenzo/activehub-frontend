@@ -172,6 +172,8 @@ interface UsuarioRespuesta {
   authProveedor?: "LOCAL" | "GOOGLE";
   /** Solo alumnos; para los otros roles viene vacía. Son TipoActividad, no texto (V19). */
   intereses?: InteresAlumno[];
+  /** Solo alumnos: "¿Padecés alguna enfermedad o lesión?" (null si no informó nada). */
+  condicionSalud?: string | null;
   /** Claves habilitadas para su rol (RN-19). El menú y las rutas se arman con esto. */
   permisos?: string[];
 }
@@ -233,6 +235,8 @@ interface AuthContextValue {
   actualizarMiPerfil: (input: ActualizarMiPerfilInput) => Promise<void>;
   /** Reemplaza la lista completa de intereses (ids de TipoActividad). */
   actualizarMisIntereses: (tiposActividadId: string[]) => Promise<void>;
+  /** "¿Padecés alguna enfermedad o lesión?". Vacío borra lo que había. */
+  actualizarMiCondicionSalud: (texto: string) => Promise<void>;
   cambiarMiContrasenia: (contraseniaActual: string, contraseniaNueva: string) => Promise<void>;
   darDeBajaMiCuenta: () => Promise<void>;
   reabrirSolicitud: () => Promise<void>;
@@ -329,7 +333,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Los intereses ya son reales (PUT /api/usuarios/me/intereses): antes salían del
         // store mock local y se perdían al cambiar de navegador.
         const perfilAlumno =
-          usuario.rol === "ALUMNO" ? { usuarioId: usuario.id, intereses: usuario.intereses ?? [] } : undefined;
+          usuario.rol === "ALUMNO"
+            ? { usuarioId: usuario.id, intereses: usuario.intereses ?? [], condicionSalud: usuario.condicionSalud ?? undefined }
+            : undefined;
         if (!cancelado) {
           setCurrentUser({ ...usuario, perfilAlumno, perfilInstructor });
           setPermisos(usuario.permisos ?? []);
@@ -397,7 +403,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const permisosDelRol = completo?.permisos ?? [];
     const perfilInstructor = await fetchPerfilInstructorSiCorresponde(usuario, permisosDelRol);
     const perfilAlumno =
-      usuario.rol === "ALUMNO" ? { usuarioId: usuario.id, intereses: completo?.intereses ?? [] } : undefined;
+      usuario.rol === "ALUMNO" ? { usuarioId: usuario.id, intereses: completo?.intereses ?? [], condicionSalud: completo?.condicionSalud ?? undefined } : undefined;
     // `permisos` viaja en la sesión devuelta para que quien llame (el login) pueda decidir
     // a qué área mandar al usuario sin esperar al próximo render del contexto.
     const sesion: SesionUsuario = { ...usuario, permisos: permisosDelRol, perfilAlumno, perfilInstructor };
@@ -439,7 +445,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const permisosDelRol = completo?.permisos ?? [];
     const perfilInstructor = await fetchPerfilInstructorSiCorresponde(usuario, permisosDelRol);
     const perfilAlumno =
-      usuario.rol === "ALUMNO" ? { usuarioId: usuario.id, intereses: completo?.intereses ?? [] } : undefined;
+      usuario.rol === "ALUMNO" ? { usuarioId: usuario.id, intereses: completo?.intereses ?? [], condicionSalud: completo?.condicionSalud ?? undefined } : undefined;
     const sesion: SesionUsuario = { ...usuario, permisos: permisosDelRol, perfilAlumno, perfilInstructor };
     setCurrentUser(sesion);
     setPermisos(permisosDelRol);
@@ -578,6 +584,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
+  // Mismo criterio que los intereses: el resultado se refleja en currentUser, de donde lee el
+  // Perfil. Antes este dato se cargaba sólo en el alta y no había forma de cambiarlo.
+  const actualizarMiCondicionSalud = useCallback(async (texto: string) => {
+    const r = await api.put<{ usuarioId: string; condicionSalud: string | null }>("/api/usuarios/me/salud", {
+      condicionSalud: texto,
+    });
+    setCurrentUser((prev) =>
+      prev
+        ? {
+            ...prev,
+            perfilAlumno: {
+              ...(prev.perfilAlumno ?? { usuarioId: prev.id, intereses: [] }),
+              condicionSalud: r.condicionSalud ?? undefined,
+            },
+          }
+        : prev,
+    );
+  }, []);
+
   const cambiarMiContrasenia = useCallback(async (contraseniaActual: string, contraseniaNueva: string) => {
     await api.post("/api/usuarios/me/password", { contraseniaActual, contraseniaNueva });
   }, []);
@@ -626,6 +651,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       updateUsuario,
       actualizarMiPerfil,
       actualizarMisIntereses,
+      actualizarMiCondicionSalud,
       cambiarMiContrasenia,
       darDeBajaMiCuenta,
       reabrirSolicitud,
@@ -653,6 +679,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       updateUsuario,
       actualizarMiPerfil,
       actualizarMisIntereses,
+      actualizarMiCondicionSalud,
       cambiarMiContrasenia,
       darDeBajaMiCuenta,
       reabrirSolicitud,

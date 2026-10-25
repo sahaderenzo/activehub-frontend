@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import AlumnoNav from "../../components/AlumnoNav";
 import ActivityCard from "../../components/ActivityCard";
@@ -8,37 +8,29 @@ import { incluye } from "../../lib/texto";
 import { useData } from "../../context/DataContext";
 import { haversineKm, useGeolocation } from "../../lib/geo";
 import ActivarUbicacion from "../../components/ActivarUbicacion";
+import Paginacion from "../../components/Paginacion";
+import { usePaginado } from "../../lib/paginado";
+import RangoDoble from "../../components/RangoDoble";
+import {
+  DISTANCIA_MAX_KM,
+  DISTANCIA_PASO_KM,
+  RANGO_COMPLETO,
+  dentroDelRangoDistancia,
+  filtroDistanciaActivo,
+  formatKmFiltro,
+  rangoHasta,
+} from "../../lib/distancia";
+import type { RangoDistancia } from "../../lib/distancia";
 import type { Actividad, Categoria, TipoActividad } from "../../lib/types";
+/** 4 filas de la grilla de 3 columnas. */
+const POR_PAGINA = 12;
+
 const SORTS = ["Relevancia", "Precio: menor", "Precio: mayor", "Mejor valoradas", "Cercanía"] as const;
 type Sort = (typeof SORTS)[number];
-
-const RADIOS = ["Cualquier distancia", "Menos de 2 km", "2 km", "5 km", "8 km", "10 km", "Más de 10 km"] as const;
-type Radio = (typeof RADIOS)[number];
 
 function distanciaKm(a: Actividad, userCoords: { lat: number; lng: number } | null): number | undefined {
   if (!userCoords || a.lat === undefined || a.lng === undefined) return undefined;
   return haversineKm(userCoords.lat, userCoords.lng, a.lat, a.lng);
-}
-
-function dentroDelRadio(distKm: number | undefined, radio: Radio): boolean {
-  if (radio === "Cualquier distancia") return true;
-  // Sin distancia calculable (sin permiso de ubicación, o la actividad no tiene
-  // coordenadas cargadas) no se puede afirmar que esté dentro de ningún radio.
-  if (distKm === undefined) return false;
-  switch (radio) {
-    case "Menos de 2 km":
-      return distKm < 2;
-    case "2 km":
-      return distKm <= 2;
-    case "5 km":
-      return distKm <= 5;
-    case "8 km":
-      return distKm <= 8;
-    case "10 km":
-      return distKm <= 10;
-    case "Más de 10 km":
-      return distKm > 10;
-  }
 }
 
 const GEO_TITLE = (status: string): string | undefined =>
@@ -114,7 +106,8 @@ interface ExplorarNavState {
   /** Nombre del nivel (E4Ad-HU05: ya no es una union fija). */
   nivel?: string;
   maxPrecio?: number;
-  radio?: string;
+  /** "Hasta X km" (filtros rápidos del Home): la manija máxima de la barra de distancia. */
+  distanciaMaxKm?: number;
   fecha?: string;
   franja?: string;
 }
@@ -133,9 +126,9 @@ export default function AlumnoExplorar() {
   // calcula de los precios reales en vez de un tope fijo, que quedaba
   // desactualizado apenas una actividad costaba más que ese tope.
   const [maxPrecio, setMaxPrecio] = useState<number | null>(null);
-  const [soloDisponibles, setSoloDisponibles] = useState(false);
   const [sort, setSort] = useState<Sort>("Relevancia");
-  const [radio, setRadio] = useState<Radio>("Cualquier distancia");
+  const [rangoDist, setRangoDist] = useState<RangoDistancia>(RANGO_COMPLETO);
+  const distanciaActiva = filtroDistanciaActivo(rangoDist);
   // Fecha y horario filtran sobre la próxima clase de cada actividad: son los dos filtros
   // rápidos que el Home ofrece y que acá no existían.
   const [fecha, setFecha] = useState("");
@@ -160,10 +153,10 @@ export default function AlumnoExplorar() {
     if (navState.franja && (FRANJAS as readonly string[]).includes(navState.franja)) {
       setFranja(navState.franja as Franja);
     }
-    if (navState.radio && (RADIOS as readonly string[]).includes(navState.radio)) {
-      const r = navState.radio as Radio;
-      setRadio(r);
-      if (r !== "Cualquier distancia") geolocation.request();
+    if (navState.distanciaMaxKm !== undefined) {
+      const r = rangoHasta(navState.distanciaMaxKm);
+      setRangoDist(r);
+      if (filtroDistanciaActivo(r)) geolocation.request();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.key]);
@@ -210,8 +203,9 @@ export default function AlumnoExplorar() {
     setTipoSel(new Set());
     setNivelSel(new Set());
     setMaxPrecio(null);
-    setSoloDisponibles(false);
-    setRadio("Cualquier distancia");
+    setRangoDist(RANGO_COMPLETO);
+    setFecha("");
+    setFranja("Cualquier horario");
     setSearch("");
   };
 
@@ -257,16 +251,12 @@ export default function AlumnoExplorar() {
       if (tipoSel.size > 0 && !tipoSel.has(a.tipoActividadId)) return false;
       if (nivelSel.size > 0 && !nivelSel.has(a.nivelIntensidad)) return false;
       if (maxPrecio !== null && a.precio > maxPrecio) return false;
-      if (!dentroDelRadio(distanciaKm(a, geolocation.coords), radio)) return false;
+      if (!dentroDelRangoDistancia(distanciaKm(a, geolocation.coords), rangoDist)) return false;
       if (fecha || franja !== "Cualquier horario") {
         // Sin próxima clase no hay ni fecha ni horario que puedan coincidir.
         if (!a.proximaClase) return false;
         if (fecha && diaLocal(a.proximaClase.fechaHora) !== fecha) return false;
         if (franja !== "Cualquier horario" && franjaDe(a.proximaClase.fechaHora) !== franja) return false;
-      }
-      if (soloDisponibles) {
-        const props = cardProps(a, getTipoActividad, getCategoria, instructorNombre, geolocation.coords);
-        if (props.disp.type === "sincupos") return false;
       }
       return true;
     });
@@ -289,29 +279,55 @@ export default function AlumnoExplorar() {
     tipoSel,
     nivelSel,
     maxPrecio,
-    radio,
-    soloDisponibles,
+    rangoDist,
+    // Fecha y horario faltaban: elegir una fecha o una franja no volvía a filtrar la lista
+    // hasta que se tocara otro filtro, y los resultados quedaban mostrando lo anterior.
+    fecha,
+    franja,
     sort,
     getTipoActividad,
-    getCategoria,
     instructorNombre,
     geolocation.coords,
   ]);
 
+  // Paginación (2026-10-24). La clave de reinicio es el resultado mismo (ids en orden): cualquier
+  // filtro, búsqueda u orden nuevo cambia la lista y vuelve a la página 1, sin tener que
+  // acordarse de reiniciar en cada uno de los controles.
+  const pag = usePaginado(filtered, POR_PAGINA, filtered.map((a) => a.id).join(","));
+  const resultadosRef = useRef<HTMLDivElement>(null);
+  const irAPagina = (n: number) => {
+    pag.irAPagina(n);
+    resultadosRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   return (
     <div className="ah-screen" style={s("min-height:100vh;background:#F4F7FA;")}>
       <AlumnoNav active="explorar" />
-      <div style={s("background:linear-gradient(135deg,#143A5E,#0E2A47);")}>
-        <div style={s("max-width:1240px;margin:0 auto;padding:34px 28px 30px;")}>
-          <h1 style={s("font:700 34px Space Grotesk,sans-serif;color:#fff;letter-spacing:-.8px;margin:0 0 8px;")}>
+      {/*
+        Banner con foto de fondo (`public/explorar-hero.webp`, 1024×434, 70 KB): ocupa todo el
+        ancho, encuadrada para que se vean el grupo entrenando y las pesas sobre el pasto, con
+        un velo de los azules de la marca más denso a la izquierda (`.ah-explorar-hero-velo` en
+        index.css). Decorativa: va como fondo CSS, no como <img>.
+      */}
+      <div style={s("background:#0E2A47;position:relative;overflow:hidden;")}>
+        <div
+          data-testid="explorar-hero-foto"
+          style={{
+            ...s("position:absolute;inset:0;background-size:cover;background-position:center 65%;background-repeat:no-repeat;pointer-events:none;"),
+            backgroundImage: "url(/explorar-hero.webp)",
+          }}
+        />
+        <div className="ah-explorar-hero-velo" style={s("position:absolute;inset:0;pointer-events:none;")} />
+        <div style={s("max-width:1240px;margin:0 auto;padding:34px 28px 30px;position:relative;")}>
+          <h1 style={s("font:700 34px Space Grotesk,sans-serif;color:#fff;letter-spacing:-.8px;margin:0 0 8px;text-shadow:0 2px 12px rgba(14,42,71,.35);")}>
             Explorar actividades
           </h1>
-          <p style={s("font-size:15.5px;color:#9DB3C9;max-width:560px;margin:0 0 20px;")}>
+          <p style={s("font-size:15.5px;color:#C3D2E0;max-width:560px;margin:0 0 20px;")}>
             Encontrá tu próxima actividad: filtrá por categoría, tipo, nivel de exigencia y precio.
           </p>
           <div
             style={s(
-              "background:#fff;border-radius:14px;padding:6px;display:flex;align-items:center;gap:8px;max-width:520px;",
+              "background:#fff;border-radius:14px;padding:6px;display:flex;align-items:center;gap:8px;max-width:520px;box-shadow:0 14px 30px rgba(0,0,0,.18);",
             )}
           >
             <div style={s("flex:1;display:flex;align-items:center;gap:10px;padding:8px 12px;")}>
@@ -453,49 +469,32 @@ export default function AlumnoExplorar() {
               );
             })}
           </div>
-          <div style={s("font:700 13px Manrope,sans-serif;color:#41566B;margin:22px 0 11px;")}>Disponibilidad</div>
-          <label
-            style={s("display:flex;align-items:center;gap:10px;font-size:14px;color:#41566B;font-weight:600;cursor:pointer;")}
-            onClick={() => setSoloDisponibles((v) => !v)}
-          >
-            <span
-              style={s(
-                `width:18px;height:18px;border-radius:5px;border:2px solid ${soloDisponibles ? "#12B5A5" : "#D6DEE7"};background:${soloDisponibles ? "#12B5A5" : "#fff"};display:flex;align-items:center;justify-content:center;flex:none;`,
-              )}
-            >
-              {soloDisponibles && (
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={3}>
-                  <path d="M20 6 9 17l-5-5" />
-                </svg>
-              )}
-            </span>
-            Solo con cupos
-          </label>
+          {/* "Disponibilidad · Solo con cupos" se retiró (2026-10-23): filtraba actividades mirando
+              sólo su próxima clase, así que una actividad sin clases pasaba como "con cupos" y
+              una con la próxima clase llena quedaba afuera aunque tuviera otras con lugar. Para
+              hacerlo bien hace falta que el catálogo del backend informe las clases con lugar. */}
           <div style={s("font:700 13px Manrope,sans-serif;color:#41566B;margin:22px 0 11px;")}>Distancia</div>
-          <div style={s("display:flex;flex-wrap:wrap;gap:7px;")}>
-            {RADIOS.map((opt) => {
-              const on = radio === opt;
-              return (
-                <span
-                  key={opt}
-                  className="ah-btn"
-                  title={opt !== "Cualquier distancia" ? GEO_TITLE(geolocation.status) : undefined}
-                  onClick={() => {
-                    setRadio(opt);
-                    if (opt !== "Cualquier distancia") geolocation.request();
-                  }}
-                  style={s(
-                    `cursor:pointer;padding:6px 12px;border-radius:99px;font:700 12.5px Manrope,sans-serif;background:${on ? "#0E2A47" : "#F2F5F9"};color:${on ? "#fff" : "#41566B"};border:1px solid ${on ? "#0E2A47" : "#E2E9F0"};`,
-                  )}
-                >
-                  {opt}
-                </span>
-              );
-            })}
+          <div title={distanciaActiva ? GEO_TITLE(geolocation.status) : undefined}>
+            <RangoDoble
+              min={0}
+              max={DISTANCIA_MAX_KM}
+              step={DISTANCIA_PASO_KM}
+              desde={rangoDist.minKm}
+              hasta={rangoDist.maxKm}
+              formato={formatKmFiltro}
+              etiquetaDesde="Distancia mínima"
+              etiquetaHasta="Distancia máxima"
+              onChange={(minKm, maxKm) => {
+                const r = { minKm, maxKm };
+                setRangoDist(r);
+                // La ubicación se pide recién cuando el rango empieza a filtrar.
+                if (filtroDistanciaActivo(r)) geolocation.request();
+              }}
+            />
           </div>
         </aside>
 
-        <div>
+        <div ref={resultadosRef} style={s("scroll-margin-top:90px;")}>
           <div style={s("display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:12px;")}>
             <span style={s("font-size:14.5px;color:#65788C;font-weight:600;")}>
               <strong style={s("color:#0E2A47;")}>{filtered.length} actividades</strong> encontradas
@@ -524,7 +523,7 @@ export default function AlumnoExplorar() {
               </div>
             </div>
           </div>
-          {sort === "Cercanía" && radio === "Cualquier distancia" && geolocation.status === "denied" && (
+          {sort === "Cercanía" && !distanciaActiva && geolocation.status === "denied" && (
             <div style={s("margin-bottom:16px;")}>
               <ActivarUbicacion geolocation={geolocation} para="ordenar las actividades por cercanía" variante="linea" />
             </div>
@@ -542,7 +541,7 @@ export default function AlumnoExplorar() {
               {/* Si hay un filtro de distancia activo pero no tenemos la ubicación, el
                   resultado vacío no es "no hay actividades": es que no se puede calcular
                   la distancia. Decirlo evita que el alumno crea que no hay oferta. */}
-              {radio !== "Cualquier distancia" && !geolocation.coords ? (
+              {distanciaActiva && !geolocation.coords ? (
                 <>
                   <div style={s("margin-bottom:12px;")}>
                     Para filtrar por distancia necesitamos tu ubicación, y todavía no la tenemos.
@@ -554,7 +553,7 @@ export default function AlumnoExplorar() {
                   )}
                   <button
                     className="ah-btn"
-                    onClick={() => setRadio("Cualquier distancia")}
+                    onClick={() => setRangoDist(RANGO_COMPLETO)}
                     style={s(
                       "background:#fff;border:1px solid #D6DEE7;border-radius:10px;padding:9px 16px;font:700 13px Manrope;color:#41566B;cursor:pointer;",
                     )}
@@ -567,11 +566,14 @@ export default function AlumnoExplorar() {
               )}
             </div>
           ) : (
-            <div className="ah-grid-3" style={s("display:grid;grid-template-columns:repeat(3,1fr);gap:20px;")}>
-              {filtered.map((a) => (
-                <ActivityCard key={a.id} {...cardProps(a, getTipoActividad, getCategoria, instructorNombre, geolocation.coords)} />
-              ))}
-            </div>
+            <>
+              <div className="ah-grid-3" style={s("display:grid;grid-template-columns:repeat(3,1fr);gap:20px;")}>
+                {pag.visibles.map((a) => (
+                  <ActivityCard key={a.id} {...cardProps(a, getTipoActividad, getCategoria, instructorNombre, geolocation.coords)} />
+                ))}
+              </div>
+              <Paginacion paginaActual={pag.paginaActual} totalPaginas={pag.totalPaginas} irAPagina={irAPagina} />
+            </>
           )}
         </div>
       </div>

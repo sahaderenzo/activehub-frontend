@@ -108,6 +108,176 @@ body {
   border: 3px solid #f4f7fa;
 }
 
+/* ===== Velo sobre la foto del buscador del Home (alumno/Home.tsx) =====
+   Los azules de la marca, densos a la izquierda (fecha, saludo y buscador) y casi
+   transparentes a la derecha, donde están las personas y el sol. En pantallas angostas el
+   texto ocupa todo el ancho, así que el velo pasa a ser parejo para que se siga leyendo. */
+.ah-home-hero-velo {
+  background: linear-gradient(
+    90deg,
+    rgba(14, 42, 71, 0.95) 0%,
+    rgba(14, 42, 71, 0.86) 34%,
+    rgba(20, 58, 94, 0.5) 62%,
+    rgba(20, 58, 94, 0.18) 100%
+  );
+}
+@media (max-width: 820px) {
+  .ah-home-hero-velo {
+    background: linear-gradient(180deg, rgba(14, 42, 71, 0.84) 0%, rgba(14, 42, 71, 0.7) 100%);
+  }
+}
+
+/* ===== Velo sobre la foto del banner de Explorar (alumno/Explorar.tsx) =====
+   Mismo criterio que el del Home: denso a la izquierda, donde están el título y el buscador,
+   y más liviano a la derecha para que se vean el grupo y las pesas. El banner ocupa todo el
+   ancho, así que en pantallas grandes la zona clara queda lejos del texto. En celular, parejo. */
+.ah-explorar-hero-velo {
+  background: linear-gradient(
+    90deg,
+    rgba(14, 42, 71, 0.94) 0%,
+    rgba(14, 42, 71, 0.82) 38%,
+    rgba(20, 58, 94, 0.45) 70%,
+    rgba(20, 58, 94, 0.25) 100%
+  );
+}
+@media (max-width: 820px) {
+  .ah-explorar-hero-velo {
+    background: linear-gradient(180deg, rgba(14, 42, 71, 0.84) 0%, rgba(14, 42, 71, 0.72) 100%);
+  }
+}
+
+/* ===== Buscador del Home en pantallas angostas (alumno/Home.tsx) =====
+   En una sola fila el campo de texto quedaba reducido a una letra y "Buscar" se salía del
+   recuadro blanco. Por debajo de 560 px: el recuadro achica su relleno, el texto ocupa una
+   fila completa y debajo van "Cerca tuyo · 5 km" y "Buscar" lado a lado, separados por una
+   línea horizontal en lugar de la vertical. */
+@media (max-width: 560px) {
+  .ah-home-hero {
+    padding: 24px 18px !important;
+  }
+  .ah-buscador {
+    flex-wrap: wrap;
+  }
+  .ah-buscador-texto {
+    flex: 1 1 100% !important;
+    border-bottom: 1px solid #e7edf3;
+  }
+  .ah-buscador-separador {
+    display: none;
+  }
+}
+
+/* ===== Fila deslizable de tarjetas (components/Carrusel.tsx) =====
+   3 tarjetas visibles en escritorio (dos huecos de 20 px); el resto se recorre con las
+   flechas, el trackpad o el teclado. Scroll-snap para que siempre quede una tarjeta alineada
+   al borde. La barra de scroll se oculta: las flechas ya indican que hay más. En pantallas
+   angostas se ve una tarjeta y se asoma la siguiente, y las flechas se ocultan (se desliza). */
+.ah-carrusel {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: calc((100% - 40px) / 3);
+  gap: 20px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+  padding-bottom: 4px;
+}
+.ah-carrusel::-webkit-scrollbar {
+  display: none;
+}
+.ah-carrusel:focus-visible {
+  outline: 2px solid #2b95d6;
+  outline-offset: 4px;
+  border-radius: 12px;
+}
+.ah-carrusel-item {
+  scroll-snap-align: start;
+  min-width: 0;
+}
+@media (max-width: 820px) {
+  .ah-carrusel {
+    grid-auto-columns: 78%;
+    gap: 14px;
+  }
+  .ah-carrusel-flecha {
+    display: none !important;
+  }
+}
+
+/* ===== Contenedor con scroll propio (p. ej. las opiniones del detalle de una actividad) =====
+   La barra se ve siempre que haya más contenido (Chrome/Edge toman el estilo global de
+   ::-webkit-scrollbar; Firefox, scrollbar-color), y el gutter estable evita que el contenido
+   salte de ancho cuando aparece. */
+.ah-scroll {
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: #c3cfdb transparent;
+  overscroll-behavior: contain;
+}
+.ah-scroll::-webkit-scrollbar-thumb {
+  background: #c3cfdb;
+  border-color: #fff;
+}
+
+/* ===== Barra de rango con dos manijas (components/RangoDoble.tsx) =====
+   Dos <input type="range"> superpuestos sobre la misma pista. Los inputs no reciben clicks
+   (pointer-events:none) y sus manijas sí: así cada manija se arrastra por separado. La pista y
+   el tramo elegido los dibuja el componente; acá sólo se esconde la pista nativa y se dan
+   forma a las manijas, que no se pueden estilar en línea. */
+.ah-rango input[type="range"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: none;
+  pointer-events: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.ah-rango input[type="range"]::-webkit-slider-runnable-track {
+  background: transparent;
+  border: none;
+}
+.ah-rango input[type="range"]::-moz-range-track {
+  background: transparent;
+  border: none;
+}
+.ah-rango input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  pointer-events: auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  background: #fff;
+  border: 1px solid #d6dee7;
+  box-shadow: 0 1px 3px rgba(14, 42, 71, 0.18);
+  cursor: grab;
+}
+.ah-rango input[type="range"]::-moz-range-thumb {
+  pointer-events: auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: #fff;
+  border: 1px solid #d6dee7;
+  box-shadow: 0 1px 3px rgba(14, 42, 71, 0.18);
+  cursor: grab;
+}
+.ah-rango input[type="range"]:active::-webkit-slider-thumb {
+  cursor: grabbing;
+}
+.ah-rango input[type="range"]:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid #2b95d6;
+  outline-offset: 2px;
+}
+.ah-rango input[type="range"]:focus-visible::-moz-range-thumb {
+  outline: 2px solid #2b95d6;
+  outline-offset: 2px;
+}
+
 /* ===== Responsive pass (desktop-first -> tablet/mobile) ===== */
 @media (max-width: 1024px) {
   .ah-grid-5,

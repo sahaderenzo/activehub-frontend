@@ -186,7 +186,6 @@ export interface Resenia {
   puntaje: number;
   /** Opcional: una reseña puede ser solo estrellas. */
   comentario: string | null;
-  enModeracion: boolean;
   createdAt: string;
 }
 

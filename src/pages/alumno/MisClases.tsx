@@ -3,6 +3,9 @@ import { useNavigate } from "react-router-dom";
 import AlumnoNav from "../../components/AlumnoNav";
 import StatusBadge from "../../components/StatusBadge";
 import { CargandoAccion, CargandoSeccion } from "../../components/Cargando";
+import Paginacion from "../../components/Paginacion";
+import { usePaginado } from "../../lib/paginado";
+import { incluye } from "../../lib/texto";
 import { s } from "../../lib/style";
 import { ESTILO_RESALTE, useResaltado } from "../../lib/resaltado";
 import { useAhora } from "../../lib/ahora";
@@ -18,6 +21,18 @@ import type { EstadoClase, EstadoInscripcion } from "../../lib/types";
 const HORAS_PARA_DENUNCIAR = 24;
 
 type TabKey = EstadoInscripcion | "todas" | "finalizadas";
+
+/** Filas por página de cada pestaña. */
+const POR_PAGINA = 10;
+
+const ORDENES = ["Más recientes primero", "Próximas primero"] as const;
+type Orden = (typeof ORDENES)[number];
+
+/** `YYYY-MM-DD` local, para comparar contra los `<input type="date">` sin que UTC corra el día. */
+function diaLocal(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "todas", label: "Todas" },
@@ -55,6 +70,12 @@ export default function AlumnoMisClases() {
   // nada"). No es un vacío, es que todavía no llegó.
   const [cargando, setCargando] = useState(true);
   const [cancelando, setCancelando] = useState(false);
+  // Filtros (2026-10-24): aplican a la pestaña que se esté viendo, y los contadores de las
+  // pestañas se calculan con ellos para que el número coincida con lo que se ve.
+  const [busqueda, setBusqueda] = useState("");
+  const [desde, setDesde] = useState("");
+  const [hasta, setHasta] = useState("");
+  const [orden, setOrden] = useState<Orden>("Más recientes primero");
 
   const cargar = () => {
     listarMisInscripciones()
@@ -82,26 +103,65 @@ export default function AlumnoMisClases() {
   // historia: cuenta para "Finalizadas", no para "Inscripto".
   const esInscriptoVigente = (r: MiInscripcion) => r.estado === "Inscripto" && r.claseEstado !== "Finalizada";
 
+  const hayFiltros = busqueda.trim() !== "" || desde !== "" || hasta !== "";
+
+  // Las inscripciones que pasan los filtros, en el orden elegido. "Próximas primero": las
+  // clases que todavía no empezaron, de la más cercana a la más lejana, y después las pasadas,
+  // de la más reciente a la más vieja.
+  const filtradas = useMemo(() => {
+    const term = busqueda.trim();
+    const lista = todasFilas.filter((r) => {
+      if (term && !incluye(r.actividadNombre, term)) return false;
+      const dia = diaLocal(r.claseFechaHora);
+      if (desde && dia < desde) return false;
+      if (hasta && dia > hasta) return false;
+      return true;
+    });
+    if (orden === "Más recientes primero") return lista; // ya vienen así del cargar()
+    const futuras = lista.filter((r) => new Date(r.claseFechaHora).getTime() >= ahora).reverse();
+    const pasadas = lista.filter((r) => new Date(r.claseFechaHora).getTime() < ahora);
+    return [...futuras, ...pasadas];
+  }, [todasFilas, busqueda, desde, hasta, orden, ahora]);
+
   const counts = useMemo(() => {
     const c: Record<string, number> = {
-      todas: todasFilas.length,
-      finalizadas: todasFilas.filter((r) => r.claseEstado === "Finalizada").length,
+      todas: filtradas.length,
+      finalizadas: filtradas.filter((r) => r.claseEstado === "Finalizada").length,
     };
-    for (const r of todasFilas) {
+    for (const r of filtradas) {
       if (r.estado === "Inscripto" && !esInscriptoVigente(r)) continue;
       c[r.estado] = (c[r.estado] ?? 0) + 1;
     }
     return c;
-  }, [todasFilas]);
+  }, [filtradas]);
 
   const filas =
     tab === "todas"
-      ? todasFilas
+      ? filtradas
       : tab === "finalizadas"
-        ? todasFilas.filter((r) => r.claseEstado === "Finalizada")
+        ? filtradas.filter((r) => r.claseEstado === "Finalizada")
         : tab === "Inscripto"
-          ? todasFilas.filter(esInscriptoVigente)
-          : todasFilas.filter((r) => r.estado === tab);
+          ? filtradas.filter(esInscriptoVigente)
+          : filtradas.filter((r) => r.estado === tab);
+
+  // Si se llegó desde una notificación, arranca en la página donde está la fila buscada: si
+  // no, con la paginación podía quedar en otra página y el resaltado no se veía.
+  const indiceBuscado = filas.findIndex(
+    (r) => (resaltadoInscripcion.id !== null && r.id === resaltadoInscripcion.id)
+      || (resaltadoClase.id !== null && r.claseId === resaltadoClase.id),
+  );
+  const pag = usePaginado(
+    filas,
+    POR_PAGINA,
+    [tab, busqueda.trim(), desde, hasta, orden].join("|"),
+    indiceBuscado >= 0 ? Math.floor(indiceBuscado / POR_PAGINA) + 1 : undefined,
+  );
+
+  const limpiarFiltros = () => {
+    setBusqueda("");
+    setDesde("");
+    setHasta("");
+  };
 
   const reportarInasistencia = (r: MiInscripcion) => {
     if (!currentUser) return;
@@ -140,7 +200,7 @@ export default function AlumnoMisClases() {
             mirando la clase que terminó. El botón aparece sólo si hay finalizadas y si el rol
             tiene el permiso de reseñas — el módulo se puede quitar (RN-19).
           */}
-          {puedeResenar && counts.finalizadas > 0 && (
+          {puedeResenar && todasFilas.some((r) => r.claseEstado === "Finalizada") && (
             <button
               className="ah-btn"
               onClick={() => navigate("/alumno/mis-resenas")}
@@ -189,6 +249,62 @@ export default function AlumnoMisClases() {
           })}
         </div>
 
+        <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:16px;padding:14px 16px;margin-bottom:18px;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;")}>
+          <div style={s("flex:1;min-width:200px;")}>
+            <label htmlFor="mc-busqueda" style={s("display:block;font:700 12px Manrope,sans-serif;color:#41566B;margin-bottom:5px;")}>Actividad</label>
+            <input
+              id="mc-busqueda"
+              type="search"
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              placeholder="Buscar por actividad…"
+              style={s("width:100%;border:1px solid #E2E9F0;border-radius:10px;padding:9px 12px;font:600 13.5px Manrope,sans-serif;color:#0E2A47;")}
+            />
+          </div>
+          <div>
+            <label htmlFor="mc-desde" style={s("display:block;font:700 12px Manrope,sans-serif;color:#41566B;margin-bottom:5px;")}>Desde</label>
+            <input
+              id="mc-desde"
+              type="date"
+              value={desde}
+              max={hasta || undefined}
+              onChange={(e) => setDesde(e.target.value)}
+              style={s("border:1px solid #E2E9F0;border-radius:10px;padding:8px 10px;font:600 13px Manrope,sans-serif;color:#41566B;")}
+            />
+          </div>
+          <div>
+            <label htmlFor="mc-hasta" style={s("display:block;font:700 12px Manrope,sans-serif;color:#41566B;margin-bottom:5px;")}>Hasta</label>
+            <input
+              id="mc-hasta"
+              type="date"
+              value={hasta}
+              min={desde || undefined}
+              onChange={(e) => setHasta(e.target.value)}
+              style={s("border:1px solid #E2E9F0;border-radius:10px;padding:8px 10px;font:600 13px Manrope,sans-serif;color:#41566B;")}
+            />
+          </div>
+          <div>
+            <label htmlFor="mc-orden" style={s("display:block;font:700 12px Manrope,sans-serif;color:#41566B;margin-bottom:5px;")}>Ordenar por</label>
+            <select
+              id="mc-orden"
+              value={orden}
+              onChange={(e) => setOrden(e.target.value as Orden)}
+              style={s("border:1px solid #E2E9F0;border-radius:10px;padding:8px 10px;font:700 13px Manrope,sans-serif;color:#0E2A47;background:#fff;")}
+            >
+              {ORDENES.map((o) => (
+                <option key={o} value={o}>
+                  {o}
+                </option>
+              ))}
+            </select>
+          </div>
+          {hayFiltros && (
+            <span className="ah-link" onClick={limpiarFiltros} style={s("font-size:13px;font-weight:700;color:#12B5A5;cursor:pointer;padding-bottom:9px;")}>
+              Limpiar filtros
+            </span>
+          )}
+        </div>
+
         {error && (
           <div
             style={s(
@@ -201,11 +317,12 @@ export default function AlumnoMisClases() {
 
         {filas.length === 0 ? (
           <div style={s("background:#fff;border:1px dashed #D6DEE7;border-radius:16px;padding:50px 20px;text-align:center;color:#7A8C9E;font-weight:600;")}>
-            No hay clases en esta categoría.
+            {hayFiltros ? "Ninguna clase de esta categoría coincide con los filtros." : "No hay clases en esta categoría."}
           </div>
         ) : (
+          <>
           <div style={s("display:flex;flex-direction:column;gap:14px;")}>
-            {filas.map((r) => {
+            {pag.visibles.map((r) => {
               const actividad = getActividad(r.actividadId);
               const tipo = actividad ? getTipoActividad(actividad.tipoActividadId) : undefined;
               const cat = tipo ? getCategoria(tipo.categoriaId) : undefined;
@@ -349,6 +466,8 @@ export default function AlumnoMisClases() {
               );
             })}
           </div>
+          <Paginacion paginaActual={pag.paginaActual} totalPaginas={pag.totalPaginas} irAPagina={pag.irAPagina} />
+          </>
         )}
           </>
         )}

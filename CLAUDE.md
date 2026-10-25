@@ -24,7 +24,7 @@ SPA de ActiveHub para los 3 roles (Alumno, Instructor, Administrador). React 19 
 
 ## Pruebas automatizadas: existen, y una regresión reportada se cubre con una prueba
 
-Hasta este tramo el frontend **no tenía ninguna** (el backend sí: 842). Hoy hay **Vitest + jsdom + Testing Library**, 22 archivos y 174 pruebas (al 2026-10-17). El detalle —qué cubre cada archivo, con qué criterio se agrega una prueba y qué falta— está en **`docs/PRUEBAS.md`**; acá va sólo lo que hay que saber antes de escribir código.
+Hasta este tramo el frontend **no tenía ninguna** (el backend sí: 842). Hoy hay **Vitest + jsdom + Testing Library**, 36 archivos y 239 pruebas (al 2026-10-24). El detalle —qué cubre cada archivo, con qué criterio se agrega una prueba y qué falta— está en **`docs/PRUEBAS.md`**; acá va sólo lo que hay que saber antes de escribir código.
 
 - **Comandos**: `npm test` (una corrida, es lo que corre CI), `npm run test:watch`, `npm run test:coverage`, `npm run typecheck`.
 - **Dónde va cada prueba**: al lado del archivo que prueba, `algo.test.ts` / `algo.test.tsx`. No hay carpeta `__tests__`.
@@ -38,7 +38,7 @@ Hasta este tramo el frontend **no tenía ninguna** (el backend sí: 842). Hoy ha
 
 En cada push y cada Pull Request sobre `integracion` y `main` corren, en este orden y los cuatro bloqueantes: **ESLint → `tsc -b` → `npm test` → `npm run build`**. Primero lo que falla en segundos, al final lo que tarda.
 
-Las **advertencias** de ESLint no hacen fallar el trabajo; los errores sí. Hoy hay 11 advertencias, todas de `react-hooks/exhaustive-deps` y todas preexistentes: poner `--max-warnings 0` ahora dejaría la rama en rojo permanente y el chequeo se dejaría de mirar. Se agrega cuando esas 11 estén resueltas, no antes.
+Las **advertencias** de ESLint no hacen fallar el trabajo; los errores sí. Hoy hay 10 advertencias (eran 11; el 2026-10-23 se corrigió la de la lista filtrada de Explorar, que era un bug real), todas de `react-hooks/exhaustive-deps` y todas preexistentes: poner `--max-warnings 0` ahora dejaría la rama en rojo permanente y el chequeo se dejaría de mirar. Se agrega cuando esas 11 estén resueltas, no antes.
 
 ## Pagos con Mercado Pago
 
@@ -80,12 +80,12 @@ Dos cálculos que estaban mal y quedaron alineados: la columna "Ingresos" de la 
 
 ## Cuenta propia: perfil, contraseña, baja, pagos, reseñas y "volver a postularme"
 
-Estas cuatro funciones viven en **`AuthContext`** (no en `DataContext`) porque el resultado tiene que reflejarse en `currentUser`, que es de donde leen todas las pantallas: `actualizarMiPerfil(input)`, `cambiarMiContrasenia(actual, nueva)`, `darDeBajaMiCuenta()` (limpia el token y la sesión) y `reabrirSolicitud()`. Las otras tres son de `DataContext`: `listarMisPagos()`, `actualizarResenia(id, puntaje, comentario)` y `actualizarUsuarioAdmin(id, input)`.
+Estas cuatro funciones viven en **`AuthContext`** (no en `DataContext`) porque el resultado tiene que reflejarse en `currentUser`, que es de donde leen todas las pantallas: `actualizarMiPerfil(input)`, `cambiarMiContrasenia(actual, nueva)`, `darDeBajaMiCuenta()` (limpia el token y la sesión) y `reabrirSolicitud()`. Las otras son de `DataContext`: `listarMisPagos()` y `actualizarUsuarioAdmin(id, input)` (`actualizarResenia` se retiró en V33: una reseña publicada no se edita).
 
 Quién usa qué:
-- `alumno/Perfil.tsx` — edición real de los datos (incluye el campo **Email**, que antes ni se mostraba en modo edición) + tarjeta "Seguridad de la cuenta" con cambio de contraseña y baja.
+- `alumno/Perfil.tsx` — edición real de los datos (incluye el campo **Email**, que antes ni se mostraba en modo edición) + tarjeta "Seguridad de la cuenta" con cambio de contraseña y baja. **Desde el 2026-10-24:** sin "Historial de actividades" (repetía "Mis clases") y con la tarjeta **"Información de salud"** (`InformacionSaludCard`, en el mismo archivo): muestra y edita "¿Padecés alguna enfermedad o lesión?" vía `actualizarMiCondicionSalud` de `AuthContext` (`PUT /api/usuarios/me/salud`), que actualiza `currentUser.perfilAlumno.condicionSalud`. El dato llega en `/api/auth/me`. El texto de la tarjeta y el del registro dicen para qué se usa (el informe de beneficios) y que **no lo ve el instructor**: antes el registro decía "Ayuda al instructor a dar la clase de forma segura", y era falso. Lo cubre `Perfil.test.tsx`.
 - `alumno/MisPagos.tsx` — ahora usa `listarMisPagos()` (`GET /api/alumno/pagos`) en vez de derivarlo de `listarMisInscripciones`: **un pago sobrevive a su inscripción** (reintegro por cancelación, liberación post-clase) y esa lista lo perdía. Suma un KPI "Reintegrado" y el botón "Reintentar".
-- `alumno/MisResenas.tsx` — editar es un `PUT`, no un borrar+crear. Antes, si la creación fallaba después del borrado, la reseña original quedaba perdida sin nada que la reemplazara. El modal avisa que al editar vuelve a moderación, y eliminar pide confirmación.
+- `alumno/MisResenas.tsx` — **sólo crea**: desde V33 del backend una reseña publicada no se edita ni se elimina (ver "Reseñas: se publican al crearse y no se tocan"). Los botones "Editar" y "Eliminar", el modal de edición y `actualizarResenia`/`eliminarResenia` del `DataContext` se retiraron.
 - `instructor/Solicitud.tsx` — "Editar mis datos" ya no es un botón muerto, y "Volver a postularme" llama al backend (antes solo parcheaba el directorio mock, así que al recargar la solicitud volvía a aparecer rechazada).
 - `admin/Gestion.tsx` — botón "Editar" por fila de usuario, con modal (nombre, apellido, email, teléfono).
 
@@ -103,13 +103,57 @@ Cinco cosas cambiaron de forma y rompen cualquier código viejo que las asuma:
 4. **El login usa `identificador`, no `email`.** Acepta correo **o DNI** (`AuthContext.login(identificador, password)`), y el input de `Login.tsx` es `type="text"` a propósito: con `type="email"` el navegador rechazaba un DNI válido antes de enviar. El registro tiene campo DNI opcional (7-8 dígitos).
 5. **`DenunciaAdmin.alumno` puede ser `null`.** Desde que el instructor puede denunciar una reseña, la denuncia no tiene alumno: usá **`denunciante`** para "quién reportó" (ya pasó en `Auditoria.tsx`). El tab Reclamos de `Gestion.tsx` ofrece acciones distintas según `tipo` (`ACCIONES_POR_TIPO`) — antes el único botón era "Reintegrar" y las otras tres acciones que el backend soporta no tenían forma de dispararse.
 
-## Reseñas del instructor: "en moderación" y "denunciada" no son lo mismo
+## Reseñas: se publican al crearse y no se tocan (V33 del backend)
 
-`enModeracion` = el admin todavía no la aprobó. `denunciada` = el instructor la reportó. La pantalla pintaba **toda reseña nueva** con un cartel rojo "Reportada · en revisión", así que al instructor le parecía que cada reseña que recibía venía denunciada. Ahora son dos badges distintos (ámbar "Pendiente de moderación" / rojo "Denunciada · en revisión") más "Oculta" y "Respondida".
+Decisión del usuario (2026-10-23): **una reseña se publica en el momento en que el alumno la envía**. No hay moderación previa del administrador, y una reseña publicada no se edita ni se elimina. Después de publicada sólo pasa esto: el instructor la **responde** o la **denuncia**, y el administrador la **oculta** (resolviendo la denuncia con "Ocultar la reseña" o por su cuenta desde Gestión › Reseñas). El detalle de backend está en su CLAUDE.md, sección del mismo nombre.
+
+Qué cambió en cada pantalla:
+
+- **`alumno/MisResenas.tsx`**: sin "Editar", sin "Eliminar" y sin el chip "En moderación". El modal "Dejar reseña" avisa antes de publicar: *"La reseña se publica en el momento y después no se puede editar ni eliminar."* — es el único momento en que todavía se puede corregir. El botón dice "Publicar". La que ocultó un administrador lleva el chip **"Oculta por un administrador"** (antes "Oculta por moderación"). Lo cubre `MisResenas.test.tsx`.
+- **`instructor/Resenas.tsx`**: sin el badge "Pendiente de moderación"; quedan "Denunciada · en revisión", "Oculta" y "Respondida". "Responder" sólo se deshabilita en una reseña oculta. **La cantidad, el promedio y las barras cuentan sólo las no ocultas** (`estadisticas()`, mismo criterio que `recalcularRating` del backend y que el detalle público); las ocultas se siguen listando y el resumen avisa "1 oculta, no cuenta en la calificación". Antes promediaba todas, y ocultar una reseña no cambiaba nada de lo que veía el instructor. Lo cubre `Resenas.test.tsx`.
+- **`instructor/Panel.tsx`**: la alerta "Tenés N reseñas en revisión" contaba las que esperaban moderación; hoy cuenta las **denunciadas que la administración todavía no resolvió** ("Tenés N reseña(s) denunciada(s) en revisión.").
+- **`admin/Gestion.tsx`**, pestaña Reseñas: ver "Reseñas del admin" más abajo.
+- **Tipos**: `enModeracion` salió de `MiResenia`, `ReseniaInstructor` y `Resenia` (`lib/types.ts`); `ReseniaPendiente` dejó de existir y `ReseniaPublicada` es una interfaz propia. Del `DataContext` salieron `listarResenasPendientes`, `aprobarResenia`, `rechazarResenia`, `actualizarResenia` y `eliminarResenia` (de los dos lugares del `useMemo`).
+- **Manual** (`lib/manual.ts` y su copia del backend, idénticas): 2.10, 3.6, 3.10, 4.5 (ahora "Reseñas publicadas") y la tabla de estados.
 
 **La respuesta del instructor se ve en el detalle de la actividad.** Se guardaba desde hacía rato, pero `GET /api/actividades/{id}/resenas` no la devolvía y `alumno/Detalle.tsx` no la renderizaba: el instructor respondía, lo veía en su propia pantalla y el destinatario —el alumno— no la veía nunca. Hoy `ReseniaActividad` trae `respuestaInstructor` / `respuestaInstructorAt` y cada reseña la muestra en un bloque citado debajo del comentario, con el nombre del instructor y la fecha.
 
-Responder y denunciar **pegan a la API** (`responderResenia` / `denunciarResenia`); antes eran `useState` locales y se perdían al recargar. No se puede responder una reseña en moderación ni una oculta (el backend rechaza), así que el botón se deshabilita con el motivo en el `title`.
+Responder y denunciar **pegan a la API** (`responderResenia` / `denunciarResenia`); antes eran `useState` locales y se perdían al recargar. No se puede responder una reseña oculta (el backend rechaza), así que el botón se deshabilita con el motivo en el `title`.
+
+## Perfil público del instructor: `alumno/PerfilInstructor.tsx` (2026-10-23)
+
+"Ver perfil" de la tarjeta del instructor en `alumno/Detalle.tsx` era un botón sin acción. Ahora es un `Link` a **`/alumno/instructor/:id`**, en el mismo grupo de rutas que el detalle de la actividad (área alumno, sin permiso propio: es catálogo). No va en `lib/areas.ts` porque no es un ítem de menú.
+
+- **Sólo con lo que el frontend ya tiene (decisión del usuario: sin endpoint nuevo).** Nombre (`instructorNombre`), foto (`Avatar`, `/api/fotos/**` es público) y lo que se calcula del catálogo: sus actividades, las categorías que dicta, la calificación promedio (sólo de las actividades **ya calificadas**: una sin reseñas no es un 0) y su próxima clase. `PerfilInstructor` tiene `especialidad`, `aniosExperiencia` y `descripcion`, pero hoy sólo los devuelve `GET /api/admin/instructores/{id}` (permiso `instructores.validar`, y trae correo, teléfono y fecha de nacimiento): **no usarlo acá**. Si algún día se quieren mostrar, el camino es un endpoint público propio que devuelva sólo esos campos.
+- **"Instructor verificado" es cierto por construcción**: el catálogo sólo trae oferta de instructores `APROBADO` (RN-16). Por lo mismo, un instructor sin actividades publicadas (o no verificado) no tiene perfil: se muestra "Este instructor no tiene actividades publicadas en este momento." y un acceso a Explorar.
+- **Actividades: 9 por página** (`usePaginado` + `Paginacion`), buscador sin tildes (`incluye`), filtros por categoría y nivel (sólo los que tiene ese instructor, y sólo si hay más de uno) y "Ordenar por" (por defecto próxima clase, con las que no tienen clases al final). Cualquier cambio de filtro vuelve a la página 1, y cambiar de página scrollea al título de la sección.
+- La "próxima clase" usa `useAhora()`, no `Date.now()` en el render (`react-hooks/purity`).
+- Lo cubre `PerfilInstructor.test.tsx`.
+
+## Paginación y filtros en Explorar, Favoritos y Mis clases (2026-10-24)
+
+Pedido del usuario. Todo en el cliente (sin backend), con `usePaginado` + `Paginacion`:
+
+- **`usePaginado(items, porPagina, claveReinicio?, paginaPreferida?)`**: los dos parámetros nuevos son opcionales y se DERIVAN, sin efectos. `claveReinicio` es una firma de los filtros: si cambia, se vuelve a la página 1, así una pantalla con muchos filtros no tiene que reiniciar en cada handler. `paginaPreferida` es la que se muestra mientras el usuario no eligió ninguna; en cuanto navega, manda lo que eligió.
+- **Explorar**: 12 por página (grilla de 3). La clave son los ids de la lista filtrada, así cualquier filtro u orden reinicia. Cambiar de página scrollea al contenedor de resultados.
+- **Favoritos**: 12 por página (grilla de 4), buscador por actividad o instructor (`incluye`), chips de categoría y nivel (sólo los de sus favoritas y sólo si hay más de uno), "Ordenar por" y contador "N favoritas de M". **La clave son los filtros, no la lista**: quitar un favorito no tiene que mandar a la página 1.
+- **Mis clases**: un solo juego de filtros para todas las pestañas (actividad, "Desde"/"Hasta" contra el día LOCAL de la clase, "Ordenar por"), aplicado **antes** de repartir en pestañas, así los contadores cuentan lo que se ve. 10 por página; la clave incluye la pestaña. La `paginaPreferida` sale del índice de la fila que busca la notificación (`?inscripcion=` / `?clase=`): sin eso, el resaltado podía quedar en otra página. "Calificar mis clases" sigue mirando todas las inscripciones, para que un filtro no lo esconda.
+- Lo cubren `lib/paginado.test.ts`, `Explorar.test.tsx`, `Favoritos.test.tsx` y `MisClases.test.tsx`.
+
+## Detalle de la actividad: sin "Preguntas frecuentes" fijas (2026-10-24)
+
+`alumno/Detalle.tsx` cerraba con una sección "Preguntas frecuentes": tres preguntas **escritas en el código** (`const FAQS`), iguales para toda actividad, con respuestas que contradecían al sistema — una "política de cancelación de la clase" que no existe, "¿Necesito experiencia previa? No" también en actividades de exigencia alta, y "elementos adicionales que se informan al confirmar tu lugar" sin mecanismo que lo haga. Se retiró (decisión del usuario). Las dudas generales las cubren la burbuja "¿Dudas?" (en la misma pantalla), `/ayuda` (`lib/faqs.ts`, que **no** se tocó) y `/manual`. **No volver a agregar texto genérico en una pantalla de una actividad concreta**: se lee como información de esa actividad. Si algún día se quieren preguntas por actividad, tienen que salir de datos (las escribe el instructor, con backend). Lo fija `Detalle.test.tsx`, que también cubre el link "Ver perfil".
+
+## Opiniones del detalle: todas, con scroll propio, filtro por estrellas y orden (2026-10-24)
+
+La sección "Opiniones de alumnos" de `alumno/Detalle.tsx` mostraba sólo las **primeras 5** (`slice(0, 5)`) y las demás no se podían ver de ninguna forma. Hoy:
+
+- **Muestra todas**, dentro de un contenedor con scroll propio: `max-height:620px` + `overflow-y:auto` y la clase **`.ah-scroll`** de `index.css` (barra fina siempre visible cuando hay más contenido, `scrollbar-gutter: stable` para que el contenido no salte de ancho, `overscroll-behavior: contain` para que la rueda no arrastre la página al llegar al final). Reutilizable para cualquier lista con scroll interno.
+- **Filtro "Calificación"**: "Todas" o de 5 a 1 estrella, cada chip con su cantidad. Con un filtro aplicado la leyenda dice "Mostrando N de M opiniones"; sin filtro, "M opiniones". Un filtro sin resultados dice "No hay opiniones con N estrellas.".
+- **"Ordenar por"**: "Más recientes" (por defecto), "Más antiguas", "Mejor calificación", "Peor calificación" (a igual puntaje, la más reciente primero). El usuario pidió "más reciente"; se sumaron las otras tres porque un selector con una sola opción no ordena.
+- **Cambiar un filtro devuelve la lista al inicio** (`scrollTop = 0`): si no, quedaba scrolleada a mitad de una lista distinta.
+- La lógica está en **`lib/opiniones.ts`** (`opinionesVisibles`, `ORDENES_OPINIONES`), no en la pantalla: una pantalla que exporta funciones rompe el fast refresh (`react-refresh/only-export-components`). Los estados del filtro se declaran **antes** del `return` temprano de "actividad no encontrada", como todo hook de esa pantalla.
+- Lo cubren `lib/opiniones.test.ts` y `Detalle.test.tsx`.
 
 ## Galería de imágenes de la actividad
 
@@ -128,11 +172,11 @@ Se descartó Google Maps Platform porque exige una cuenta de facturación con ta
 
 - **`lib/geo.ts` — calcular distancias.** `haversineKm` + `formatDistanciaKm` + el hook `useGeolocation`. Todo el cálculo de cercanía ocurre **en el cliente**, contra la geolocalización del navegador: no hay consulta espacial en el backend ni PostGIS, y no hace falta (es la misma convención de "el backend devuelve todo sin paginar y el frontend agrega/filtra/ordena"). Alimenta tres cosas:
   - "Cerca de tu ubicación" del Home,
-  - el orden "Cercanas" y el **filtro por radio** de Explorar (`RADIOS`: cualquier distancia · menos de 2 km · 2 · 5 · 8 · 10 · más de 10 km),
+  - el orden "Cercanas" y el **filtro por distancia** de Explorar: desde el 2026-10-23 es una **barra de rango con dos manijas** (`components/RangoDoble.tsx` + `lib/distancia.ts`), de 0 a `DISTANCIA_MAX_KM` (30) km, con la leyenda "De X km hasta Y km". La manija máxima en el tope es "sin límite" ("30+ km") y la barra completa no filtra ni pide la ubicación. Reemplazó a los chips `RADIOS` (cualquier distancia · menos de 2 km · 2 · 5 · 8 · 10 · más de 10 km). El Home le manda `distanciaMaxKm` (número) por `location.state`, no un texto: con los chips, su "A menos de 25 km" no coincidía con ninguna opción y se ignoraba en silencio. `RangoDoble` son dos `<input type="range">` superpuestos (teclado y lector de pantalla incluidos); las manijas se estilan en `index.css` (`.ah-rango`) porque los pseudo-elementos no van en línea, y es reutilizable para otros rangos.
   - la línea "A X de tu ubicación" del detalle y el `distanceKm` de `ActivityCard`.
 
   `useGeolocation` es **a demanda y no automático**: arranca en `idle` y sólo pide el permiso cuando la pantalla llama a `request()`. Distingue `denied` de `unsupported` porque son dos mensajes distintos para el usuario.
-  - **`reintentar()` y `bloqueado` (2026-10-16), para el botón "Activar ubicación"** (`components/ActivarUbicacion.tsx`, en el Home, Explorar y el detalle). `request()` no insiste después de un "no"; `reintentar()` sí, y si la persona sólo había cerrado el cartel, el navegador lo vuelve a mostrar. **Si el permiso quedó BLOQUEADO para el sitio, ningún código puede volver a mostrar el cartel ni abrir el panel de permisos de la barra de direcciones** (no existe esa API). El componente muestra igual el botón (pedido del usuario: botón, no instrucciones) y una sola línea: "Tu navegador la tiene bloqueada: habilitala desde el ícono junto a la dirección de la página." Mientras `bloqueado`, `useGeolocation` escucha `PermissionStatus.onchange` y, si lo habilitan desde la barra, pide las coordenadas sin recargar. **No usar el elemento nativo `<geolocation>`** (Chrome 144+): se probó el 2026-10-17, abre un cuadro distinto centrado en la pantalla y en Brave confirmar desde él cierra el navegador entero, incluso excluyendo Brave por `navigator.brave`/`userAgentData`. Se retiró. **Sin coordenadas propias, la distancia es `undefined` y el filtro de radio no afirma nada**: `dentroDelRadio` devuelve false para una actividad sin distancia calculable, porque no se puede sostener que esté dentro de un radio que no se pudo medir.
+  - **`reintentar()` y `bloqueado` (2026-10-16), para el botón "Activar ubicación"** (`components/ActivarUbicacion.tsx`, en el Home, Explorar y el detalle). `request()` no insiste después de un "no"; `reintentar()` sí, y si la persona sólo había cerrado el cartel, el navegador lo vuelve a mostrar. **Si el permiso quedó BLOQUEADO para el sitio, ningún código puede volver a mostrar el cartel ni abrir el panel de permisos de la barra de direcciones** (no existe esa API). El componente muestra igual el botón (pedido del usuario: botón, no instrucciones) y una sola línea: "Tu navegador la tiene bloqueada: habilitala desde el ícono junto a la dirección de la página." Mientras `bloqueado`, `useGeolocation` escucha `PermissionStatus.onchange` y, si lo habilitan desde la barra, pide las coordenadas sin recargar. **No usar el elemento nativo `<geolocation>`** (Chrome 144+): se probó el 2026-10-17, abre un cuadro distinto centrado en la pantalla y en Brave confirmar desde él cierra el navegador entero, incluso excluyendo Brave por `navigator.brave`/`userAgentData`. Se retiró. **Sin coordenadas propias, la distancia es `undefined` y el filtro de distancia no afirma nada**: `dentroDelRangoDistancia` devuelve false para una actividad sin distancia calculable, porque no se puede sostener que esté dentro de un radio que no se pudo medir.
 
 ## Sesión: se renueva sola mientras usás la app
 
@@ -519,13 +563,12 @@ Antes el administrador era el único de los tres roles sin pantalla de cuenta pr
 - **Una clase congelada no ofrece "Editar"**, muestra un chip "Congelada" con el motivo. Espejo de `VentanaInscripcion.estaCongelada`; el backend es quien lo hace cumplir.
 - **Se sacó la pasarela de 4 pasos** del alta/edición de actividad. No es un asistente: es un formulario de una página con todos los campos visibles, y los números marcaban un avance que nunca avanzaba.
 
-## Reseñas del admin: dos sub-pestañas, y qué significa "Ocultar"
+## Reseñas del admin: un solo listado, y qué significa "Ocultar"
 
-La pestaña Reseñas de `admin/Gestion.tsx` tiene **Pendientes de moderación** (la cola de siempre: Aprobar / Rechazar) y **Publicadas** (lo nuevo: Ocultar).
+La pestaña Reseñas de `admin/Gestion.tsx` es **un solo listado, "Reseñas publicadas"**, con "Ocultar" por fila. La sub-pestaña "Pendientes de moderación" (Aprobar / Rechazar) se retiró con V33: las reseñas se publican al crearse. Un texto bajo el título lo dice: *"Las reseñas se publican en el momento en que el alumno las crea. Las que denuncia un instructor se resuelven en la pestaña "Reclamos"."*
 
 - **"Ocultar" no borra.** Pide motivo obligatorio y baja la reseña del detalle público y del promedio, pero la fila queda con su autor y su texto — si el contenido llega a ser algo en lo que deba intervenir la justicia, esa es justamente la evidencia. Las ya ocultas se siguen listando, en gris y tachadas, con un chip "Oculta".
-- **Existe porque faltaba el camino.** Una reseña impropia que se filtraba en la moderación sólo se podía bajar si el instructor la denunciaba; el admin que la veía después no tenía ningún botón. Ver la tabla de los tres caminos en el CLAUDE.md del backend.
-- **No confundir con `enModeracion`**: esa es "todavía no se aprobó" y se resuelve en la otra sub-pestaña.
+- **Se mantiene a propósito** aunque exista el camino de la denuncia (decisión del usuario): si se publica algo impropio y el instructor no lo denuncia, el admin que lo ve no tendría ningún botón.
 
 ## Resolver una denuncia: las cuatro opciones están descritas en pantalla
 
@@ -580,6 +623,16 @@ El resto de las señales (inscripciones, favoritos, reseñas, intereses) ya est�
 **La Landing pública no cambió** y no debe cambiar: sin sesión no hay a quién recomendarle nada. Sigue mostrando el catálogo y las seis mejor calificadas.
 
 ## Home del alumno (E3A-HU01)
+
+**Fondo del buscador (2026-10-24):** el recuadro del saludo y el buscador tiene una foto de fondo, `public/home-hero.webp` (2000×668, 117 KB, provista por el usuario), anclada a la derecha (las personas y el sol), con `#0E2A47` mientras carga. Encima va un velo con los azules de la marca, **`.ah-home-hero-velo` en `index.css`**: denso a la izquierda, donde está el texto, y casi transparente a la derecha; por debajo de 820 px pasa a ser parejo, porque ahí el texto ocupa todo el ancho. Va como fondo CSS y no como `<img>` porque es decorativa. Si se cambia la foto, mantener el peso bajo (es lo primero que ve el alumno) y revisar la legibilidad en los dos anchos. Se sacaron las dos manchas de color decorativas que tenía el degradé anterior. La fecha del saludo sale de `fechaSaludo()` (`lib/mockData.ts`): sólo la primera letra en mayúscula ("Sábado, 24 de octubre"); con `text-transform:capitalize` salía "24 De Octubre".
+
+**Buscador en celular (2026-10-24):** por debajo de 560 px la barra se reacomoda en dos filas — el campo de texto arriba, a todo el ancho, y "Cerca tuyo · 5 km" con "Buscar" abajo — y el recuadro baja su relleno de 34/38 px a 24/18 px. En una sola fila el campo quedaba reducido a una letra y "Buscar" se salía del recuadro blanco. Las reglas están en `index.css` (`.ah-home-hero`, `.ah-buscador`, `.ah-buscador-texto`, `.ah-buscador-separador`) con `!important` para pisar los estilos en línea, como el resto de ese archivo. Los hijos de la barra llevan `min-width:0` para poder achicarse dentro del flex. jsdom no aplica media queries: si se toca, verificarlo en el navegador a 375 px.
+
+**Filtros rápidos: quedan tres (2026-10-24).** `FILTROS_RAPIDOS` tenía siete (criterio 1 de E3A-HU01): quedan **Categoría, Nivel y Precio** (decisión del usuario). Se sacaron Tipo (se superponía con Categoría y era una lista larga), Ubicación (duplicaba "Cerca tuyo · 5 km" del buscador y la sección "Cerca de tu ubicación"), y Fecha y Horario (sólo miran la próxima clase de cada actividad: prometían más de lo que hacían). Siguen todos en Explorar. **Precio** ofrece montos redondos de una escala fija, sólo los que separan el catálogo (incluyen alguna actividad y dejan afuera otra), hasta tres: `cortesDePrecio` en `lib/precios.ts`. Antes eran cortes al 25/50/75 % del precio máximo, que salían como "Hasta $9.500". Lo cubren `lib/precios.test.ts` y `Home.test.tsx`. Es un cambio al criterio 1 de E3A-HU01: está registrado en las bitácoras para el informe.
+
+**Secciones de actividades: hasta 6 en una fila deslizable (2026-10-24).** "Recomendado para vos", "Cerca de tu ubicación" y "Próximas clases disponibles" muestran hasta `POR_SECCION` (6) actividades —antes 3— en `components/Carrusel.tsx`: 3 visibles en escritorio y flechas que avanzan de a una "página" (`scrollBy` del ancho visible), cada una visible sólo si hay algo hacia ese lado (se mide en el `onScroll` y con un `ResizeObserver`, nunca de forma síncrona en el efecto). Por debajo de 820 px no hay flechas: se desliza con el dedo y se asoma la tarjeta siguiente (78 % de ancho). El desplazamiento es nativo (`overflow-x` + `scroll-snap`), así que anda con trackpad y teclado (la fila es una región con nombre y `tabIndex`). Estilos en `index.css` (`.ah-carrusel`, `.ah-carrusel-item`, `.ah-carrusel-flecha`). Las recomendaciones se piden con `limite=6` (el backend acepta hasta 20). Lo cubren `Carrusel.test.tsx` (simula las medidas, que jsdom no calcula) y `Home.test.tsx`.
+
+**Banner de Explorar con foto (2026-10-24):** el mismo criterio para `alumno/Explorar.tsx`: `public/explorar-hero.webp` (1024×434, 70 KB, provista por el usuario) como fondo CSS a todo el ancho, encuadrada con `background-position:center 65%` para que se vean el grupo y las pesas, y el velo `.ah-explorar-hero-velo` de `index.css` (denso a la izquierda, parejo por debajo de 820 px). Como el banner ocupa todo el ancho de la pantalla, en monitores grandes la foto se estira casi al doble; si se ve blanda, conseguir una versión de ~2000 px.
 
 **El desplegable del buscador se cortaba** (2026-10-16): la tarjeta del saludo tenía `overflow:hidden` para recortar sus dos círculos de fondo, y eso recortaba también los resultados, que caen por debajo de la tarjeta — se veía el primero y el resto quedaba "debajo" de lo que sigue. El recorte pasó a una capa propia de los círculos (`inset:0;overflow:hidden;pointer-events:none`), la tarjeta lleva `z-index:5` y el desplegable tiene `max-height` con scroll. **No vuelvas a poner `overflow:hidden` en un contenedor que tenga un desplegable adentro.**
 
@@ -692,6 +745,8 @@ Existe porque el instructor no tenía dónde ver sus clases pasadas: "Próximas 
 `clases: Clase[]` en el Context se llena **solo cuando se visita el detalle de una actividad** (`cargarDetalleActividad`), es una caché parcial por navegación, no un `GET /api/clases` global (ese endpoint no existe para el catálogo del alumno). Usarla como si fuera la lista completa de clases de la plataforma es un bug real que ya pasó dos veces (el donut de categorías del Dashboard, y estuvo cerca de repetirse en Reportes). Si necesitás **todas** las clases de la plataforma, es `listarClasesAdmin()` (admin) — no `clases` del Context.
 
 ## Trampa recurrente: dependencias de `useMemo`/`useCallback` incompletas
+
+**Caso real (2026-10-23):** la lista filtrada de `alumno/Explorar.tsx` no tenía `fecha` ni `franja` en sus dependencias, así que elegir una fecha o un horario no volvía a filtrar hasta tocar otro filtro; además "Limpiar" no los reseteaba. Lo fija `Explorar.test.tsx`. Ojo al probar algo así: si el mock del contexto devuelve funciones nuevas en cada render, las dependencias cambian siempre y la prueba pasa aunque el bug siga ahí — el mock tiene que dar valores estables, como el `DataContext` real.
 Ya pasó dos veces en este repo (el donut del Dashboard y las tarjetas de categoría en `Taxonomia.tsx`): un `useMemo` usa una variable de estado dentro del cuerpo pero no la lista en el array de dependencias, entonces React no recalcula cuando esa variable cambia — la llamada a la API funciona pero la pantalla se queda con datos viejos hasta que *otra* dependencia fuerce un recálculo. Si agregás un campo a un `useMemo`/`useCallback` ya existente, revisá el array de deps de una.
 
 ## Registro de instructor: los documentos van en el MISMO request
@@ -737,7 +792,7 @@ El resaltado **se apaga solo a los 4 s**: sirve para encontrar la fila al llegar
 
 **Si agregás un disparador de notificación nuevo en el backend, ahora sí puede hacer falta tocar UI**: si su destino es un tipo nuevo, va una entrada en `CANDIDATAS`; si es una lista, la pantalla tiene que leer su parámetro con `useResaltado`.
 
-De paso, `alumno/MisResenas.tsx` muestra ahora **la respuesta del instructor** y el chip "Oculta por moderación". Ninguna de las dos se veía del lado del alumno (la respuesta sólo aparecía en la página pública de la actividad), así que las notificaciones `RESENIA_RESPONDIDA` y la de reseña ocultada aterrizaban en una fila idéntica al resto.
+De paso, `alumno/MisResenas.tsx` muestra ahora **la respuesta del instructor** y el chip "Oculta por un administrador" (se llamaba "Oculta por moderación" hasta V33). Ninguna de las dos se veía del lado del alumno (la respuesta sólo aparecía en la página pública de la actividad), así que las notificaciones `RESENIA_RESPONDIDA` y la de reseña ocultada aterrizaban en una fila idéntica al resto.
 
 ## Verificación E2E — patrón de instancia aislada
 Para probar un cambio real contra el backend (no solo `tsc`), el patrón usado en toda la sesión es levantar una instancia aislada, **nunca tocar los procesos del usuario** en 8080/5173:
@@ -762,7 +817,7 @@ Al terminar, siempre: `rm .env.local`, matar los procesos aislados por PID exact
 **Ítem 9 (geolocalización): HECHO**, con OpenStreetMap en lugar de Google Maps — ver la sección propia más abajo. **Ítem 10 (imágenes): la galería y las fotos funcionan**, y el backend ya puede guardar en Supabase Storage en lugar del disco. **No tocó ninguna pantalla**: el bucket es privado y los archivos se siguen sirviendo por `/api/fotos/...`, así que las URLs del frontend no cambian. Queda pendiente la optimización de imágenes (redimensionado/compresión).
 
 Pendientes de verdad:
-**Ítem 8 (recomendaciones): HECHO** — ver "Recomendado para vos" más arriba. El filtrado de Explorar sigue siendo tradicional a propósito (texto sin tildes, categoría, tipo en cascada, nivel, precio, cupos, fecha, franja horaria, radio, orden): ahí el alumno busca algo concreto. Lo que se recomienda es el Home.
+**Ítem 8 (recomendaciones): HECHO** — ver "Recomendado para vos" más arriba. El filtrado de Explorar sigue siendo tradicional a propósito (texto sin tildes, categoría, tipo en cascada, nivel, precio, fecha, franja horaria, rango de distancia, orden; el filtro "Solo con cupos" se retiró el 2026-10-23 porque sólo miraba la próxima clase de cada actividad): ahí el alumno busca algo concreto. Lo que se recomienda es el Home.
 **Ítem 11 (IA real): HECHO y verificado contra Groq por API.** El chatbot responde con un modelo usando el manual de usuario como única fuente (`lib/ia.ts`) y el "Asistente de beneficios" pide su informe al backend. **El copy ahora sí promete IA** (etiqueta "IA" en el encabezado de la burbuja, "Responde según el manual de usuario"), y eso es correcto porque hay modelo detrás — con dos condiciones que hay que mantener: **cuando no está, las dos pantallas lo dicen** y vuelven a su comportamiento anterior; **cuando se agotó la cuota, avisan cuánto falta** en vez de quedarse en blanco. Lo único que falta del ítem es probarlo en el navegador (la clave ya está cargada en el backend del usuario).
 - **12 — Mercado Pago real: HECHO.** Integrado y funcionando según el usuario (la integración y su prueba se hicieron en otra PC; ver "Pagos con Mercado Pago" y la matriz `docs/PRUEBAS-SANDBOX-MERCADOPAGO.md` del backend).
 - **Deploy** (Vercel) — el build de producción sale limpio y la URL del backend es `VITE_API_URL`, pero no se desplegó.

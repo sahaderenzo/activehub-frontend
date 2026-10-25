@@ -21,6 +21,7 @@ import CompletarRegistro from "./pages/auth/CompletarRegistro";
 import AlumnoHome from "./pages/alumno/Home";
 import AlumnoExplorar from "./pages/alumno/Explorar";
 import AlumnoDetalle from "./pages/alumno/Detalle";
+import AlumnoPerfilInstructor from "./pages/alumno/PerfilInstructor";
 import AlumnoCalendario from "./pages/alumno/Calendario";
 import AlumnoFavoritos from "./pages/alumno/Favoritos";
 import AlumnoMisClases from "./pages/alumno/MisClases";
@@ -95,6 +96,7 @@ function AppRoutes() {
             <Route path="/alumno" element={<AlumnoHome />} />
             <Route path="/alumno/explorar" element={<AlumnoExplorar />} />
             <Route path="/alumno/actividad/:id" element={<AlumnoDetalle />} />
+            <Route path="/alumno/instructor/:id" element={<AlumnoPerfilInstructor />} />
             <Route path="/alumno/favoritos" element={<AlumnoFavoritos />} />
             {/*
               Estas pantallas no son "el area de alumno": son modulos con permiso propio. El

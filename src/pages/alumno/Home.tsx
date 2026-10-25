@@ -2,10 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AlumnoNav from "../../components/AlumnoNav";
 import ActivityCard from "../../components/ActivityCard";
+import Carrusel from "../../components/Carrusel";
 import ErrorReintentar from "../../components/ErrorReintentar";
 import { CargandoSeccion } from "../../components/Cargando";
 import { s } from "../../lib/style";
 import { incluye } from "../../lib/texto";
+import { fechaSaludo } from "../../lib/mockData";
+import { cortesDePrecio } from "../../lib/precios";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import type { RecomendacionAlumno } from "../../context/DataContext";
@@ -16,35 +19,38 @@ import type { Actividad, Categoria, TipoActividad } from "../../lib/types";
 /** Criterio 5: menos de esto no dispara la búsqueda. */
 const MIN_BUSQUEDA = 2;
 
+/**
+ * Actividades por sección del Home. Se ven 3 y las otras se recorren deslizando la fila
+ * (`components/Carrusel.tsx`); para ver todo está "Ver más →", que lleva a Explorar.
+ */
+const POR_SECCION = 6;
+
 /** Lo que un filtro rápido le manda a Explorar (mismo contrato que su `ExplorarNavState`). */
 interface FiltroRapido {
   categoriaId?: string;
-  tipoActividadId?: string;
   nivel?: string;
   maxPrecio?: number;
-  radio?: string;
-  fecha?: string;
-  franja?: string;
-}
-
-function hoyLocal(desplazamientoDias = 0): string {
-  const d = new Date();
-  d.setDate(d.getDate() + desplazamientoDias);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  /** Lo usa el atajo "Cerca tuyo · 5 km" del buscador, no un filtro rápido. */
+  distanciaMaxKm?: number;
 }
 
 interface OpcionesFiltro {
   categorias: Categoria[];
-  tiposActividad: TipoActividad[];
   /** Nombres de nivel presentes en el catálogo. */
   niveles: string[];
   precios: number[];
 }
 
 /**
- * Los 7 filtros rápidos del criterio 1. Cada opción es una intención que viaja a Explorar
- * por `location.state`; ninguno filtra acá, así que el alumno siempre termina en la pantalla
- * que sí sabe mostrar y limpiar filtros.
+ * Los filtros rápidos del criterio 1. Cada opción es una intención que viaja a Explorar por
+ * `location.state`; ninguno filtra acá, así que el alumno siempre termina en la pantalla que sí
+ * sabe mostrar y limpiar filtros.
+ *
+ * Eran siete; desde el 2026-10-24 quedan tres (decisión del usuario). Se sacaron "Tipo" (se
+ * superponía con Categoría y era una lista larga), "Ubicación" (duplicaba "Cerca tuyo · 5 km"
+ * del buscador y la sección "Cerca de tu ubicación"), y "Fecha" y "Horario" (sólo miran la
+ * próxima clase de cada actividad, así que prometían más de lo que hacían). Todos siguen
+ * disponibles en Explorar.
  */
 const FILTROS_RAPIDOS: {
   key: string;
@@ -57,39 +63,9 @@ const FILTROS_RAPIDOS: {
     opciones: ({ categorias }) => categorias.map((c) => ({ label: c.nombre, filtro: { categoriaId: c.id } })),
   },
   {
-    key: "tipo",
-    label: "Tipo",
-    opciones: ({ tiposActividad }) =>
-      tiposActividad.map((t) => ({
-        label: t.nombre,
-        // La categoría viaja junto al tipo: Explorar solo muestra los tipos de las
-        // categorías marcadas, si no el chip quedaría filtrando sin verse.
-        filtro: { categoriaId: t.categoriaId, tipoActividadId: t.id },
-      })),
-  },
-  {
     key: "nivel",
     label: "Nivel",
     opciones: ({ niveles }) => niveles.map((n) => ({ label: n, filtro: { nivel: n } })),
-  },
-  {
-    key: "ubicacion",
-    label: "Ubicación",
-    opciones: () => ["5 km", "10 km", "25 km"].map((r) => ({ label: "A menos de " + r, filtro: { radio: r } })),
-  },
-  {
-    key: "fecha",
-    label: "Fecha",
-    opciones: () => [
-      { label: "Hoy", filtro: { fecha: hoyLocal() } },
-      { label: "Mañana", filtro: { fecha: hoyLocal(1) } },
-      { label: "Pasado mañana", filtro: { fecha: hoyLocal(2) } },
-    ],
-  },
-  {
-    key: "horario",
-    label: "Horario",
-    opciones: () => ["Mañana", "Tarde", "Noche"].map((f) => ({ label: f, filtro: { franja: f } })),
   },
   {
     key: "precio",
@@ -146,7 +122,6 @@ export default function AlumnoHome() {
   const { currentUser } = useAuth();
   const {
     actividades,
-    tiposActividad,
     categorias,
     getTipoActividad,
     getCategoria,
@@ -201,13 +176,8 @@ export default function AlumnoHome() {
     [actividades],
   );
 
-  const preciosSugeridos = useMemo(() => {
-    if (actividades.length === 0) return [];
-    const max = Math.max(...actividades.map((a) => a.precio));
-    // Tres cortes sobre el precio real del catálogo: un tope fijo queda viejo apenas
-    // aparece una actividad más cara.
-    return [0.25, 0.5, 0.75].map((f) => Math.ceil((max * f) / 500) * 500).filter((v, i, arr) => v > 0 && arr.indexOf(v) === i);
-  }, [actividades]);
+  // Montos redondos que separan el catálogo de verdad (ver lib/precios.ts).
+  const preciosSugeridos = useMemo(() => cortesDePrecio(actividades.map((a) => a.precio)), [actividades]);
 
   /** Un filtro rápido no filtra acá: manda a Explorar con la intención ya elegida. */
   const aplicarFiltro = (extra: FiltroRapido) => {
@@ -239,7 +209,7 @@ export default function AlumnoHome() {
   // la segunda corrida (cuando llegan las coordenadas) es un refresco, no una carga inicial:
   // volver a tapar la sección con el cartel haría parpadear lo que ya está en pantalla.
   const cargarRecomendaciones = useCallback(() => {
-    return listarRecomendaciones(geolocation.coords, 3)
+    return listarRecomendaciones(geolocation.coords, POR_SECCION)
       .then((r) => {
         setRecomendaciones(r.recomendaciones);
         setSinSenales(r.sinSenales);
@@ -263,7 +233,7 @@ export default function AlumnoHome() {
       .map((a) => ({ a, dist: distanciaKm(a, geolocation.coords) }))
       .filter((x): x is { a: Actividad; dist: number } => x.dist !== undefined && x.dist <= 5)
       .sort((x, y) => x.dist - y.dist)
-      .slice(0, 3)
+      .slice(0, POR_SECCION)
       .map((x) => x.a);
   }, [actividades, geolocation.coords]);
 
@@ -271,14 +241,10 @@ export default function AlumnoHome() {
     return [...actividades]
       .filter((a) => a.proximaClase && a.proximaClase.estado !== "Cancelada" && a.proximaClase.estado !== "Finalizada")
       .sort((x, y) => x.proximaClase!.fechaHora.localeCompare(y.proximaClase!.fechaHora))
-      .slice(0, 3);
+      .slice(0, POR_SECCION);
   }, [actividades]);
 
-  const fechaHoy = new Date().toLocaleDateString("es-AR", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-  });
+  const fechaHoy = fechaSaludo(new Date());
 
   return (
     <div className="ah-screen" style={s("min-height:100vh;background:#F4F7FA;")}>
@@ -292,37 +258,47 @@ export default function AlumnoHome() {
           filtros rápidos y las secciones de abajo.
         */}
         <div
+          className="ah-home-hero"
           style={s(
-            "background:linear-gradient(135deg,#0E2A47,#143A5E);border-radius:24px;padding:34px 38px;position:relative;z-index:5;margin-bottom:34px;",
+            "background:#0E2A47;border-radius:24px;padding:34px 38px;position:relative;z-index:5;margin-bottom:34px;",
           )}
         >
+          {/*
+            Fondo: la foto (`public/home-hero.webp`, 2000×668, 117 KB) anclada a la derecha, donde
+            están las personas, y encima un velo con los azules de la marca, más denso a la
+            izquierda, donde va el texto. El velo vive en index.css (`.ah-home-hero-velo`) porque
+            en pantallas angostas se vuelve parejo y eso necesita una media query. Es decorativa:
+            va como fondo CSS, no como <img>, para que un lector de pantalla no la anuncie.
+          */}
           <div style={s("position:absolute;inset:0;border-radius:24px;overflow:hidden;pointer-events:none;")}>
             <div
-              style={s(
-                "position:absolute;top:-70px;right:-30px;width:280px;height:280px;border-radius:50%;background:radial-gradient(circle,rgba(18,181,165,.28),transparent 70%);",
-              )}
+              data-testid="home-hero-foto"
+              style={{
+                ...s("position:absolute;inset:0;background-size:cover;background-position:right center;background-repeat:no-repeat;"),
+                backgroundImage: "url(/home-hero.webp)",
+              }}
             />
-            <div
-              style={s(
-                "position:absolute;bottom:-90px;right:160px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(255,106,43,.16),transparent 70%);",
-              )}
-            />
+            <div className="ah-home-hero-velo" style={s("position:absolute;inset:0;")} />
           </div>
           <div style={s("position:relative;")}>
-            <div style={s("font:700 13px Manrope,sans-serif;color:#9DB3C9;margin-bottom:8px;text-transform:capitalize;")}>
+            <div style={s("font:700 13px Manrope,sans-serif;color:#C3D2E0;margin-bottom:8px;")}>
               {fechaHoy} · Mendoza
             </div>
-            <h1 style={s("font:700 32px Space Grotesk,sans-serif;color:#fff;letter-spacing:-.7px;margin:0 0 6px;")}>
+            <h1 style={s("font:700 32px Space Grotesk,sans-serif;color:#fff;letter-spacing:-.7px;margin:0 0 6px;text-shadow:0 2px 12px rgba(14,42,71,.35);")}>
               ¡Hola, {currentUser?.nombre ?? "Alumno"}! 👋
             </h1>
-            <p style={s("font-size:15.5px;color:#9DB3C9;margin:0 0 24px;")}>¿Qué actividad querés hacer hoy?</p>
+            <p style={s("font-size:15.5px;color:#C3D2E0;margin:0 0 24px;")}>¿Qué actividad querés hacer hoy?</p>
             <div style={s("position:relative;max-width:760px;")}>
+            {/* En pantallas angostas la barra se reacomoda en dos filas (el texto arriba;
+                "Cerca tuyo" y "Buscar" abajo): ver `.ah-buscador` en index.css. En una sola fila
+                el campo quedaba reducido a una letra y el botón se salía del recuadro. */}
             <div
+              className="ah-buscador"
               style={s(
                 "background:#fff;border-radius:16px;padding:8px;display:flex;align-items:center;gap:6px;box-shadow:0 14px 30px rgba(0,0,0,.18);",
               )}
             >
-              <div style={s("flex:1.4;display:flex;align-items:center;gap:10px;padding:9px 14px;")}>
+              <div className="ah-buscador-texto" style={s("flex:1.4;min-width:0;display:flex;align-items:center;gap:10px;padding:9px 14px;")}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#12B5A5" strokeWidth={2}>
                   <circle cx="11" cy="11" r="7" />
                   <path d="m21 21-4.3-4.3" />
@@ -346,24 +322,24 @@ export default function AlumnoHome() {
                   }}
                 />
               </div>
-              <div style={s("width:1px;height:30px;background:#E7EDF3;")} />
+              <div className="ah-buscador-separador" style={s("width:1px;height:30px;background:#E7EDF3;")} />
               <div
-                className="ah-btn"
+                className="ah-btn ah-buscador-cerca"
                 title="Buscar solo actividades a menos de 5 km"
-                onClick={() => irAExplorar({ radio: "5 km" })}
-                style={s("flex:1;display:flex;align-items:center;gap:10px;padding:9px 14px;cursor:pointer;")}
+                onClick={() => irAExplorar({ distanciaMaxKm: 5 })}
+                style={s("flex:1;min-width:0;display:flex;align-items:center;gap:10px;padding:9px 14px;cursor:pointer;")}
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FF6A2B" strokeWidth={2}>
                   <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
                   <circle cx="12" cy="10" r="3" />
                 </svg>
-                <span style={s("font-size:14.5px;font-weight:600;color:#0E2A47;")}>Cerca tuyo · 5 km</span>
+                <span style={s("font-size:14.5px;font-weight:600;color:#0E2A47;white-space:nowrap;")}>Cerca tuyo · 5 km</span>
               </div>
               <button
                 className="ah-btn"
                 onClick={() => irAExplorar()}
                 style={s(
-                  "background:#FF6A2B;color:#fff;border:none;border-radius:12px;padding:13px 24px;font:700 15px Manrope,sans-serif;cursor:pointer;",
+                  "background:#FF6A2B;color:#fff;border:none;border-radius:12px;padding:13px 24px;font:700 15px Manrope,sans-serif;cursor:pointer;flex:none;",
                 )}
               >
                 Buscar
@@ -420,7 +396,6 @@ export default function AlumnoHome() {
             const abierto = filtroAbierto === f.key;
             const opciones = f.opciones({
               categorias,
-              tiposActividad,
               niveles: nivelesDisponibles,
               precios: preciosSugeridos,
             });
@@ -578,7 +553,8 @@ export default function AlumnoHome() {
             </button>
           </div>
         ) : (
-          <div className="ah-grid-3" style={s("display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-bottom:42px;")}>
+          <div style={s("margin-bottom:42px;")}>
+          <Carrusel etiqueta="Recomendado para vos">
             {recomendaciones.map((r) => (
               <div key={r.actividad.id}>
                 <ActivityCard
@@ -602,6 +578,7 @@ export default function AlumnoHome() {
                 )}
               </div>
             ))}
+          </Carrusel>
           </div>
         )}
 
@@ -612,7 +589,7 @@ export default function AlumnoHome() {
           </div>
           <span
             className="ah-link"
-            onClick={() => irAExplorar({ radio: "5 km" })}
+            onClick={() => irAExplorar({ distanciaMaxKm: 5 })}
             style={s("font-weight:700;color:#FF6A2B;cursor:pointer;font-size:14.5px;")}
           >
             Ver más →
@@ -637,10 +614,12 @@ export default function AlumnoHome() {
                   : "Buscando actividades cerca tuyo…"}
           </div>
         ) : (
-          <div className="ah-grid-3" style={s("display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-bottom:42px;")}>
-            {cerca.map((a) => (
-              <ActivityCard key={a.id} {...cardProps(a, getTipoActividad, getCategoria, instructorNombre, geolocation.coords)} />
-            ))}
+          <div style={s("margin-bottom:42px;")}>
+            <Carrusel etiqueta="Cerca de tu ubicación">
+              {cerca.map((a) => (
+                <ActivityCard key={a.id} {...cardProps(a, getTipoActividad, getCategoria, instructorNombre, geolocation.coords)} />
+              ))}
+            </Carrusel>
           </div>
         )}
 
@@ -653,11 +632,11 @@ export default function AlumnoHome() {
             Ver calendario →
           </span>
         </div>
-        <div className="ah-grid-3" style={s("display:grid;grid-template-columns:repeat(3,1fr);gap:20px;")}>
+        <Carrusel etiqueta="Próximas clases disponibles">
           {proximasClases.map((a) => (
             <ActivityCard key={a.id} {...cardProps(a, getTipoActividad, getCategoria, instructorNombre, geolocation.coords)} />
           ))}
-        </div>
+        </Carrusel>
           </>
         )}
       </div>

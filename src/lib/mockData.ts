@@ -453,6 +453,15 @@ const monthNames = [
 ];
 const dayNames = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
 
+/**
+ * Fecha del saludo del Home: "Sábado, 24 de octubre". Sólo la primera letra en mayúscula: con
+ * text-transform:capitalize salía "Sábado, 24 De Octubre", que en castellano está mal.
+ */
+export function fechaSaludo(fecha: Date): string {
+  const larga = fecha.toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" });
+  return larga.charAt(0).toUpperCase() + larga.slice(1);
+}
+
 export function formatFecha(iso: string): string {
   const d = new Date(iso);
   return `${dayNames[d.getDay()]} ${d.getDate()} ${monthNames[d.getMonth()]}`;

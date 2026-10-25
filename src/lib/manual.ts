@@ -134,6 +134,10 @@ export const MANUAL: SeccionManual[] = [
             ],
           },
           {
+            tipo: "p",
+            texto: 'El formulario incluye además la pregunta opcional "¿Padecés alguna enfermedad o lesión?" (hasta 500 caracteres). El dato se usa para personalizar el informe de beneficios y prevenciones de cada actividad y puede cambiarse después desde el perfil.',
+          },
+          {
             tipo: "sub",
             texto: "Cuenta de Instructor",
           },
@@ -291,6 +295,10 @@ export const MANUAL: SeccionManual[] = [
             texto: "El DNI puede cargarse desde el perfil aunque no se haya informado en el registro, por ejemplo en las cuentas creadas con Google; una vez guardado, habilita el ingreso con DNI.",
           },
           {
+            tipo: "p",
+            texto: 'El Alumno tiene además la tarjeta "Información de salud", que muestra lo informado en "¿Padecés alguna enfermedad o lesión?". Para cambiarlo, presionar "Editar", modificar el texto (hasta 500 caracteres; vacío si no hay nada que informar) y presionar "Guardar"; el sistema confirma con "Información de salud actualizada.". El dato se usa para personalizar el informe de beneficios y prevenciones de cada actividad y no lo ven los instructores ni otros alumnos.',
+          },
+          {
             tipo: "sub",
             texto: "Cambiar la contraseña",
           },
@@ -392,9 +400,10 @@ export const MANUAL: SeccionManual[] = [
             tipo: "lista",
             items: [
               "**Buscador**: muestra los resultados debajo del campo a medida que se escribe; al presionar un resultado se abre el detalle de la actividad. Se requieren al menos 2 caracteres.",
-              '**Filtros rápidos**: conducen a la pantalla "Explorar" con el filtro ya aplicado.',
+              '**Filtros rápidos**: "Categoría", "Nivel" y "Precio" (montos redondos, por ejemplo "Hasta $5.000"); cada opción conduce a la pantalla "Explorar" con el filtro ya aplicado, donde están el resto de los filtros.',
               '"Recomendado para vos": actividades elegidas para esa persona y ordenadas por afinidad. El sistema tiene en cuenta seis señales: los intereses deportivos declarados, las clases a las que se inscribió, sus favoritos, las reseñas que escribió, las actividades cuyo detalle abrió y lo que buscó. Debajo de cada actividad aparecen hasta dos carteles que explican el motivo, por ejemplo "Coincide con tu interés en Yoga" o "Bien calificada por otros alumnos (4,4)". Si todavía no hay ninguna señal, el sistema no inventa recomendaciones: muestra "Todavía no sabemos qué recomendarte." con los botones "Cargar mis intereses" y "Explorar actividades".',
               "**Actividades cercanas**: si el usuario autoriza el acceso a su ubicación, el sistema muestra la distancia a cada actividad.",
+              '**Secciones de actividades ("Recomendado para vos", "Cerca de tu ubicación" y "Próximas clases disponibles")**: cada una muestra hasta 6 actividades; se ven 3 y las demás se recorren con las flechas que aparecen a los costados o, en el celular, deslizando la fila con el dedo. "Ver más →" lleva a "Explorar".',
             ],
           },
           {
@@ -420,14 +429,18 @@ export const MANUAL: SeccionManual[] = [
             tipo: "pasos",
             items: [
               'Ingresar a "Explorar" desde la barra superior.',
-              "Aplicar los filtros deseados: texto, categoría, tipo de actividad (se actualiza según la categoría elegida), nivel de intensidad, precio máximo, disponibilidad de cupos, fecha, franja horaria, radio de cercanía e instructor.",
+              "Aplicar los filtros deseados: texto, categoría, tipo de actividad (se actualiza según la categoría elegida), nivel de intensidad, precio máximo, fecha, franja horaria, distancia e instructor.",
               "Elegir el orden de los resultados: por precio, calificación, cupos disponibles o cercanía.",
               "Presionar una tarjeta para abrir el detalle de la actividad.",
             ],
           },
           {
             tipo: "p",
-            texto: 'El sistema muestra las actividades que cumplen todos los criterios a la vez. El enlace "Limpiar" restablece los filtros. El filtro por radio de cercanía (menos de 2 km, 2, 5, 8 y 10 km, o más de 10 km) requiere autorizar el acceso a la ubicación del navegador; las actividades cuya distancia no puede calcularse quedan fuera de ese filtro. Si ninguna actividad cumple los criterios, se muestra el mensaje "No se encontraron actividades con esos criterios".',
+            texto: 'El sistema muestra las actividades que cumplen todos los criterios a la vez. El enlace "Limpiar" restablece los filtros. El filtro "Distancia" es una barra con dos manijas, de 0 a 30 km: se arrastra la izquierda para fijar la distancia mínima y la derecha para la máxima, y la leyenda de arriba muestra el rango elegido (por ejemplo, "De 3 km hasta 12 km"). Con la manija derecha en el tope el rango no tiene límite superior ("30+ km"), y con la barra completa no se filtra por distancia. Al empezar a filtrar se pide autorizar el acceso a la ubicación del navegador; las actividades cuya distancia no puede calcularse quedan fuera de ese filtro. Si ninguna actividad cumple los criterios, se muestra el mensaje "No se encontraron actividades con esos criterios".',
+          },
+          {
+            tipo: "p",
+            texto: 'Los resultados se muestran de a 12 por página, con los controles de paginación al pie de la lista: primera página, anterior, el número de página (se puede escribir para ir directo a otra), siguiente y última. Cualquier cambio en los filtros o en el orden vuelve a la primera página.',
           },
         ],
       },
@@ -451,7 +464,11 @@ export const MANUAL: SeccionManual[] = [
           },
           {
             tipo: "p",
-            texto: 'El importe que se muestra corresponde al precio de la clase seleccionada. Al pie de la pantalla se encuentran las reseñas de la actividad, con la calificación promedio, los comentarios y las respuestas del instructor. La sección "Asistente de beneficios y prevenciones" permite generar, con el botón "Generar beneficios y prevenciones", un informe elaborado con inteligencia artificial que cruza los datos de la actividad y de la clase elegida con el perfil del alumno: intereses declarados, edad, condición de salud si la cargó e historial de actividades y reseñas. El informe incluye un resumen breve, una etiqueta de afinidad ("Afinidad alta", "Afinidad media" o "Afinidad baja"), los beneficios y las prevenciones a considerar, y puede volver a generarse con "Actualizar informe". Su función es exclusivamente orientativa: no es un diagnóstico médico, no indica ejercicios ni tratamientos y nunca impide la inscripción. Si el asistente no está disponible o recibió muchas consultas seguidas, la sección muestra igualmente los beneficios y prevenciones generales del nivel de intensidad, con un aviso que lo aclara e indica cuándo volver a intentarlo.',
+            texto: 'El importe que se muestra corresponde al precio de la clase seleccionada. Al pie de la pantalla, en "Opiniones de alumnos", se encuentran las reseñas de la actividad, con la calificación promedio, los comentarios y las respuestas del instructor. La lista muestra todas las opiniones y se desplaza dentro de su propio recuadro; se puede filtrar por "Calificación" ("Todas" o de 5 a 1 estrella, con la cantidad de cada una) y ordenar con "Ordenar por": "Más recientes" (la opción inicial), "Más antiguas", "Mejor calificación" o "Peor calificación". Con un filtro aplicado se indica cuántas se muestran, por ejemplo "Mostrando 12 de 19 opiniones". La sección "Asistente de beneficios y prevenciones" permite generar, con el botón "Generar beneficios y prevenciones", un informe elaborado con inteligencia artificial que cruza los datos de la actividad y de la clase elegida con el perfil del alumno: intereses declarados, edad, condición de salud si la cargó e historial de actividades y reseñas. El informe incluye un resumen breve, una etiqueta de afinidad ("Afinidad alta", "Afinidad media" o "Afinidad baja"), los beneficios y las prevenciones a considerar, y puede volver a generarse con "Actualizar informe". Su función es exclusivamente orientativa: no es un diagnóstico médico, no indica ejercicios ni tratamientos y nunca impide la inscripción. Si el asistente no está disponible o recibió muchas consultas seguidas, la sección muestra igualmente los beneficios y prevenciones generales del nivel de intensidad, con un aviso que lo aclara e indica cuándo volver a intentarlo.',
+          },
+          {
+            tipo: "p",
+            texto: 'En la tarjeta del instructor, el botón "Ver perfil" abre su perfil público: nombre, foto, la indicación "Instructor verificado", las categorías que dicta, la cantidad de actividades publicadas, la calificación promedio de sus actividades ya calificadas y su próxima clase. Debajo se listan todas sus actividades, 9 por página, con un buscador ("Buscar entre sus actividades…"), filtros por categoría y por nivel, y el selector "Ordenar por" (próxima clase, nombre, precio o mejor valoradas). El perfil no muestra datos de contacto ni datos personales del instructor.',
           },
         ],
       },
@@ -492,6 +509,10 @@ export const MANUAL: SeccionManual[] = [
                 "Ocupa el cupo en el momento de confirmar y genera el pago correspondiente.",
               ],
             ],
+          },
+          {
+            tipo: "p",
+            texto: 'La pantalla "Favoritos" de la barra superior reúne las actividades marcadas como favoritas, 12 por página. Arriba de la lista se puede buscar por actividad o instructor ("Buscar por actividad o instructor…"), filtrar por categoría y por nivel (se ofrecen los de las propias favoritas, cuando hay más de uno) y elegir el orden con "Ordenar por": "Nombre" (la opción inicial), "Precio: menor", "Precio: mayor", "Mejor valoradas" o "Próxima clase". Con un filtro aplicado se indica cuántas se muestran sobre el total (por ejemplo, "3 favoritas de 14") y aparece el enlace "Limpiar filtros"; si ninguna coincide, se muestra "Ninguna de tus favoritas coincide con la búsqueda." El botón "Quitar de favoritos", debajo de cada tarjeta, la retira de la lista sin cambiar de página.',
           },
         ],
       },
@@ -579,6 +600,10 @@ export const MANUAL: SeccionManual[] = [
           },
           {
             tipo: "p",
+            texto: 'Sobre las pestañas hay una barra de filtros que se aplica a cualquiera de ellas: "Actividad" (busca por el nombre de la actividad), "Desde" y "Hasta" (el día de la clase) y "Ordenar por", con las opciones "Más recientes primero" (la inicial) y "Próximas primero", que muestra primero las clases que todavía no empezaron, de la más cercana a la más lejana, y después las ya dictadas. Los contadores de las pestañas se calculan con los filtros aplicados, y el enlace "Limpiar filtros" los restablece. Si ninguna clase de la pestaña coincide, se muestra "Ninguna clase de esta categoría coincide con los filtros." Cada pestaña muestra 10 clases por página; al llegar desde una notificación, la pantalla abre en la página donde está la clase indicada y la resalta.',
+          },
+          {
+            tipo: "p",
             texto: 'Cuando es el instructor quien cancela una clase, la tarjeta muestra la etiqueta "Cancelada" y, si se había realizado un pago, el texto correspondiente a la devolución. La notificación distingue qué ocurrió con el dinero: "Se liberó la reserva del pago en tu tarjeta: no se te va a cobrar." cuando el cobro todavía no se había hecho, o "Te reembolsamos el pago por Mercado Pago; según tu banco, puede tardar unos días en verse en tu tarjeta." cuando ya se había cobrado. Si el pago fue en efectivo, el aviso indica coordinar la devolución con el instructor.',
           },
         ],
@@ -636,12 +661,12 @@ export const MANUAL: SeccionManual[] = [
             items: [
               'En "Pendientes de reseñar" (o desde la tarjeta de la clase en "Mis clases"), presionar "Dejar reseña".',
               'Seleccionar una calificación de 1 a 5 estrellas (obligatoria) y, si se desea, escribir un comentario en "Tu comentario (opcional)".',
-              'Presionar "Enviar reseña". El sistema muestra "¡Gracias por tu reseña!".',
+              'Presionar "Publicar".',
             ],
           },
           {
             tipo: "p",
-            texto: "Toda reseña pasa por una instancia de moderación: no se publica ni se suma al promedio de la actividad hasta que un administrador la aprueba. Una reseña propia puede editarse (al hacerlo vuelve a moderación, porque su contenido cambió) o eliminarse, previa confirmación. Si el administrador la rechaza o la oculta, el listado lo refleja con la etiqueta correspondiente.",
+            texto: 'Toda reseña se publica en el momento en que se envía: se muestra en el detalle de la actividad y se suma a su calificación promedio. Antes de publicar, el formulario avisa "La reseña se publica en el momento y después no se puede editar ni eliminar.": una vez publicada, la reseña no puede editarse ni eliminarse. El instructor puede responderla y, si la considera inapropiada, denunciarla ante la administración. Si un administrador la oculta, en "Reseñas que hiciste" se muestra con la etiqueta "Oculta por un administrador".',
           },
         ],
       },
@@ -882,7 +907,7 @@ export const MANUAL: SeccionManual[] = [
             tipo: "lista",
             items: [
               "Los ingresos consideran únicamente los pagos liberados y los pagos en efectivo confirmados; el importe todavía retenido se informa por separado.",
-              "La calificación promedio se calcula sobre las reseñas visibles, excluyendo las ocultas por moderación.",
+              "La calificación promedio se calcula sobre las reseñas visibles, excluyendo las ocultas por un administrador.",
               "El período visualizado puede exportarse en formato PDF (a través del diálogo de impresión del navegador, con el gráfico incluido) o en formato CSV, compatible con Excel en la configuración regional argentina.",
             ],
           },
@@ -895,12 +920,12 @@ export const MANUAL: SeccionManual[] = [
         bloques: [
           {
             tipo: "p",
-            texto: 'La pantalla "Reseñas" muestra a la izquierda las actividades del instructor, con su cantidad de reseñas y su calificación promedio, y a la derecha las reseñas de la actividad seleccionada. Cada reseña puede tener una de las siguientes etiquetas: "Pendiente de moderación", "Denunciada · en revisión", "Oculta" o "Respondida".',
+            texto: 'La pantalla "Reseñas" muestra a la izquierda las actividades del instructor, con su cantidad de reseñas y su calificación promedio, y a la derecha las reseñas de la actividad seleccionada. Toda reseña se publica en el momento en que el alumno la envía. La cantidad y la calificación promedio no incluyen las reseñas ocultas por un administrador: esas se siguen listando con su etiqueta, y el resumen de la actividad indica cuántas hay ("1 oculta, no cuenta en la calificación"). Cada reseña puede tener una de las siguientes etiquetas: "Denunciada · en revisión", "Oculta" o "Respondida".',
           },
           {
             tipo: "lista",
             items: [
-              '**Responder**: presionar "Responder" en una reseña publicada, escribir la respuesta y enviarla. La respuesta es pública y el alumno la ve en el detalle de la actividad y en "Mis reseñas". No es posible responder reseñas en moderación u ocultas.',
+              '**Responder**: presionar "Responder" en una reseña publicada, escribir la respuesta y enviarla. La respuesta es pública y el alumno la ve en el detalle de la actividad y en "Mis reseñas". No es posible responder reseñas ocultas.',
               '**Denunciar una reseña inapropiada**: presionar "Denunciar reseña", completar el campo obligatorio "Motivo del reporte" y presionar "Enviar reporte". La denuncia se envía a la bandeja del administrador, y una misma reseña no puede denunciarse dos veces.',
             ],
           },
@@ -1035,23 +1060,22 @@ export const MANUAL: SeccionManual[] = [
       {
         id: "a-4-5",
         num: "4.5",
-        titulo: "Moderar reseñas",
+        titulo: "Reseñas publicadas",
         bloques: [
           {
             tipo: "p",
-            texto: 'En "Gestión", pestaña "Reseñas", el administrador dispone de la cola de reseñas pendientes de moderación y del listado de reseñas publicadas. Una reseña puede salir de circulación por tres vías distintas:',
+            texto: 'Las reseñas se publican en el momento en que el alumno las envía: no existe una instancia de aprobación previa. En "Gestión", pestaña "Reseñas", el administrador dispone del listado "Reseñas publicadas". Una reseña puede salir de circulación por dos vías:',
           },
           {
             tipo: "pasos",
             items: [
-              'El alumno autor la elimina en cualquier momento desde "Mis reseñas".',
-              "El administrador la rechaza mientras se encuentra en la cola de moderación, antes de publicarse.",
-              "El administrador la oculta una vez publicada, indicando obligatoriamente el motivo. La reseña deja de mostrarse y de computar en el promedio, pero no se borra: se conservan su autor, su texto y su fecha como evidencia.",
+              'El instructor la denuncia y el administrador resuelve la denuncia con "Ocultar la reseña", desde "Gestión de denuncias" o desde la pestaña "Reclamos" de "Gestión" (ver el apartado 4.6).',
+              'El administrador la oculta por su cuenta desde el listado, presionando "Ocultar" e indicando obligatoriamente el motivo.',
             ],
           },
           {
             tipo: "p",
-            texto: 'Aprobar una reseña la publica en el detalle de la actividad y la suma al promedio de calificación. Los dos listados muestran 10 reseñas por página, con los botones "« Primera", "Anterior", "Siguiente" y "Última »"; al presionar el número de página es posible escribir directamente la página a la que se quiere ir.',
+            texto: 'En los dos casos la reseña deja de mostrarse y de computar en el promedio, pero no se borra: se conservan su autor, su texto y su fecha como evidencia. Una reseña publicada no puede editarse ni eliminarse. El listado muestra 10 reseñas por página, con los botones "« Primera", "Anterior", "Siguiente" y "Última »"; al presionar el número de página es posible escribir directamente la página a la que se quiere ir.',
           },
         ],
       },
@@ -1062,7 +1086,7 @@ export const MANUAL: SeccionManual[] = [
         bloques: [
           {
             tipo: "p",
-            texto: 'La sección "Gestión de denuncias" (y la pestaña "Reclamos" de "Gestión") lista las denuncias con su identificador, su denunciante, su motivo, el objeto denunciado (una clase o una reseña) y su estado. En "Gestión de denuncias", la columna "Tipo" indica si la denuncia es sobre una "Clase" o una "Reseña", y la columna "Denunciado" muestra al instructor o, en una denuncia de reseña, al alumno que la escribió; al abrir una denuncia de reseña se muestra además el comentario denunciado. Los dos listados muestran 10 denuncias por página, con los mismos controles de paginación que la moderación de reseñas.',
+            texto: 'La sección "Gestión de denuncias" (y la pestaña "Reclamos" de "Gestión") lista las denuncias con su identificador, su denunciante, su motivo, el objeto denunciado (una clase o una reseña) y su estado. En "Gestión de denuncias", la columna "Tipo" indica si la denuncia es sobre una "Clase" o una "Reseña", y la columna "Denunciado" muestra al instructor o, en una denuncia de reseña, al alumno que la escribió; al abrir una denuncia de reseña se muestra además el comentario denunciado. Los dos listados muestran 10 denuncias por página, con los mismos controles de paginación que el listado de reseñas.',
           },
           {
             tipo: "pasos",
@@ -1315,8 +1339,8 @@ export const MANUAL: SeccionManual[] = [
               ],
               [
                 "Reseña",
-                "Pendiente de moderación · Oculta · Respondida",
-                "Estado de la reseña: a la espera de aprobación, retirada de circulación por el administrador o con respuesta del instructor.",
+                "Oculta · Respondida",
+                "Estado de la reseña: toda reseña se publica al enviarse; puede quedar retirada de circulación por el administrador o tener respuesta del instructor.",
               ],
             ],
           },

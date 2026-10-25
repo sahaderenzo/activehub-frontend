@@ -34,7 +34,6 @@ function Stars({ n, onPick }: { n: number; onPick?: (v: number) => void }) {
 interface FormState {
   claseId: string;
   actividad: string;
-  editingId?: string;
   puntaje: number;
   comentario: string;
 }
@@ -46,11 +45,11 @@ export default function AlumnoMisResenas() {
   const [misResenias, setMisResenias] = useState<MiResenia[]>([]);
   const [form, setForm] = useState<FormState | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // A dónde aterrizan las notificaciones de reseña del alumno: aprobada, ocultada, respondida.
+  // A dónde aterrizan las notificaciones de reseña del alumno: ocultada o respondida.
   const resaltado = useResaltado("resenia");
   const [cargando, setCargando] = useState(true);
-  /** Qué acción está en vuelo, para el texto del overlay. */
-  const [accion, setAccion] = useState<"guardando" | "eliminando" | null>(null);
+  /** Hay una publicación en vuelo: muestra el overlay. */
+  const [publicando, setPublicando] = useState(false);
 
   // Las inscripciones son de otro módulo (`inscripciones.gestionar`) y sólo alimentan la
   // lista de clases calificables: sin ese permiso las reseñas ya escritas se siguen viendo y
@@ -97,42 +96,18 @@ export default function AlumnoMisResenas() {
     setForm({ claseId, actividad: actividadNombre, puntaje: 5, comentario: "" });
   };
 
-  const abrirEdicion = (reseniaId: string, claseId: string, actividadNombre: string, puntaje: number, comentario: string) => {
-    setForm({ claseId, actividad: actividadNombre, editingId: reseniaId, puntaje, comentario });
-  };
-
   const guardar = async () => {
     if (!form || !form.puntaje) return;
     setError(null);
-    setAccion("guardando");
+    setPublicando(true);
     try {
-      // Editar es un PUT, no un borrar+crear: antes, si la creación fallaba después
-      // del borrado, la reseña original quedaba perdida sin nada que la reemplazara.
-      if (form.editingId) {
-        await data.actualizarResenia(form.editingId, form.puntaje, form.comentario.trim());
-      } else {
-        await data.crearResenia(form.claseId, form.puntaje, form.comentario.trim());
-      }
+      await data.crearResenia(form.claseId, form.puntaje, form.comentario.trim());
       setForm(null);
       cargar();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No pudimos guardar la reseña.");
     } finally {
-      setAccion(null);
-    }
-  };
-
-  const eliminar = async (id: string) => {
-    if (!window.confirm("¿Eliminar esta reseña? No se puede deshacer.")) return;
-    setError(null);
-    setAccion("eliminando");
-    try {
-      await data.eliminarResenia(id);
-      cargar();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "No pudimos eliminar la reseña.");
-    } finally {
-      setAccion(null);
+      setPublicando(false);
     }
   };
 
@@ -236,35 +211,17 @@ export default function AlumnoMisResenas() {
                     <div style={s("font-size:13.5px;line-height:1.55;color:#54697E;font-weight:500;")}>{r.respuestaInstructor}</div>
                   </div>
                 )}
-                <div style={s("display:flex;align-items:center;gap:9px;flex-wrap:wrap;")}>
-                  {/* Ocultada por moderación: sigue acá (no se borra), pero ya no se ve en la
-                      actividad. Sin el cartel, la notificación de "ocultamos tu reseña"
-                      aterrizaba en una fila que se veía igual que el resto. */}
-                  {r.oculta && (
+                {/* Ocultada por un administrador: sigue acá (no se borra), pero ya no se ve en
+                    la actividad. Sin el cartel, la notificación de "ocultamos tu reseña"
+                    aterrizaba en una fila que se veía igual que el resto. Una reseña publicada
+                    no se edita ni se elimina: no hay botones de acción. */}
+                {r.oculta && (
+                  <div style={s("display:flex;align-items:center;gap:9px;flex-wrap:wrap;")}>
                     <span style={s("font:700 11px Manrope,sans-serif;background:#FBEAEB;color:#BE3A3E;border:1px solid #F3D2D3;padding:4px 10px;border-radius:99px;")}>
-                      Oculta por moderación
+                      Oculta por un administrador
                     </span>
-                  )}
-                  {r.enModeracion && (
-                    <span style={s("font:700 11px Manrope,sans-serif;background:#FFF3E0;color:#B9741A;border:1px solid #F6E2C0;padding:4px 10px;border-radius:99px;")}>
-                      En moderación
-                    </span>
-                  )}
-                  <button
-                    className="ah-btn"
-                    onClick={() => abrirEdicion(r.id, r.claseId, r.actividadNombre, r.puntaje, r.comentario ?? "")}
-                    style={s("background:#fff;border:1px solid #E2E9F0;border-radius:9px;padding:7px 14px;font:700 12.5px Manrope,sans-serif;color:#41566B;cursor:pointer;")}
-                  >
-                    Editar
-                  </button>
-                  <button
-                    className="ah-btn"
-                    onClick={() => eliminar(r.id)}
-                    style={s("background:#fff;border:1px solid #F3D2D3;border-radius:9px;padding:7px 14px;font:700 12.5px Manrope,sans-serif;color:#BE3A3E;cursor:pointer;")}
-                  >
-                    Eliminar
-                  </button>
-                </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -274,15 +231,13 @@ export default function AlumnoMisResenas() {
       {form && (
         <Modal onClose={() => setForm(null)} zIndex={60}>
           <div style={s("background:#fff;border-radius:18px;padding:26px;max-width:440px;width:100%;")}>
-            <div style={s("font:700 18px Space Grotesk,sans-serif;color:#0E2A47;margin-bottom:4px;")}>
-              {form.editingId ? "Editar reseña" : "Dejar reseña"}
-            </div>
+            <div style={s("font:700 18px Space Grotesk,sans-serif;color:#0E2A47;margin-bottom:4px;")}>Dejar reseña</div>
             <div style={s("font-size:13.5px;color:#7A8C9E;font-weight:600;margin-bottom:16px;")}>{form.actividad}</div>
-            {form.editingId && (
-              <div style={s("background:#FFF3E0;border:1px solid #F6E2C0;border-radius:10px;padding:9px 12px;font:600 12.5px Manrope,sans-serif;color:#B9741A;margin-bottom:14px;")}>
-                Al editarla vuelve a moderación hasta que un administrador la apruebe.
-              </div>
-            )}
+            {/* La reseña se publica en el acto y después no se puede tocar: hay que decirlo
+                ANTES de publicar, que es el único momento en que todavía se puede corregir. */}
+            <div style={s("background:#FFF3E0;border:1px solid #F6E2C0;border-radius:10px;padding:9px 12px;font:600 12.5px Manrope,sans-serif;color:#B9741A;margin-bottom:14px;")}>
+              La reseña se publica en el momento y después no se puede editar ni eliminar.
+            </div>
             <div style={s("margin-bottom:16px;")}>
               <Stars n={form.puntaje} onPick={(v) => setForm({ ...form, puntaje: v })} />
             </div>
@@ -310,17 +265,14 @@ export default function AlumnoMisResenas() {
                   "flex:1;background:#FF6A2B;border:none;border-radius:11px;padding:12px;font:700 14px Manrope,sans-serif;color:#fff;cursor:pointer;",
                 )}
               >
-                {form.editingId ? "Guardar cambios" : "Publicar"}
+                Publicar
               </button>
             </div>
           </div>
         </Modal>
       )}
       {/* Va por encima del modal (z-index 120 vs. 80): la reseña se publica desde adentro. */}
-      <CargandoAccion
-        activo={accion !== null}
-        mensaje={accion === "eliminando" ? "Eliminando tu reseña" : "Publicando tu reseña"}
-      />
+      <CargandoAccion activo={publicando} mensaje="Publicando tu reseña" />
     </div>
   );
 }

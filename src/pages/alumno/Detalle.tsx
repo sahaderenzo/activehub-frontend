@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import AlumnoNav from "../../components/AlumnoNav";
 import StatusBadge from "../../components/StatusBadge";
@@ -12,6 +12,8 @@ import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import type { InformeActividad, MiInscripcion, ReseniaActividad } from "../../context/DataContext";
 import { esIaNoDisponible, esSinCuota } from "../../lib/ia";
+import { ORDENES_OPINIONES, opinionesVisibles } from "../../lib/opiniones";
+import type { OrdenOpiniones } from "../../lib/opiniones";
 import { ApiError, BASE_URL } from "../../lib/api";
 import { diasHastaClase, disponibilidad, formatFecha, formatHora, tipoIngreso } from "../../lib/mockData";
 import { formatDistanciaKm, haversineKm, useGeolocation } from "../../lib/geo";
@@ -71,20 +73,10 @@ const PREVENCIONES_GENERICAS = [
   "Avisá al instructor si sentís alguna molestia durante la sesión.",
 ];
 
-const FAQS = [
-  {
-    q: "¿Qué pasa si no puedo asistir?",
-    a: "Podés cancelar tu inscripción desde \"Mis clases\" antes del inicio. Si pagaste con Mercado Pago, el reintegro se procesa según la política de cancelación de la clase.",
-  },
-  {
-    q: "¿Necesito experiencia previa?",
-    a: "No, las clases están pensadas para recibir alumnos de distintos niveles. El instructor adapta la propuesta según el grupo.",
-  },
-  {
-    q: "¿Qué tengo que llevar?",
-    a: "Ropa cómoda acorde a la actividad, calzado adecuado y una botella de agua. Cualquier elemento adicional se informa al confirmar tu lugar.",
-  },
-];
+const chipOpinion = (on: boolean) =>
+  s(
+    `cursor:pointer;padding:6px 12px;border-radius:99px;font:700 12.5px Manrope,sans-serif;display:inline-flex;align-items:center;gap:4px;background:${on ? "#0E2A47" : "#F2F5F9"};color:${on ? "#fff" : "#41566B"};border:1px solid ${on ? "#0E2A47" : "#E2E9F0"};`,
+  );
 
 /** `error` es "no se pudo, y no es que falte la IA": el límite de consultas o un 4xx. */
 type AiState = "idle" | "loading" | "generated" | "error";
@@ -127,6 +119,10 @@ export default function AlumnoDetalle() {
   const [aiAviso, setAiAviso] = useState("");
   const [misInscripciones, setMisInscripciones] = useState<MiInscripcion[]>([]);
   const [reviewsActividad, setReviewsActividad] = useState<ReseniaActividad[]>([]);
+  /** Filtro de la lista de opiniones: null = todas las calificaciones. */
+  const [estrellasSel, setEstrellasSel] = useState<number | null>(null);
+  const [ordenOpiniones, setOrdenOpiniones] = useState<OrdenOpiniones>("Más recientes");
+  const listaOpinionesRef = useRef<HTMLDivElement>(null);
   const [misFavoritos, setMisFavoritos] = useState<string[]>([]);
   const [errorDetalle, setErrorDetalle] = useState(false);
   // Tercer estado, además de "está" y "falló": todavía no llegó. Sin esto la pantalla decía
@@ -267,6 +263,12 @@ export default function AlumnoDetalle() {
   const ratingProm = reviewsActividad.length
     ? reviewsActividad.reduce((sum, r) => sum + r.puntaje, 0) / reviewsActividad.length
     : actividad.rating;
+  const opiniones = opinionesVisibles(reviewsActividad, estrellasSel, ordenOpiniones);
+  // Al cambiar un filtro, la lista vuelve a empezar desde arriba: si no, quedaba scrolleada a
+  // mitad de una lista distinta.
+  const alInicioDeLaLista = () => {
+    if (listaOpinionesRef.current) listaOpinionesRef.current.scrollTop = 0;
+  };
   const ratingBars = [5, 4, 3, 2, 1].map((star) => {
     const n = reviewsActividad.filter((r) => r.puntaje === star).length;
     const pct = reviewsActividad.length ? Math.round((n / reviewsActividad.length) * 100) : 0;
@@ -410,14 +412,16 @@ export default function AlumnoDetalle() {
                 </div>
                 <div style={s("font-size:13px;color:#7A8C9E;font-weight:600;")}>Instructor</div>
               </div>
-              <button
+              {/* Lleva al perfil público del instructor. Antes era un botón sin acción. */}
+              <Link
+                to={`/alumno/instructor/${actividad.instructorId}`}
                 className="ah-btn"
                 style={s(
-                  "margin-left:auto;background:#fff;border:1px solid #D6DEE7;border-radius:10px;padding:10px 16px;font:700 13.5px Manrope,sans-serif;color:#0E2A47;cursor:pointer;",
+                  "margin-left:auto;background:#fff;border:1px solid #D6DEE7;border-radius:10px;padding:10px 16px;font:700 13.5px Manrope,sans-serif;color:#0E2A47;cursor:pointer;text-decoration:none;",
                 )}
               >
                 Ver perfil
-              </button>
+              </Link>
             </div>
 
             <h2 style={s("font:700 20px Space Grotesk,sans-serif;margin:0 0 12px;")}>Descripción</h2>
@@ -756,11 +760,86 @@ export default function AlumnoDetalle() {
                 ))}
               </div>
             </div>
-            <div style={s("display:flex;flex-direction:column;gap:14px;margin-bottom:34px;")}>
-              {reviewsActividad.length === 0 && (
-                <div style={s("color:#9AAABA;font-size:13.5px;font-weight:600;")}>Todavía no hay opiniones publicadas para esta actividad.</div>
+            {reviewsActividad.length === 0 ? (
+              <div style={s("color:#9AAABA;font-size:13.5px;font-weight:600;margin-bottom:34px;")}>
+                Todavía no hay opiniones publicadas para esta actividad.
+              </div>
+            ) : (
+              <div style={s("display:flex;flex-direction:column;gap:12px;margin-bottom:14px;")}>
+                <div style={s("display:flex;flex-wrap:wrap;align-items:center;gap:7px;")}>
+                  <span style={s("font:700 12.5px Manrope,sans-serif;color:#41566B;margin-right:2px;")}>Calificación</span>
+                  <span
+                    className="ah-btn"
+                    onClick={() => {
+                      setEstrellasSel(null);
+                      alInicioDeLaLista();
+                    }}
+                    style={chipOpinion(estrellasSel === null)}
+                  >
+                    Todas
+                  </span>
+                  {ratingBars.map((rb) => (
+                    <span
+                      key={rb.star}
+                      className="ah-btn"
+                      role="button"
+                      aria-label={`${rb.star} ${rb.star === 1 ? "estrella" : "estrellas"} (${rb.n})`}
+                      onClick={() => {
+                        setEstrellasSel(rb.star);
+                        alInicioDeLaLista();
+                      }}
+                      style={chipOpinion(estrellasSel === rb.star)}
+                    >
+                      {rb.star}
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill={estrellasSel === rb.star ? "#FFC53D" : "#F5B301"}>
+                        <path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14l-5-4.87 6.91-1.01L12 2z" />
+                      </svg>
+                      <span style={s("font-weight:600;opacity:.75;")}>({rb.n})</span>
+                    </span>
+                  ))}
+                </div>
+                <div style={s("display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;")}>
+                <span style={s("font-size:13px;color:#7A8C9E;font-weight:600;")}>
+                  {estrellasSel !== null
+                    ? `Mostrando ${opiniones.length} de ${reviewsActividad.length} opiniones`
+                    : `${reviewsActividad.length} ${reviewsActividad.length === 1 ? "opinión" : "opiniones"}`}
+                </span>
+                <label style={s("display:flex;align-items:center;gap:8px;font:600 13px Manrope,sans-serif;color:#7A8C9E;")}>
+                  Ordenar por
+                  <select
+                    value={ordenOpiniones}
+                    onChange={(e) => {
+                      setOrdenOpiniones(e.target.value as OrdenOpiniones);
+                      alInicioDeLaLista();
+                    }}
+                    style={s("border:1px solid #E2E9F0;border-radius:10px;padding:8px 10px;font:700 13px Manrope,sans-serif;color:#0E2A47;background:#fff;")}
+                  >
+                    {ORDENES_OPINIONES.map((o) => (
+                      <option key={o} value={o}>
+                        {o}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                </div>
+              </div>
+            )}
+            {/* Todas las opiniones, en un contenedor con su propio scroll (antes se cortaba en las
+                primeras 5 y las demás no se podían ver). */}
+            <div
+              ref={listaOpinionesRef}
+              className="ah-scroll"
+              data-testid="lista-opiniones"
+              style={s(
+                `display:flex;flex-direction:column;gap:14px;max-height:620px;overflow-y:auto;padding-right:6px;margin-bottom:${reviewsActividad.length > 0 ? 34 : 0}px;`,
               )}
-              {reviewsActividad.slice(0, 5).map((rv) => {
+            >
+              {reviewsActividad.length > 0 && opiniones.length === 0 && (
+                <div style={s("background:#fff;border:1px dashed #D6DEE7;border-radius:16px;padding:26px 20px;text-align:center;color:#7A8C9E;font-size:13.5px;font-weight:600;")}>
+                  No hay opiniones con {estrellasSel} {estrellasSel === 1 ? "estrella" : "estrellas"}.
+                </div>
+              )}
+              {opiniones.map((rv) => {
                 return (
                   <div key={rv.id} style={s("background:#fff;border:1px solid #E7EDF3;border-radius:16px;padding:18px 20px;")}>
                     <div style={s("display:flex;align-items:center;gap:11px;margin-bottom:10px;")}>
@@ -810,15 +889,11 @@ export default function AlumnoDetalle() {
               </>
             )}
 
-            <h2 style={s("font:700 20px Space Grotesk,sans-serif;margin:0 0 16px;")}>Preguntas frecuentes</h2>
-            <div style={s("display:flex;flex-direction:column;gap:11px;")}>
-              {FAQS.map((f) => (
-                <div key={f.q} style={s("background:#fff;border:1px solid #E7EDF3;border-radius:14px;padding:17px 20px;")}>
-                  <div style={s("font:700 15px Manrope,sans-serif;color:#0E2A47;margin-bottom:7px;")}>{f.q}</div>
-                  <p style={s("font-size:14px;line-height:1.6;color:#65788C;margin:0;")}>{f.a}</p>
-                </div>
-              ))}
-            </div>
+            {/* Acá había una sección "Preguntas frecuentes" con tres preguntas fijas, iguales para
+                toda actividad, y respuestas que contradecían al sistema (una "política de
+                cancelación de la clase" que no existe, "no hace falta experiencia" en actividades de
+                exigencia alta). Se retiró el 2026-10-24: las dudas generales las responden la
+                burbuja "¿Dudas?" de esta misma pantalla, /ayuda y el manual. */}
           </div>
 
           {/* RIGHT: BOOKING */}

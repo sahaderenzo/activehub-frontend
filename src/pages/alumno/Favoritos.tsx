@@ -4,10 +4,24 @@ import AlumnoNav from "../../components/AlumnoNav";
 import ActivityCard from "../../components/ActivityCard";
 import ErrorReintentar from "../../components/ErrorReintentar";
 import { CargandoSeccion } from "../../components/Cargando";
+import Paginacion from "../../components/Paginacion";
+import { usePaginado } from "../../lib/paginado";
+import { incluye } from "../../lib/texto";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import type { Actividad, Categoria, TipoActividad } from "../../lib/types";
+
+/** 3 filas de la grilla de 4 columnas. */
+const POR_PAGINA = 12;
+
+const ORDENES = ["Nombre", "Precio: menor", "Precio: mayor", "Mejor valoradas", "Próxima clase"] as const;
+type Orden = (typeof ORDENES)[number];
+
+const chip = (on: boolean) =>
+  s(
+    `cursor:pointer;padding:6px 12px;border-radius:99px;font:700 12.5px Manrope,sans-serif;background:${on ? "#0E2A47" : "#F2F5F9"};color:${on ? "#fff" : "#41566B"};border:1px solid ${on ? "#0E2A47" : "#E2E9F0"};`,
+  );
 
 function disponibilidadDe(a: Actividad): { label: string; type: "disponible" | "ultimos" | "sincupos" } {
   const p = a.proximaClase;
@@ -78,6 +92,67 @@ export default function AlumnoFavoritos() {
     [favoritoIds, actividades],
   );
 
+  // Filtros (2026-10-24): texto (nombre o instructor, sin tildes), categoría, nivel y orden.
+  // Las opciones de categoría y nivel salen de los favoritos, no del catálogo entero.
+  const [busqueda, setBusqueda] = useState("");
+  const [categoriaSel, setCategoriaSel] = useState<string | null>(null);
+  const [nivelSel, setNivelSel] = useState<string | null>(null);
+  const [orden, setOrden] = useState<Orden>("Nombre");
+
+  const categoriaDe = useCallback(
+    (a: Actividad) => {
+      const tipo = getTipoActividad(a.tipoActividadId);
+      return tipo ? getCategoria(tipo.categoriaId) : undefined;
+    },
+    [getTipoActividad, getCategoria],
+  );
+
+  const categorias = useMemo(() => {
+    const porId = new Map<string, Categoria>();
+    for (const a of misFavoritas) {
+      const c = categoriaDe(a);
+      if (c) porId.set(c.id, c);
+    }
+    return [...porId.values()].sort((x, y) => x.nombre.localeCompare(y.nombre, "es-AR"));
+  }, [misFavoritas, categoriaDe]);
+
+  const niveles = useMemo(
+    () => [...new Set(misFavoritas.map((a) => a.nivelIntensidad))].sort((x, y) => x.localeCompare(y, "es-AR")),
+    [misFavoritas],
+  );
+
+  const filtradas = useMemo(() => {
+    const term = busqueda.trim();
+    const lista = misFavoritas.filter((a) => {
+      if (term && !incluye(a.nombre, term) && !incluye(instructorNombre[a.instructorId] ?? "", term)) return false;
+      if (categoriaSel && categoriaDe(a)?.id !== categoriaSel) return false;
+      if (nivelSel && a.nivelIntensidad !== nivelSel) return false;
+      return true;
+    });
+    const fecha = (a: Actividad) => (a.proximaClase ? new Date(a.proximaClase.fechaHora).getTime() : Infinity);
+    switch (orden) {
+      case "Precio: menor":
+        return lista.sort((x, y) => x.precio - y.precio);
+      case "Precio: mayor":
+        return lista.sort((x, y) => y.precio - x.precio);
+      case "Mejor valoradas":
+        return lista.sort((x, y) => y.rating - x.rating);
+      case "Próxima clase":
+        return lista.sort((x, y) => fecha(x) - fecha(y));
+      default:
+        return lista.sort((x, y) => x.nombre.localeCompare(y.nombre, "es-AR"));
+    }
+  }, [misFavoritas, busqueda, categoriaSel, nivelSel, orden, categoriaDe, instructorNombre]);
+
+  const hayFiltros = busqueda.trim() !== "" || categoriaSel !== null || nivelSel !== null;
+  const limpiar = () => {
+    setBusqueda("");
+    setCategoriaSel(null);
+    setNivelSel(null);
+  };
+  // La clave son los filtros, no la lista: quitar un favorito no tiene que mandar a la página 1.
+  const pag = usePaginado(filtradas, POR_PAGINA, [busqueda.trim(), categoriaSel, nivelSel, orden].join("|"));
+
   const quitar = (actividadId: string) => {
     setFavoritoIds((prev) => prev.filter((id) => id !== actividadId));
     quitarFavorito(actividadId).catch(() => setFavoritoIds((prev) => [...prev, actividadId]));
@@ -131,8 +206,77 @@ export default function AlumnoFavoritos() {
                 </span>
               </div>
             )}
+            <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:16px;padding:16px 18px;margin-bottom:18px;display:flex;flex-direction:column;gap:12px;")}>
+              <div style={s("display:flex;gap:12px;flex-wrap:wrap;align-items:center;")}>
+                <input
+                  type="search"
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  placeholder="Buscar por actividad o instructor…"
+                  style={s("flex:1;min-width:220px;border:1px solid #E2E9F0;border-radius:10px;padding:10px 13px;font:600 14px Manrope,sans-serif;color:#0E2A47;")}
+                />
+                <label style={s("display:flex;align-items:center;gap:8px;font:600 13.5px Manrope,sans-serif;color:#7A8C9E;")}>
+                  Ordenar por
+                  <select
+                    value={orden}
+                    onChange={(e) => setOrden(e.target.value as Orden)}
+                    style={s("border:1px solid #E2E9F0;border-radius:10px;padding:9px 11px;font:700 13px Manrope,sans-serif;color:#0E2A47;background:#fff;")}
+                  >
+                    {ORDENES.map((o) => (
+                      <option key={o} value={o}>
+                        {o}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              {categorias.length > 1 && (
+                <div style={s("display:flex;flex-wrap:wrap;align-items:center;gap:7px;")}>
+                  <span style={s("font:700 12.5px Manrope,sans-serif;color:#41566B;width:72px;")}>Categoría</span>
+                  <span className="ah-btn" onClick={() => setCategoriaSel(null)} style={chip(categoriaSel === null)}>
+                    Todas
+                  </span>
+                  {categorias.map((c) => (
+                    <span key={c.id} className="ah-btn" onClick={() => setCategoriaSel(c.id)} style={chip(categoriaSel === c.id)}>
+                      {c.nombre}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {niveles.length > 1 && (
+                <div style={s("display:flex;flex-wrap:wrap;align-items:center;gap:7px;")}>
+                  <span style={s("font:700 12.5px Manrope,sans-serif;color:#41566B;width:72px;")}>Nivel</span>
+                  <span className="ah-btn" onClick={() => setNivelSel(null)} style={chip(nivelSel === null)}>
+                    Todos
+                  </span>
+                  {niveles.map((n) => (
+                    <span key={n} className="ah-btn" onClick={() => setNivelSel(n)} style={chip(nivelSel === n)}>
+                      {n}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div style={s("display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:12px;")}>
+              <span style={s("font-size:14px;color:#65788C;font-weight:600;")}>
+                <strong style={s("color:#0E2A47;")}>
+                  {filtradas.length} {filtradas.length === 1 ? "favorita" : "favoritas"}
+                </strong>
+                {hayFiltros ? ` de ${misFavoritas.length}` : ""}
+              </span>
+              {hayFiltros && (
+                <span className="ah-link" onClick={limpiar} style={s("font-size:13px;font-weight:700;color:#12B5A5;cursor:pointer;")}>
+                  Limpiar filtros
+                </span>
+              )}
+            </div>
+            {filtradas.length === 0 && (
+              <div style={s("background:#fff;border:1px dashed #D6DEE7;border-radius:16px;padding:40px 20px;text-align:center;color:#7A8C9E;font-weight:600;")}>
+                Ninguna de tus favoritas coincide con la búsqueda.
+              </div>
+            )}
             <div className="ah-grid-4" style={s("display:grid;grid-template-columns:repeat(4,1fr);gap:20px;")}>
-              {misFavoritas.map((a) => (
+              {pag.visibles.map((a) => (
                 <div key={a.id} style={s("display:flex;flex-direction:column;gap:8px;")}>
                   <ActivityCard {...cardProps(a, getTipoActividad, getCategoria, instructorNombre)} />
                   <button
@@ -150,6 +294,7 @@ export default function AlumnoFavoritos() {
                 </div>
               ))}
             </div>
+            <Paginacion paginaActual={pag.paginaActual} totalPaginas={pag.totalPaginas} irAPagina={pag.irAPagina} />
           </>
         )}
       </div>

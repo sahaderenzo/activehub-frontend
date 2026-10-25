@@ -36,4 +36,26 @@ describe("usePaginado", () => {
     expect(result.current.totalPaginas).toBe(1);
     expect(result.current.visibles).toEqual([]);
   });
+
+  it("al cambiar la clave de reinicio (los filtros) vuelve a la página 1", () => {
+    const { result, rerender } = renderHook(({ clave }) => usePaginado(items, 10, clave), {
+      initialProps: { clave: "sin filtros" },
+    });
+    act(() => result.current.irAPagina(3));
+    expect(result.current.paginaActual).toBe(3);
+
+    rerender({ clave: "categoría: yoga" });
+    expect(result.current.paginaActual).toBe(1);
+
+    act(() => result.current.irAPagina(2));
+    expect(result.current.paginaActual).toBe(2);
+  });
+
+  it("muestra la página preferida hasta que el usuario elige otra", () => {
+    const { result } = renderHook(() => usePaginado(items, 10, "", 3));
+    expect(result.current.paginaActual).toBe(3);
+
+    act(() => result.current.irAPagina(1));
+    expect(result.current.paginaActual).toBe(1);
+  });
 });
