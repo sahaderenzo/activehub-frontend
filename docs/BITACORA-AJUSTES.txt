@@ -11,7 +11,7 @@ PARTE A — ESTADO GENERAL
 ================================================================================
 
 ESTADO GENERAL
-Fecha de actualización: 24/10/2026 (después de la ENTRADA 013)
+Fecha de actualización: 26/10/2026 (después de la ENTRADA 020)
 
 Ajustes
   1. Filtro "Distancia" de Explorar como barra de rango con dos manijas (ENTRADA 001):
@@ -48,33 +48,58 @@ Ajustes
   13. Paginación en Explorar, y paginación y filtros en Favoritos y en todas las pestañas de
       Mis clases (ENTRADA 013): IMPLEMENTADO, solo frontend; pruebas automatizadas; no probado
       en el navegador.
+  14. Carrusel de fotos del detalle de una actividad, y cambiar la portada ya no borra una foto
+      de la galería (ENTRADA 014): corrección de error en backend y frontend; pruebas
+      automatizadas; el carrusel se verificó en el navegador en una página aislada (1280 y 375
+      px); no probado dentro de la aplicación con datos reales.
+  15. Ilustración de fondo en el panel izquierdo del Login (ENTRADA 015): IMPLEMENTADO;
+      pruebas automatizadas; verificado en el navegador en la aplicación a 1440 y 375 px.
+  16. Instructor: paginación, scroll y lupa en Historial; paginación y scroll en Próximas
+      clases; 12 por página y búsqueda en Mis actividades; filtros y orden en Reseñas (ENTRADA
+      016): IMPLEMENTADO, solo frontend; pruebas automatizadas; no probado en el navegador.
+  17. El logo del panel lateral del instructor y del administrador ya no lleva a la landing
+      (ENTRADA 017): corrección de error; prueba automatizada; no probado en el navegador.
+  18. Documentación del instructor (ver, subir y quitar), documentación nueva obligatoria para
+      volver a postularse, motivo de rechazo obligatorio y etiqueta "Validación rechazada"
+      (ENTRADA 018): IMPLEMENTADO en backend (tres casos de uso nuevos, V35) y frontend; pruebas
+      automatizadas; no probado en el navegador.
+  19. Gestión del administrador: sin "Editar" en Actividades; paginación, scroll y filtros en
+      las seis pestañas (ENTRADA 019): IMPLEMENTADO, solo frontend; pruebas automatizadas; no
+      probado en el navegador.
+  20. Gestión del administrador: "Ordenar por" en las seis pestañas (ENTRADA 020):
+      IMPLEMENTADO, solo frontend; pruebas automatizadas; no probado en el navegador.
 
 Frontend
-  Pruebas: 239 pruebas en 36 archivos, todas en verde. Comando ejecutado el 24/10/2026:
-    npx vitest run --maxWorkers=1. Salida literal: "Test Files  36 passed (36)" y "Tests  239
-    passed (239)". Con npm test (hilos por defecto) la misma suite dio fallas por "Test timed
+  Pruebas: 295 pruebas en 49 archivos, todas en verde. Comando ejecutado el 26/10/2026:
+    npx vitest run --maxWorkers=1. Salida literal: "Test Files  49 passed (49)" y "Tests  295
+    passed (295)". Con npm test (hilos por defecto) la misma suite dio fallas por "Test timed
     out in 5000ms" en archivos no tocados mientras el equipo tenía corriendo otros procesos de
     java y node (ver ENTRADA 003, PRUEBAS). Conteo de archivos: find src -name "*.test.*" | wc
-    -l -> 36.
+    -l -> 49.
   Análisis estático: 0 errores, 10 advertencias (comando: npx eslint .; salida literal
     "10 problems (0 errors, 10 warnings)"). Eran 11: la ENTRADA 002 corrigió una.
   Verificación de tipos: sin errores (comando: npx tsc -b).
   Compilación de producción: correcta (comando: npm run build).
 
 Backend
-  Cambios de código: solo el caso de uso nuevo actualizarmicondicionsalud y el campo
-    condicionSalud de GET /api/auth/me (ENTRADA 012). Además cambió la copia del manual de
-    usuario que usa el asistente (también en la ENTRADA 013; ManualUsuarioTest: 9 pruebas en
-    verde). Suite completa (JAVA_HOME=$HOME/.jdks/jdk-21.0.12+8 ./mvnw -B
-    test, 24/10/2026): "Tests run: 1016, Failures: 0, Errors: 0, Skipped: 2", "BUILD SUCCESS".
-    Casos de uso: 113. Archivos de prueba: 205.
+  Cambios de código: el caso de uso nuevo actualizarmicondicionsalud y el campo
+    condicionSalud de GET /api/auth/me (ENTRADA 012); subirfotoactividad ya no borra el archivo
+    de la portada anterior si es de la galería, y obteneractividad devuelve tienePortada y
+    portadaImagenId (ENTRADA 014); listarmisdocumentos, descargarmidocumento y
+    retirarmidocumento (NUEVOS), reabrir con documentación nueva obligatoria, motivo de rechazo
+    obligatorio y la migración V35 (ENTRADA 018). Además cambió la copia del manual de usuario
+    que usa el asistente (ENTRADAS 013, 014 y 018). Suite completa
+    (JAVA_HOME=$HOME/.jdks/jdk-21.0.12+8 ./mvnw -B test, 26/10/2026): "Tests run: 1039,
+    Failures: 0, Errors: 0, Skipped: 2", "BUILD SUCCESS". Casos de uso: 116. Archivos de prueba:
+    212. Migraciones: 35 (V1 a V35).
 
 Integración continua
   Estado del último flujo ejecutado: no verificado. Los cambios no están commiteados ni
     empujados al 23/10/2026.
 
 Configuración
-  Sin variables de entorno nuevas.
+  Sin variables de entorno nuevas. La migración V35 ya quedó aplicada en la base compartida de
+    Supabase (la aplica la suite del backend al levantar el contexto).
 
 Despliegue
   Estado: no desplegado. Sin cambios.
@@ -84,8 +109,10 @@ Pendientes abiertos
      filtros rápidos "A menos de 5/10/25 km" del Home, "Fecha", "Horario" y "Limpiar" de
      Explorar, "Ver perfil", las opiniones y el final del detalle de una actividad, y el
      fondo de los buscadores del Home y de Explorar con una sesión real, los filtros rápidos
-     del Home, la tarjeta "Información de salud" del perfil del alumno, y la paginación y los
-     filtros de Explorar, Favoritos y Mis clases.
+     del Home, la tarjeta "Información de salud" del perfil del alumno, la paginación y los
+     filtros de Explorar, Favoritos y Mis clases, el carrusel de fotos del detalle con una
+     actividad real (reiniciar el backend), y con una cuenta de instructor aprobada el
+     Historial, Próximas clases, Mis actividades y Reseñas.
   2. Commitear y empujar.
   3. Botón "Compartir" del detalle de una actividad: sigue sin acción. Postergado por decisión
      del usuario (24/10/2026) hasta el despliegue, porque sin URL pública el enlace apuntaría a
@@ -1591,6 +1618,887 @@ CAPTURAS SUGERIDAS: Explorar con la paginación al pie; Favoritos con un filtro 
 
 PENDIENTE QUE QUEDA: probar en el navegador con una cuenta de alumno.
 
+================================================================================
+ENTRADA 014
+================================================================================
+FECHA: 25/10/2026
+
+REPOSITORIO: ambos (activehub-frontend y activehub-backend).
+
+RAMA Y COMMITS: main en los dos. Sin commit al momento de escribir esta entrada. Sin Pull
+  Request.
+
+TIPO: corrección de error e interfaz.
+
+TÍTULO: Carrusel de fotos en el detalle de una actividad; cambiar la portada ya no borra una
+  foto de la galería.
+
+QUÉ CAMBIA PARA EL USUARIO:
+  - Alumno, detalle de una actividad: las fotos se recorren en el recuadro grande con flechas
+    a los costados (vuelven al principio al llegar al final), un contador "N / M", miniaturas
+    debajo (la elegida queda marcada), las flechas del teclado y el deslizamiento con el dedo
+    en el celular. Primero se ve la portada y después el resto de la galería, sin repetir
+    ninguna. Una foto que no carga desaparece en lugar de mostrar el ícono de imagen rota.
+  - Antes: solo había miniaturas (y solo con dos fotos o más), sin flechas ni contador; la
+    portada se veía repetida en la primera miniatura; una portada subida aparte no volvía a
+    verse después de tocar una miniatura; y la foto elegida podía pasar a otra actividad.
+  - Instructor: cambiar la portada con "Cambiar foto" ya no borra la primera foto de la
+    galería. Antes la borraba (comparten el archivo) y al alumno le quedaba una miniatura rota.
+
+TEXTOS DE INTERFAZ:
+  Nuevos (carrusel del detalle):
+    - Contador: "<n> / <total>".
+    - Nombres accesibles: "Fotos de <actividad>" (región), "Foto anterior", "Foto siguiente",
+      "Ver foto <n> de <total>" (cada miniatura) y, para la foto grande, "<actividad>, foto
+      <n> de <total>".
+  Sin cambios: "FOTO · <actividad>" cuando no hay ninguna foto; en el formulario del
+    instructor, "Cambiar foto", "Agregar foto", "Portada. JPG o PNG. Podés cambiarla cuando
+    quieras." y "Hasta 6 imágenes. La primera que subas queda además como portada.".
+  Manual de usuario (las dos copias, idénticas):
+    - Apartado 2.3, párrafo nuevo antes del del importe: "Las fotos de la actividad se recorren en el recuadro grande del encabezado: primero la portada y después el resto de la galería, sin repetir ninguna. Con más de una foto aparecen las flechas a los costados, el contador (por ejemplo, "2 / 5") y las miniaturas debajo, que permiten elegir una foto directamente; también se puede avanzar con las flechas del teclado o deslizando con el dedo en el celular. Una foto que no puede cargarse no se muestra."
+    - Apartado del alta de actividad, paso 3 (decía "Cargar las imágenes de la actividad: se
+      admiten hasta seis, y la primera se utiliza como portada."): "Cargar las imágenes de la
+      actividad: se admiten hasta seis, y la primera se utiliza como portada. La portada puede
+      cambiarse después con "Cambiar foto" sin que esa primera imagen salga de la galería."
+
+DETALLE TÉCNICO:
+  - Pedido del usuario (25/10/2026): revisar el carrusel de fotos de una actividad vista como
+    alumno. Se le avisó antes de tocar el backend y eligió corregir frontend y backend.
+  - Causa del archivo borrado: agregarimagenactividad pone la primera imagen de la galería como
+    portada (actividad.foto_path = mismo archivo). subirfotoactividad, al reemplazar la portada,
+    borraba siempre el archivo anterior, también cuando era el de esa imagen de la galería: la
+    fila de actividad_imagen quedaba apuntando a un archivo inexistente y
+    GET /api/fotos/actividad/imagen/{id} respondía 404.
+  - Backend:
+    - ActividadImagenRepository: existsByActividadIdAndPath (consulta derivada nueva).
+    - SubirFotoActividadService: solo borra el archivo anterior si no pertenece a la galería.
+      Recibe ActividadImagenRepository en el constructor.
+    - GET /api/actividades/{id} (obteneractividad): campos nuevos tienePortada (boolean) y
+      portadaImagenId (id de la imagen de la galería que comparte archivo con la portada, o
+      null).
+  - Frontend:
+    - lib/galeria.ts (NUEVO): fotosDeActividad arma la lista sin repetidas: la portada primero
+      (si es de la galería, en su lugar; si se subió aparte, delante de toda la galería) y
+      después el resto.
+    - components/GaleriaActividad.tsx (NUEVO): el carrusel. Guarda la clave de la foto elegida
+      y deriva el índice; las fotos que fallan al cargar se sacan de la lista.
+    - pages/alumno/Detalle.tsx: usa el carrusel con key = id de la actividad; se retiró el
+      estado imagenActiva.
+    - context/DataContext.tsx y lib/types.ts: los dos campos nuevos del detalle.
+  - Datos existentes: las actividades cuya primera foto ya se perdió siguen teniendo esa fila en
+    la galería sin archivo. El carrusel la oculta; el instructor puede quitarla desde el
+    formulario y volver a subirla. No se consultó la base para contarlas.
+
+ESTADO: corregido e IMPLEMENTADO; PROBADO con pruebas automatizadas en los dos repositorios. El
+  carrusel se verificó en el navegador en una página aislada con dos fotos y una rota (en 1280 y
+  en 375 px: la rota se descartó, el contador pasó a "1 / 2", la flecha avanzó y no hubo
+  desborde horizontal). No probado dentro de la aplicación con una actividad real.
+
+HISTORIAS Y CRITERIOS: sin criterios nuevos; corrige el comportamiento de la galería del
+  detalle (sección 2 de la especificación, "imagenes[]").
+
+PANTALLAS: detalle de una actividad del alumno (E3A, código a confirmar); "Manual de usuario"
+  (SYS-PAN-MAN, texto).
+
+REGLAS DE NEGOCIO: sin cambios.
+
+MÓDULOS: 7. Actividades; 5. Alumno; 15. Ayuda y Soporte al Usuario (manual).
+
+CASOS DE USO: sin altas ni bajas (113). Modificados: subirfotoactividad y obteneractividad.
+
+ENTIDADES Y MIGRACIONES: sin cambios de esquema.
+
+TECNOLOGÍAS: sin cambios; sin dependencias nuevas (el carrusel no usa librerías).
+
+COSTOS: sin cambios.
+
+RIESGOS: sin cambios.
+
+SEGURIDAD: sin cambios (las fotos ya eran públicas, como el resto del catálogo).
+
+PRUEBAS:
+  - Backend: SubirFotoActividadServiceTest suma 2 (la portada anterior de la galería no se
+    borra; la subida aparte sí); ObtenerActividadServiceTest suma 2 (informa la imagen que es
+    portada; con portada aparte, portadaImagenId null).
+  - Backend completo (JAVA_HOME=$HOME/.jdks/jdk-21.0.12+8 ./mvnw -B test, 25/10/2026): "Tests
+    run: 1020, Failures: 0, Errors: 0, Skipped: 2", "BUILD SUCCESS". Antes: 1016.
+  - Frontend, nuevas: lib/galeria.test.ts (5) y components/GaleriaActividad.test.tsx (6:
+    flechas en círculo con contador; miniatura marcada; teclado; deslizamiento; foto rota
+    descartada; una sola foto y ninguna). Detalle.test.tsx: sin cambios de casos (se quitó un
+    mock que ya no se usa).
+  - Frontend completo (npx vitest run --maxWorkers=1, 25/10/2026): "Test Files  38 passed
+    (38)" y "Tests  250 passed (250)". Antes: 239 en 36.
+  - Manual: frontend (npx vitest run src/lib/manual src/pages/public) "Tests  40 passed
+    (40)"; backend ManualUsuarioTest (9) y PreguntarAlAsistenteServiceTest (12), 0 fallas.
+
+ANÁLISIS ESTÁTICO: "10 problems (0 errors, 10 warnings)", sin cambios. npx tsc -b: sin
+  errores. npm run build: correcto.
+
+DESPLIEGUE Y CONFIGURACIÓN: sin variables nuevas. Hay que reiniciar el backend para que el
+  detalle traiga los campos nuevos; sin reiniciar, el carrusel igual funciona pero puede
+  repetir la portada.
+
+DECISIONES:
+  - Corregir en el backend (decisión del usuario) y no solo ocultar la miniatura rota: el
+    archivo se perdía de verdad.
+  - Que el detalle diga cuál imagen es la portada (portadaImagenId) en lugar de comparar
+    archivos en el cliente, que no conoce las rutas.
+  - Flechas circulares y sin pasar solas (sin reproducción automática): el alumno mira a su
+    ritmo.
+
+ERRORES DETECTADOS: cambiar la portada borraba el archivo de la primera imagen de la galería;
+  la portada se mostraba repetida; una portada subida aparte se perdía al tocar una miniatura;
+  la foto elegida no se reiniciaba al cambiar de actividad. Corregidos.
+
+CAPTURAS SUGERIDAS: detalle de una actividad con varias fotos, mostrando las flechas, el
+  contador y las miniaturas, en escritorio y en celular.
+
+PENDIENTE QUE QUEDA: probarlo con una actividad real (reiniciar el backend); revisar si hay
+  actividades con una foto de la galería ya perdida para que el instructor la vuelva a subir.
+
+================================================================================
+ENTRADA 015
+================================================================================
+FECHA: 25/10/2026
+
+REPOSITORIO: activehub-frontend.
+
+RAMA Y COMMITS: main. Sin commit al momento de escribir esta entrada. Sin Pull Request.
+
+TIPO: interfaz.
+
+TÍTULO: El panel izquierdo del Login lleva la ilustración de ActiveHub de fondo.
+
+QUÉ CAMBIA PARA EL USUARIO: en "Iniciar sesión", el panel izquierdo muestra la ilustración
+  provista por el usuario (deportistas, instructores, íconos de actividades y el logo de
+  ActiveHub arriba a la izquierda) en lugar del degradé azul con manchas de color, con un velo
+  oscuro a la izquierda para que el texto se lea. El texto no cambia. Como la ilustración ya trae
+  el logo, el panel deja de dibujar el suyo; tocar el logo de la imagen sigue llevando al
+  inicio. En el celular el panel queda arriba del formulario, sin ocupar toda la pantalla, y el
+  velo es más claro arriba para que se vea el logo.
+
+TEXTOS DE INTERFAZ:
+  Sin cambios: "Tu próxima clase está a un clic de distancia", "Ingresá para ver tus
+    inscripciones, anotarte en nuevas clases y descubrir actividades cerca tuyo.", "Inscribite y
+    pagá en pocos pasos", "Cupos y horarios en tiempo real", "Calificá y comentá tus
+    actividades".
+  Retirado: el logotipo dibujado del panel ("A" + "ActiveHub"); lo reemplaza el de la imagen.
+  Nuevo (nombre accesible del enlace sobre el logo): "ActiveHub, ir al inicio".
+  Manual de usuario: sin cambios.
+
+DETALLE TÉCNICO:
+  - Pedido del usuario (25/10/2026), con dos imágenes: la ilustración sola y una maqueta del
+    resultado esperado.
+  - public/login-fondo.webp (NUEVO): la ilustración de 2000x2000 px pasada a 1600x1600 WebP
+    calidad 78, 54 KB.
+  - pages/auth/Login.tsx: se quitan las cuatro capas de degradé y el logotipo; quedan la capa
+    .ah-login-fondo con el enlace .ah-login-logo y el velo .ah-login-velo.
+  - index.css: .ah-login-fondo es un cuadrado del tamaño del lado más largo del panel
+    (min-width y min-height al 100% con aspect-ratio 1/1), anclado arriba a la izquierda; hace
+    lo mismo que background-size: cover pero permite ubicar el enlace del logo en porcentajes
+    de la imagen (left 4%, top 4%, ancho 26%, alto 7%), así queda siempre encima del logo. Por
+    debajo de 820 px: sin alto mínimo, relleno superior de 110 px para no tapar el logo y velo
+    vertical.
+
+ESTADO: IMPLEMENTADO y PROBADO con pruebas automatizadas; verificado en el navegador dentro de
+  la aplicación (servidor de desarrollo del usuario, /login): a 1440x900 el panel mide 751x900,
+  el cuadrado del fondo 900x900 y el enlace cubre el logo; a 375 px no hay desborde horizontal y
+  el clic en el logo llevó a "/".
+
+HISTORIAS Y CRITERIOS: sin cambios (presentación).
+
+PANTALLAS: Login (E1A, código a confirmar).
+
+REGLAS DE NEGOCIO: sin cambios.
+
+MÓDULOS: 1. Autenticación y Control de Acceso (presentación).
+
+CASOS DE USO: sin cambios.
+
+ENTIDADES Y MIGRACIONES: sin cambios.
+
+TECNOLOGÍAS: sin cambios.
+
+COSTOS: sin cambios.
+
+RIESGOS: sin cambios.
+
+SEGURIDAD: sin cambios.
+
+PRUEBAS:
+  - Frontend, nueva: pages/auth/Login.test.tsx (2: los textos del panel se mantienen; el enlace
+    del logo lleva al inicio).
+  - Frontend completo (npx vitest run --maxWorkers=1, 25/10/2026): "Test Files  39 passed
+    (39)" y "Tests  252 passed (252)". Antes: 250 en 38.
+
+ANÁLISIS ESTÁTICO: "10 problems (0 errors, 10 warnings)", sin cambios. npx tsc -b: sin
+  errores. npm run build: correcto.
+
+DESPLIEGUE Y CONFIGURACIÓN: sin cambios.
+
+DECISIONES:
+  - Usar el logo que ya trae la ilustración, como en la maqueta, y no dibujar otro encima.
+  - Fondo CSS y no <img>: es decorativa.
+  - El texto de la maqueta se mantiene tal cual estaba en la pantalla; la marca de agua
+    "ActiveHub" que aparece debajo del texto en la maqueta no está en la ilustración y no se
+    agregó.
+
+ERRORES DETECTADOS: ninguno.
+
+CAPTURAS SUGERIDAS: Login en escritorio y en celular.
+
+PENDIENTE QUE QUEDA: registrar el origen y la licencia de public/login-fondo.webp (ver DUDAS
+  ABIERTAS, punto 8).
+
+================================================================================
+ENTRADA 016
+================================================================================
+FECHA: 25/10/2026
+
+REPOSITORIO: activehub-frontend (código) y activehub-backend (copia del manual del asistente).
+
+RAMA Y COMMITS: main en los dos. Sin commit al momento de escribir esta entrada. Sin Pull
+  Request.
+
+TIPO: interfaz (cambio funcional menor).
+
+TÍTULO: Pantallas del instructor: paginación, scroll y búsqueda en Historial; paginación y
+  scroll en Próximas clases; 12 por página y búsqueda en Mis actividades; filtros en Reseñas.
+
+QUÉ CAMBIA PARA EL USUARIO:
+  - Historial: 10 clases por página, la lista se desplaza dentro de su propio recuadro y hay
+    una lupa para buscar por nombre de la actividad o por fecha. Los contadores de los filtros
+    de estado ("Todas (n)", "Finalizadas (n)", "Canceladas (n)") cuentan lo que se está
+    buscando.
+  - Próximas clases: 10 clases por página y la lista con su propio recuadro con scroll. Si un
+    día sigue en la página siguiente, su fecha se repite arriba.
+  - Mis actividades: 12 actividades por página y una barra de búsqueda por nombre, categoría,
+    tipo o nivel, con el contador "<n> de <total> actividades".
+  - Reseñas: arriba de la lista de la actividad elegida, filtros por estado y por calificación
+    (cada opción con su cantidad), "Ordenar por" y "Limpiar filtros", igual que las opiniones
+    del detalle de una actividad que ve el alumno. La lista tiene su propio scroll.
+  - Antes ninguna de las cuatro pantallas paginaba ni buscaba: se mostraba todo.
+
+TEXTOS DE INTERFAZ:
+  Paginación (componente compartido, sin cambios): "« Primera", "Anterior", "Página <n> de
+    <total>", "Siguiente", "Última »".
+  Nuevos, Historial:
+    - Campo con lupa: "Buscar por actividad o fecha (ej. 24/10)" (nombre accesible "Buscar
+      clases"); botón para limpiar con nombre accesible "Limpiar búsqueda".
+    - Sin coincidencias, sin cambios: "No hay clases con esos filtros.".
+  Nuevos, Mis actividades:
+    - Campo con lupa: "Buscar por nombre, categoría, tipo o nivel" (nombre accesible "Buscar
+      actividades").
+    - Contador: "<n> actividades" / "1 actividad"; con búsqueda, "<n> de <total> actividades".
+    - Sin coincidencias: "Ninguna de tus actividades coincide con la búsqueda.".
+  Nuevos, Reseñas:
+    - "Estado": "Todas", "Sin responder", "Respondidas", "Denunciadas", "Ocultas", cada uno con
+      "(<n>)".
+    - "Calificación": "Todas" y de 5 a 1 estrella, cada una con "(<n>)".
+    - "Ordenar por": "Más recientes" (por defecto), "Más antiguas", "Mejor calificación", "Peor
+      calificación".
+    - Contador: "Mostrando las <n> reseñas" / "Mostrando 1 reseña"; con filtros, "Mostrando <n>
+      de <total> reseñas", y el enlace "Limpiar filtros".
+    - Sin coincidencias: "Ninguna reseña de esta actividad coincide con los filtros.".
+  Manual de usuario (las dos copias, idénticas), tres párrafos nuevos:
+    - Apartado 3.3, después del párrafo del precio: "La pantalla "Mis actividades" muestra 12 actividades por página, con los controles de paginación al pie. La barra "Buscar por nombre, categoría, tipo o nivel" filtra mientras se escribe e indica cuántas coinciden (por ejemplo, "3 de 14 actividades"); si ninguna coincide, se muestra "Ninguna de tus actividades coincide con la búsqueda."."
+    - Apartado 3.8, al final: "Las dos listas muestran 10 clases por página, con los controles de paginación al pie, y se desplazan dentro de su propio recuadro. En "Próximas clases", si un día continúa en la página siguiente, su fecha se repite arriba. En el historial, la lupa "Buscar por actividad o fecha (ej. 24/10)" filtra por el nombre de la actividad o por la fecha de la clase, escrita en números ("24/10" o "24/10/2026") o con palabras ("sáb 24 oct", "24 de octubre"); la cruz del campo limpia la búsqueda. La cantidad de clases de cada estado se calcula también sobre lo que se está buscando."
+    - Apartado 3.10, al final: "Encima de la lista, las reseñas de la actividad seleccionada se pueden filtrar por "Estado" ("Todas", "Sin responder", "Respondidas", "Denunciadas" u "Ocultas") y por "Calificación" ("Todas" o de 5 a 1 estrella), cada opción con su cantidad, y ordenar con "Ordenar por": "Más recientes" (la opción inicial), "Más antiguas", "Mejor calificación" o "Peor calificación". Con un filtro aplicado se indica cuántas se muestran (por ejemplo, "Mostrando 2 de 4 reseñas") y aparece el enlace "Limpiar filtros". La lista se desplaza dentro de su propio recuadro."
+
+DETALLE TÉCNICO:
+  - Pedido del usuario (25/10/2026). En Mis actividades, "agregar 2 filas más" se aclaró con el
+    usuario: 12 actividades por página.
+  - components/BuscadorLupa.tsx (NUEVO): campo de búsqueda con lupa y cruz para limpiar;
+    filtra mientras se escribe. Lo usan Historial y Mis actividades.
+  - lib/busquedaClases.ts (NUEVO): claseCoincide busca por nombre (sin tildes) o por fecha:
+    numérica como prefijo de "d/m/aaaa" o "dd/mm/aaaa" (acepta "-" y "." como separador),
+    abreviada como en la lista y con el mes completo.
+  - lib/opiniones.ts: opinionesVisibles pasa a ser genérica (sirve para las reseñas del
+    detalle y para las del instructor); el detalle del alumno no cambia.
+  - pages/instructor/HistorialClases.tsx: la búsqueda se aplica junto con el filtro de
+    actividad, antes de los conteos; usePaginado con clave [estado, actividad, búsqueda];
+    lista con .ah-scroll (máximo 640 px) que vuelve arriba al cambiar de página.
+  - pages/instructor/ProximasClases.tsx: se pagina por clase y después se agrupa por día la
+    página; .ah-scroll de 680 px.
+  - pages/instructor/MisActividades.tsx: 12 por página; la clave de reinicio es la búsqueda, así
+    eliminar una actividad no manda a la página 1.
+  - pages/instructor/Resenas.tsx: estado + estrellas + orden; "Sin responder" incluye las
+    denunciadas que no tienen respuesta y excluye las ocultas (no se pueden responder). El
+    resumen de arriba (promedio y barras) no cambia con los filtros: sigue contando sólo las
+    reseñas visibles. Lista con .ah-scroll de 760 px.
+  - Mantenimiento: en el equipo, sed -i convertía los finales de línea CRLF en LF; afectó a
+    Login.tsx (ENTRADA 015), HistorialClases.tsx, ProximasClases.tsx y Resenas.tsx y se
+    restauró antes de cerrar.
+
+ESTADO: IMPLEMENTADO y PROBADO con pruebas automatizadas. No probado en el navegador: el
+  navegador de la sesión no tenía una cuenta de instructor iniciada y no se usaron
+  credenciales.
+
+HISTORIAS Y CRITERIOS: criterios NUEVOS propuestos (E2I, códigos a confirmar): Historial
+  "paginado de a 10 y con búsqueda por actividad o fecha" (E2I, historial de clases); Próximas
+  clases "paginado de a 10" (E2I-HU07 o la que corresponda); Mis actividades "12 por página y
+  búsqueda"; Reseñas "filtros por estado y calificación y orden" (E2I, reseñas recibidas).
+
+PANTALLAS: Historial, Próximas clases, Mis actividades y Reseñas del instructor (E2I, códigos a
+  confirmar); "Manual de usuario" (SYS-PAN-MAN, texto).
+
+REGLAS DE NEGOCIO: sin cambios.
+
+MÓDULOS: 6. Instructor; 9. Historial y Calificaciones; 15. Ayuda y Soporte al Usuario (manual).
+
+CASOS DE USO: sin cambios (113).
+
+ENTIDADES Y MIGRACIONES: sin cambios.
+
+TECNOLOGÍAS: sin cambios.
+
+COSTOS: sin cambios.
+
+RIESGOS: sin cambios.
+
+SEGURIDAD: sin cambios.
+
+PRUEBAS:
+  - Nuevas: lib/busquedaClases.test.ts (4), pages/instructor/HistorialClases.test.tsx (5),
+    pages/instructor/ProximasClases.test.tsx (1), pages/instructor/MisActividades.test.tsx (3).
+    pages/instructor/Resenas.test.tsx suma 2 (filtros de estado y calificación; orden).
+  - Frontend completo (npx vitest run --maxWorkers=1, 25/10/2026): "Test Files  43 passed
+    (43)" y "Tests  267 passed (267)". Antes: 252 en 39.
+  - Manual: frontend (npx vitest run src/lib/manual src/pages/public) "Tests  40 passed (40)";
+    backend ManualUsuarioTest (9) y PreguntarAlAsistenteServiceTest (12), sin fallas.
+
+ANÁLISIS ESTÁTICO: "10 problems (0 errors, 10 warnings)", sin cambios (una advertencia nueva
+  que apareció en MisActividades.tsx se corrigió). npx tsc -b: sin errores. npm run build:
+  correcto.
+
+DESPLIEGUE Y CONFIGURACIÓN: sin cambios. Para que el asistente use el manual nuevo hay que
+  reiniciar el backend.
+
+DECISIONES:
+  - 10 por página en las listas de clases y 12 en la grilla de actividades (pedido del
+    usuario).
+  - Paginación y scroll juntos: la página acota cuántas filas hay y el scroll evita que la
+    página se haga larga.
+  - En Reseñas, el filtro de estado se sumó al de estrellas y al orden porque es lo que el
+    instructor necesita para trabajar (encontrar lo que falta responder).
+  - Un solo campo de búsqueda en el Historial, para nombre y fecha, en lugar de dos campos.
+
+ERRORES DETECTADOS: ninguno en la aplicación.
+
+CAPTURAS SUGERIDAS: Historial con una búsqueda por fecha; Mis actividades con la búsqueda y la
+  paginación; Reseñas con un filtro aplicado.
+
+PENDIENTE QUE QUEDA: probar las cuatro pantallas en el navegador con una cuenta de instructor
+  aprobada.
+
+================================================================================
+ENTRADA 017
+================================================================================
+FECHA: 25/10/2026
+
+REPOSITORIO: activehub-frontend.
+
+RAMA Y COMMITS: main. Sin commit al momento de escribir esta entrada. Sin Pull Request.
+
+TIPO: corrección de error (interfaz).
+
+TÍTULO: El logo de ActiveHub del panel lateral ya no lleva a la página de inicio pública.
+
+QUÉ CAMBIA PARA EL USUARIO: en el panel lateral del instructor (y del administrador, que usa
+  el mismo componente), tocar el logo "ActiveHub" ya no hace nada. Antes llevaba a la landing
+  pública, que es la página de entrada de la plataforma para quien no inició sesión. El cursor
+  ya no cambia a la mano sobre el logo.
+
+TEXTOS DE INTERFAZ: sin cambios. Manual de usuario: sin cambios (no menciona el logo).
+
+DETALLE TÉCNICO:
+  - Reporte del usuario (25/10/2026), con una captura de "Mi perfil" del instructor.
+  - components/DashSidebar.tsx: el contenedor del logo pierde el onClick que hacía
+    navigate("/") y el cursor:pointer. Lleva data-testid="logo-panel" para la prueba.
+  - No se tocó el logo del área del alumno (AlumnoNav), que lleva a su propio inicio
+    (/alumno), ni el de las pantallas públicas: el reporte fue sobre el panel del instructor.
+
+ESTADO: corregido; PROBADO con prueba automatizada. No probado en el navegador (no había
+  sesión de instructor en el navegador de la sesión).
+
+HISTORIAS Y CRITERIOS: sin cambios.
+
+PANTALLAS: todas las del instructor y del administrador (panel lateral compartido).
+
+REGLAS DE NEGOCIO: sin cambios.
+
+MÓDULOS: 6. Instructor; 2. Gestión de Usuarios, Roles y Permisos (panel del administrador).
+
+CASOS DE USO: sin cambios.
+
+ENTIDADES Y MIGRACIONES: sin cambios.
+
+TECNOLOGÍAS: sin cambios.
+
+COSTOS: sin cambios.
+
+RIESGOS: sin cambios.
+
+SEGURIDAD: sin cambios.
+
+PRUEBAS:
+  - Nueva: components/DashSidebar.test.tsx (1: tocar el logo no navega y no tiene cursor de
+    enlace).
+  - Frontend completo (npx vitest run --maxWorkers=1, 25/10/2026): "Test Files  44 passed
+    (44)" y "Tests  268 passed (268)". Antes: 267 en 43.
+
+ANÁLISIS ESTÁTICO: "10 problems (0 errors, 10 warnings)", sin cambios. npx tsc -b: sin
+  errores. npm run build: correcto.
+
+DESPLIEGUE Y CONFIGURACIÓN: sin cambios.
+
+DECISIONES: el logo queda como identidad, sin acción (pedido del usuario: "no debería pasar
+  nada"), en lugar de llevarlo al Panel; el Panel ya está en el menú.
+
+ERRORES DETECTADOS: el logo del panel lateral llevaba a la landing pública. Corregido.
+
+CAPTURAS SUGERIDAS: no hace falta.
+
+PENDIENTE QUE QUEDA: confirmarlo en el navegador con una cuenta de instructor.
+
+================================================================================
+ENTRADA 018
+================================================================================
+FECHA: 26/10/2026
+
+REPOSITORIO: ambos (activehub-frontend y activehub-backend).
+
+RAMA Y COMMITS: main en los dos. Sin commit al momento de escribir esta entrada. Sin Pull
+  Request.
+
+TIPO: nueva funcionalidad y corrección de errores.
+
+TÍTULO: El instructor administra su documentación; para volver a postularse tiene que subir
+  documentación nueva; el motivo del rechazo es obligatorio.
+
+QUÉ CAMBIA PARA EL USUARIO:
+  - Instructor: la tarjeta "Documentación" muestra lo que cargó y permite verlo, subir más y
+    quitar lo que ya no sirve. Está en "Mis datos" mientras la solicitud no está aprobada y en
+    "Mi perfil" una vez aprobada (para sumar, por ejemplo, un curso nuevo). Antes la
+    documentación sólo se cargaba en el registro y únicamente la veía el administrador.
+  - Instructor rechazado: ve el motivo que escribió el administrador, y "Volver a postularme"
+    se habilita recién cuando sube al menos un documento nuevo. Antes se podía volver a
+    postular sin cambiar nada y el administrador recibía de nuevo lo que había rechazado.
+  - Administrador: el motivo del rechazo es obligatorio; una solicitud rechazada figura
+    "Validación rechazada" (decía "Pago rechazado"); al volver a postularse el instructor, ve
+    el motivo anterior y qué documentos son nuevos y cuáles quitó el instructor. "Rechazar" en
+    Gestión › Instructores ya no rechaza de un clic: abre la solicitud con el campo del motivo.
+
+TEXTOS DE INTERFAZ:
+  Nuevos, tarjeta "Documentación" (instructor):
+    - Título "Documentación". Descripción en "Mis datos" con la solicitud rechazada: "Subí la
+      documentación que te pidieron. Para volver a postularte tiene que haber al menos un
+      documento nuevo."; en revisión: "Es la documentación que revisa el equipo de ActiveHub.
+      Si te falta algo, podés sumarlo."; en "Mi perfil": "Tus certificaciones y la
+      documentación con la que te validaron. Si hacés un curso nuevo, sumalo acá."
+    - Botones "Subir documento" ("Subiendo…"), "Ver" y "Quitar". Pie: "PDF, JPG o PNG, hasta 5
+      MB por archivo.". Fila: "Subido <fecha> · <tamaño>" y la marca "Nuevo".
+    - Confirmación: "¿Quitar "<archivo>" de tu documentación?". Avisos: "Subiste "<archivo>".",
+      "Quitaste "<archivo>".", "Formato no permitido. Subí un PDF, JPG o PNG.", "El archivo
+      supera los 5 MB.", "Todavía no tenés documentación cargada.", "No pudimos cargar tu
+      documentación." con "Reintentar".
+    - "Quitar" deshabilitado con el último documento, con la ayuda "Tenés que tener al menos un
+      documento cargado. Subí el nuevo antes de quitar este."
+  Nuevos o modificados, "Mis datos":
+    - Debajo de los botones, con la solicitud rechazada y sin documento nuevo: "Subí al menos un
+      documento nuevo en "Documentación" para volver a postularte."
+    - Texto de la solicitud rechazada: "No pudimos validar tu perfil de instructor con lo que
+      enviaste. Revisá el motivo, subí la documentación que te piden y volvé a postularte."
+      (decía "…con los datos enviados. Revisá el motivo más abajo, actualizá lo que haga falta y
+      volvé a postularte.").
+    - Motivo por defecto (rechazos viejos sin motivo): "la documentación adjunta no pudo ser
+      validada. Subí documentación nueva y volvé a postularte."
+    - "Mientras tu solicitud no esté aprobada, solo podés ver y editar tus datos y tu
+      documentación." (antes terminaba en "tus datos.").
+  Modificado, "Mi perfil" del instructor: "Tus datos de cuenta, tu foto y tu documentación de
+    instructor." (decía "Tus datos de cuenta y tu foto. La documentación y el estado de tu
+    solicitud están en "Mis datos"", que no era cierto para un instructor aprobado).
+  Mensajes del servidor: "Antes de volver a postularte, subí la documentación nueva que te
+    pidieron en el motivo del rechazo."; "Tenés que tener al menos un documento cargado. Subí el
+    nuevo antes de quitar este."; "Podés tener hasta 10 documentos cargados. Quitá alguno que ya
+    no sirva para subir otro."; "Escribí el motivo del rechazo: es lo que va a leer el
+    instructor para corregir su solicitud.". Notificación al rechazar: "Tu perfil de instructor
+    fue rechazado. Motivo: <motivo> Subí la documentación que falta desde "Mis datos" y volvé a
+    postularte.".
+  Nuevos o modificados, administrador ("Validar instructor"):
+    - Campo "Motivo del rechazo *" con el ejemplo "Qué le falta o qué tiene que corregir. Es lo
+      que va a leer el instructor." (era "Motivo del rechazo (opcional)").
+    - "Revisá los datos y la documentación. Si aprobás, el instructor podrá publicar
+      actividades. Si rechazás, tenés que escribir el motivo: es lo que va a leer el instructor
+      para corregir su solicitud." (terminaba en "podés indicar el motivo.").
+    - "Se volvió a postular. Motivo del rechazo anterior: <motivo>".
+    - Marcas de documento: "Nuevo desde el rechazo" y "Quitado por el instructor".
+    - Estado: "Validación rechazada" (en Gestión › Instructores y en Validar instructor).
+  Auditoría (columna "Detalle"): "<actor> quitó un documento de su documentación de
+    instructor.".
+  Manual de usuario (las dos copias, idénticas):
+    - 3.1, viñeta "Rechazada" reemplazada por: "se muestra el motivo informado por el
+      administrador. Para volver a postularse hay que subir al menos un documento nuevo en
+      "Documentación": recién entonces se habilita el botón "Volver a postularme", que reabre la
+      solicitud y la devuelve al estado "En revisión". Mientras no haya documentación nueva, la
+      pantalla lo indica: "Subí al menos un documento nuevo en "Documentación" para volver a
+      postularte."".
+    - 3.1, párrafo nuevo sobre la tarjeta "Documentación" (qué muestra, subir hasta 10 de
+      hasta 5 MB, quitar sin quedarse sin ninguno, marca "Nuevo", dónde está según el estado y
+      que el administrador conserva lo quitado).
+    - 4.2, paso 3 ampliado (motivo anterior y las dos marcas) y párrafo nuevo: "El botón
+      "Rechazar" del listado de "Instructores" abre la solicitud con el campo "Motivo del
+      rechazo" ya visible, para decidir con la documentación a la vista. Una solicitud
+      rechazada figura con el estado "Validación rechazada"."
+
+DETALLE TÉCNICO:
+  - Pedido del usuario (26/10/2026), después de un análisis sin implementación que confirmó
+    los cuatro puntos: el instructor no podía ver ni administrar su documentación; volver a
+    postularse no pedía nada nuevo; el motivo del admin era opcional; y el admin leía "Pago
+    rechazado". Se le avisó antes de tocar el backend y aprobó ("hagámoslo"). De las dos
+    variantes propuestas se implementó la que él planteó: documentación nueva obligatoria.
+  - Backend:
+    - V35__documentacion_instructor_reabrir.sql: perfil_instructor.rechazado_at (TIMESTAMPTZ),
+      completada con updated_at en los perfiles ya rechazados; documento_instructor.estado (que
+      existía desde V1 sin uso) pasa a distinguir vigente ("PENDIENTE") de "RETIRADO".
+      Idempotente.
+    - Casos de uso NUEVOS (113 -> 116): listarmisdocumentos (GET /api/instructor/documentos),
+      descargarmidocumento (GET /api/instructor/documentos/{id}/archivo) y retirarmidocumento
+      (DELETE /api/instructor/documentos/{id}). Sin permiso, como subirdocumento: son "Mis
+      datos" (RN-16) y resuelven el perfil de quien llama. Retirar no borra (estado RETIRADO, el
+      archivo queda) y no deja quitar el último documento vigente.
+    - rechazarinstructor: motivo obligatorio (@NotBlank, máximo 1000, @SinHtml) y guarda
+      rechazado_at. El Controller no tenía @Valid y no corría ninguna validación del request
+      (tampoco @SinHtml): se agregó.
+    - reabrirsolicitudinstructor: exige al menos un documento vigente posterior a
+      rechazado_at; conserva el motivo y la fecha del rechazo (antes borraba el motivo).
+    - subirdocumento: tope de 10 documentos vigentes.
+    - listardocumentosinstructor (admin): devuelve también los retirados, con nuevo y retirado.
+    - AuditAccion.DOCUMENTO_INSTRUCTOR_RETIRADO (nueva) y su descripción.
+  - Frontend:
+    - components/DocumentacionCard.tsx (NUEVO), en "Mis datos" (Solicitud.tsx) y en "Mi perfil"
+      (Perfil.tsx) del instructor. "Volver a postularme" se habilita con un documento "nuevo".
+    - admin/ValidarInstructor.tsx: motivo obligatorio, marcas de documentos, motivo anterior,
+      "?accion=rechazar" abre el formulario. Corrección: en una solicitud ya aprobada, "Rechazar
+      solicitud" abría un formulario que sólo existía en la rama de las pendientes, así que no
+      hacía nada.
+    - admin/Gestion.tsx: "Rechazar" lleva a la validación; badge "Validación rechazada".
+    - components/StatusBadge.tsx: tipo nuevo validacionRechazada.
+    - context/DataContext.tsx: listarMisDocumentos, verMiDocumento, retirarMiDocumento;
+      rechazarInstructor con motivo obligatorio.
+
+ESTADO: IMPLEMENTADO y PROBADO con pruebas automatizadas en los dos repositorios. No probado en
+  el navegador (no hay sesión de instructor ni de administrador en el navegador de la sesión).
+  La migración V35 quedó aplicada en la base compartida al correr la suite del backend.
+
+HISTORIAS Y CRITERIOS: E2I-HU12 (solicitud del instructor), criterio 6 (volver a postularse)
+  MODIFICADO: exige documentación nueva. Criterios NUEVOS propuestos: "el instructor puede ver,
+  subir y quitar su documentación" y "el motivo del rechazo es obligatorio y es lo que ve el
+  instructor". E4Ad (validar instructores): el admin ve la documentación nueva y la quitada.
+
+PANTALLAS: "Mis datos" y "Mi perfil" del instructor; "Validar instructor" y Gestión ›
+  Instructores del administrador; "Manual de usuario" (SYS-PAN-MAN, texto).
+
+REGLAS DE NEGOCIO: RN-12 (documentación obligatoria) se extiende: no se puede quedar sin ningún
+  documento vigente. Regla NUEVA propuesta (RN-21): para volver a postularse después de un
+  rechazo hace falta documentación posterior al rechazo.
+
+MÓDULOS: 6. Instructor; 2. Gestión de Usuarios, Roles y Permisos (validación); 4. Auditoría y
+  Trazabilidad; 15. Ayuda y Soporte al Usuario (manual).
+
+CASOS DE USO: de 113 a 116. NUEVOS: listarmisdocumentos, descargarmidocumento,
+  retirarmidocumento. Modificados: rechazarinstructor, reabrirsolicitudinstructor,
+  subirdocumento, listardocumentosinstructor y listarauditoria (descripción nueva).
+
+ENTIDADES Y MIGRACIONES: V35 (perfil_instructor.rechazado_at; uso de documento_instructor.estado).
+  Migraciones: de 34 a 35.
+
+TECNOLOGÍAS: sin cambios.
+
+COSTOS: sin cambios.
+
+RIESGOS: R05 (documentación vs. sistema): el manual ya decía que el motivo era obligatorio y no
+  lo era; ahora coincide.
+
+SEGURIDAD: los tres endpoints nuevos sólo alcanzan los documentos del instructor que llama (el
+  documento se busca junto con su perfil: uno ajeno da 404). Se activó la validación del
+  request de rechazo, que no corría (incluido @SinHtml).
+
+PRUEBAS:
+  - Backend, nuevas: ListarMisDocumentosServiceTest (3) y ControllerTest (1),
+    DescargarMiDocumentoServiceTest (2) y ControllerTest (1), RetirarMiDocumentoServiceTest (3)
+    y ControllerTest (2), RechazarInstructorControllerTest (3). Modificadas:
+    RechazarInstructorServiceTest (motivo obligatorio y fecha del rechazo),
+    ReabrirSolicitudInstructorServiceTest (+1: sin documentación nueva no reabre; conserva el
+    motivo), ListarDocumentosInstructorServiceTest (+1: nuevo y retirado), SubirDocumentoServiceTest
+    (+1: tope de 10).
+  - Backend completo (JAVA_HOME=$HOME/.jdks/jdk-21.0.12+8 ./mvnw -B test, 26/10/2026): "Tests
+    run: 1039, Failures: 0, Errors: 0, Skipped: 2", "BUILD SUCCESS". Antes: 1020.
+  - Frontend, nuevas: components/DocumentacionCard.test.tsx (5), pages/instructor/
+    Solicitud.test.tsx (3), pages/admin/ValidarInstructor.test.tsx (4).
+  - Frontend completo (npx vitest run --maxWorkers=1, 26/10/2026): "Test Files  47 passed
+    (47)" y "Tests  280 passed (280)". Antes: 268 en 44.
+  - Manual: frontend "Tests  40 passed (40)"; backend ManualUsuarioTest (9) y
+    PreguntarAlAsistenteServiceTest (12), sin fallas.
+
+ANÁLISIS ESTÁTICO: "10 problems (0 errors, 10 warnings)", sin cambios. npx tsc -b: sin
+  errores. npm run build: correcto.
+
+DESPLIEGUE Y CONFIGURACIÓN: sin variables nuevas. Reiniciar el backend para los endpoints
+  nuevos y el manual del asistente.
+
+DECISIONES:
+  - Documentación nueva obligatoria para volver a postularse (lo que planteó el usuario), y no
+    "documentación o datos editados".
+  - Quitar un documento no lo borra: queda RETIRADO para el historial del administrador (es la
+    documentación con la que se evaluó al instructor).
+  - Se reusó la columna documento_instructor.estado en lugar de agregar otra.
+  - El motivo y la fecha del rechazo se conservan al volver a postularse, para comparar.
+  - Un instructor ya aprobado también administra su documentación (desde "Mi perfil"); subir
+    algo nuevo no lo vuelve a poner en revisión.
+  - "Rechazar" del listado lleva a la validación en lugar de abrir otro formulario de motivo.
+
+ERRORES DETECTADOS: el request de rechazo no se validaba (faltaba @Valid); "Rechazar solicitud"
+  en una solicitud aprobada no hacía nada; la solicitud rechazada se mostraba "Pago rechazado";
+  "Mi perfil" del instructor mandaba a "Mis datos", que un instructor aprobado no puede abrir.
+  Corregidos.
+
+CAPTURAS SUGERIDAS: "Mis datos" rechazado con la tarjeta de documentación y el botón
+  deshabilitado; "Validar instructor" con las marcas de documentos y el motivo anterior.
+
+PENDIENTE QUE QUEDA: probar en el navegador con una cuenta de instructor y una de
+  administrador (reiniciar el backend). Opcional: avisar al administrador cuando un instructor
+  ya aprobado sube documentación nueva (hoy sólo la ve al entrar a su solicitud).
+
+================================================================================
+ENTRADA 019
+================================================================================
+FECHA: 26/10/2026
+
+REPOSITORIO: activehub-frontend (código) y activehub-backend (copia del manual del asistente).
+
+RAMA Y COMMITS: main en los dos. Sin commit al momento de escribir esta entrada. Sin Pull
+  Request.
+
+TIPO: interfaz (cambio funcional menor).
+
+TÍTULO: Gestión del administrador: se retira "Editar" de Actividades y las seis pestañas
+  ganan paginación, scroll y filtros.
+
+QUÉ CAMBIA PARA EL USUARIO:
+  - Gestión › Actividades: ya no aparece el botón "Editar", que estaba deshabilitado
+    ("Próximamente") y no correspondía: la actividad la edita su instructor; el administrador
+    sólo la modera ("Quitar").
+  - Las seis pestañas (Usuarios, Instructores, Actividades, Reclamos, Reseñas y Soporte)
+    muestran 10 filas por página dentro de un recuadro con scroll propio (el encabezado de la
+    tabla queda fijo arriba), con buscador sin tildes, filtros propios de cada lista, el
+    contador "N de M" o "M en total" y "Limpiar filtros". Antes sólo Reclamos y Reseñas
+    paginaban, y sólo Usuarios y Actividades tenían buscador.
+  - Filtros por pestaña: Usuarios (nombre o correo, rol, estado); Instructores (nombre, correo o
+    especialidad, validación); Actividades (actividad o instructor, categoría, nivel); Reclamos
+    (persona, actividad o motivo, tipo, estado); Reseñas (alumno, actividad o comentario,
+    visibilidad, puntaje); Soporte (persona, correo, asunto o detalle, estado).
+  - El selector de rol de Usuarios ofrece los roles que existen en las cuentas (antes eran los
+    tres del sistema escritos a mano, sin los roles creados por el administrador).
+  - Consulta del usuario, sin cambios de código: al abrir un documento del instructor, la
+    pestaña nueva muestra una dirección "blob:http://localhost:5173/…". Es normal: el archivo
+    se descarga con la sesión del administrador y el navegador lo muestra desde una dirección
+    temporal propia de la página que lo pidió; por eso dice localhost en desarrollo y dirá el
+    dominio real una vez desplegado. No queda publicado en ningún lado ni sirve fuera de esa
+    pestaña.
+
+TEXTOS DE INTERFAZ:
+  Retirado: el botón "Editar" (con la ayuda "Próximamente") de Gestión › Actividades.
+  Nuevos, buscadores (con su nombre accesible entre paréntesis): "Buscar por nombre o correo"
+    ("Buscar usuarios"), "Buscar por nombre, correo o especialidad" ("Buscar instructores"),
+    "Buscar por actividad o instructor" ("Buscar actividades"), "Buscar por persona, actividad
+    o motivo" ("Buscar reclamos"), "Buscar por alumno, actividad o comentario" ("Buscar
+    reseñas"), "Buscar por persona, correo, asunto o detalle" ("Buscar reportes"). Antes:
+    "Buscar…" y "Buscar actividad…".
+  Nuevos, selectores: "Todos los roles" (y los roles en uso); "Todos los estados", "Activos",
+    "Suspendidos"; "Todas las validaciones", "En revisión", "Validados", "Validación
+    rechazada"; "Todas las categorías"; "Todos los niveles"; "Todos los tipos", "Clase",
+    "Reseña"; "Todos los estados", "Pendiente", "En Auditoría", "Resuelta"; "Visibles y
+    ocultas", "Visibles", "Ocultas"; "Todos los puntajes", "5 estrellas" a "1 estrella";
+    "Todos los estados", "Abiertos", "Cerrados".
+  Nuevos, contador: "<n> en total" o, con filtros, "<n> de <total>", y "Limpiar filtros".
+  Nuevo, sin coincidencias: "Sin resultados." en las pestañas que no lo tenían (se mantienen
+    los mensajes de lista vacía: "No hay instructores registrados.", "No hay reclamos
+    registrados.", "Todavía no hay reseñas publicadas.", "No hay reportes de soporte.").
+  Manual de usuario (las dos copias, idénticas):
+    - 4.1, párrafo nuevo: "En "Gestión", las seis pestañas ("Usuarios", "Instructores", "Actividades", "Reclamos", "Reseñas" y "Soporte") muestran 10 filas por página, con los controles de paginación al pie, dentro de un recuadro con scroll propio. Cada una tiene un buscador que ignora las tildes y los filtros que corresponden a su contenido: rol y estado en "Usuarios"; estado de validación en "Instructores"; categoría y nivel en "Actividades"; tipo (clase o reseña) y estado en "Reclamos"; visibilidad (visibles u ocultas) y puntaje en "Reseñas"; y estado (abiertos o cerrados) en "Soporte". Junto a los filtros se indica cuántas filas coinciden (por ejemplo, "3 de 25") y el enlace "Limpiar filtros" los restablece. En "Actividades" la única acción es "Quitar": el contenido de una actividad lo edita su instructor."
+    - 4.3: "buscar y filtrar cuentas por nombre, correo o rol," pasa a "buscar cuentas por
+      nombre o correo y filtrarlas por rol y por estado (activos o suspendidos),".
+
+DETALLE TÉCNICO:
+  - Pedido del usuario (26/10/2026). Solo frontend; todo se filtra y pagina en el cliente.
+  - lib/filtrosGestion.ts (NUEVO): una función pura por pestaña (filtrarUsuarios,
+    filtrarInstructores, filtrarActividades, filtrarReclamos, filtrarResenas, filtrarReportes),
+    para probarlas sin montar la pantalla.
+  - pages/admin/Gestion.tsx: un objeto de filtro por pestaña; usePaginado en las seis con el
+    filtro como clave de reinicio (resolver un caso o quitar algo no vuelve a la página 1);
+    filas en un .ah-scroll de 620 px que vuelve arriba al cambiar de página; barra de filtros
+    común (BarraFiltros, en el mismo archivo) con BuscadorLupa; las opciones de rol, categoría y
+    nivel salen de los datos cargados.
+  - lib/busquedaClases.ts (Historial del instructor): el formateador de la fecha larga se crea
+    una sola vez. toLocaleDateString armaba uno por llamada (medido: 117 ms contra 2 ms cada
+    1000 llamadas) y la lupa lo pide por cada clase en cada tecla.
+  - pages/instructor/HistorialClases.test.tsx: tres pruebas cortaban por tiempo (5 s). La causa
+    eran las consultas getByRole, que en jsdom recorren todo el árbol de accesibilidad; se
+    cambiaron por consultas por texto y por etiqueta (prueban lo mismo) y pasaron de unos 5 s a
+    unos 100 ms.
+
+ESTADO: IMPLEMENTADO y PROBADO con pruebas automatizadas. No probado en el navegador (sin sesión
+  de administrador en el navegador de la sesión).
+
+HISTORIAS Y CRITERIOS: E4Ad (Gestión): criterios NUEVOS propuestos de paginación de 10 y filtros
+  por pestaña; E4Ad-HU02 (gestión de usuarios) gana el filtro por estado.
+
+PANTALLAS: Gestión del administrador (E4Ad, seis pestañas); "Manual de usuario" (SYS-PAN-MAN).
+
+REGLAS DE NEGOCIO: sin cambios.
+
+MÓDULOS: 2. Gestión de Usuarios, Roles y Permisos; 11. Administración y Soporte; 15. Ayuda y
+  Soporte al Usuario (manual).
+
+CASOS DE USO: sin cambios (116).
+
+ENTIDADES Y MIGRACIONES: sin cambios.
+
+TECNOLOGÍAS: sin cambios.
+
+COSTOS: sin cambios.
+
+RIESGOS: R05: el manual (4.2) ya decía que el listado de instructores se podía filtrar por
+  estado de validación y no se podía; ahora coincide.
+
+SEGURIDAD: sin cambios.
+
+PRUEBAS:
+  - Nuevas: lib/filtrosGestion.test.ts (6: un caso por pestaña) y pages/admin/Gestion.test.tsx
+    (3: sin "Editar"; 10 por página con scroll propio; filtro por categoría y texto con el
+    contador y "Limpiar filtros").
+  - HistorialClases.test.tsx: mismas 5 pruebas con consultas más rápidas.
+  - Frontend completo (npx vitest run --maxWorkers=1, 26/10/2026): "Test Files  49 passed
+    (49)" y "Tests  289 passed (289)". Antes: 280 en 47.
+  - Manual: frontend "Tests  40 passed (40)"; backend ManualUsuarioTest (9) y
+    PreguntarAlAsistenteServiceTest (12), sin fallas.
+
+ANÁLISIS ESTÁTICO: "10 problems (0 errors, 10 warnings)", sin cambios. npx tsc -b: sin
+  errores. npm run build: correcto.
+
+DESPLIEGUE Y CONFIGURACIÓN: sin cambios. Reiniciar el backend para el manual del asistente.
+
+DECISIONES:
+  - Retirar "Editar" en lugar de implementarlo: la actividad es del instructor; el admin ya
+    tiene "Quitar" para moderar.
+  - 10 por página en todas, igual que Reclamos y Reseñas.
+  - Los filtros se aplican en el cliente, como el resto del proyecto (el backend devuelve todo
+    sin paginar).
+  - El documento del instructor sigue abriéndose como dirección temporal del navegador: es lo
+    que permite mandarlo con la sesión sin dejarlo publicado.
+
+ERRORES DETECTADOS: un botón deshabilitado sin función ("Editar"); el filtro de rol no ofrecía
+  los roles creados por el administrador; lentitud de la lupa del Historial del instructor.
+  Corregidos.
+
+CAPTURAS SUGERIDAS: una pestaña de Gestión con filtros aplicados y la paginación.
+
+PENDIENTE QUE QUEDA: probar en el navegador con una cuenta de administrador.
+
+================================================================================
+ENTRADA 020
+================================================================================
+FECHA: 26/10/2026
+
+REPOSITORIO: activehub-frontend (código) y activehub-backend (copia del manual del asistente).
+
+RAMA Y COMMITS: main en los dos. Sin commit al momento de escribir esta entrada. Sin Pull
+  Request.
+
+TIPO: interfaz (cambio funcional menor).
+
+TÍTULO: Gestión del administrador: selector "Ordenar por" en las seis pestañas.
+
+QUÉ CAMBIA PARA EL USUARIO: cada pestaña de Gestión tiene un selector "Ordenar por" con las
+  opciones que tienen sentido para su lista. Antes cada una venía en un orden fijo que el
+  backend elegía y el administrador no podía cambiar. El orden inicial es el de antes, salvo
+  Actividades, que venía en el orden del catálogo y pasa a nombre. Cambiar el orden vuelve a la
+  página 1; "Limpiar filtros" no lo cambia. Las opciones más útiles para trabajar: instructores
+  con la solicitud más antigua primero (el que más espera), reclamos más antiguos primero (lo
+  más urgente sin resolver), reseñas con peor puntaje y actividades peor calificadas.
+
+TEXTOS DE INTERFAZ:
+  Nuevo en las seis pestañas: selector "Ordenar por" (nombre accesible "Ordenar por").
+  Opciones (la primera es la inicial):
+    - Usuarios: "Más nuevos primero", "Más antiguos primero", "Nombre (A-Z)".
+    - Instructores: "Nombre (A-Z)", "Solicitud más antigua primero", "Solicitud más reciente
+      primero".
+    - Actividades: "Nombre (A-Z)", "Precio: menor", "Precio: mayor", "Mejor calificadas", "Peor
+      calificadas".
+    - Reclamos: "Más recientes primero", "Más antiguos primero".
+    - Reseñas: "Más recientes primero", "Más antiguas primero", "Peor puntaje", "Mejor
+      puntaje".
+    - Soporte: "Abiertos primero", "Más recientes primero", "Más antiguos primero".
+  Manual de usuario (las dos copias, idénticas), 4.1: al párrafo de Gestión se le suma, después
+    de "…y el enlace "Limpiar filtros" los restablece.": "Cada pestaña tiene además el selector "Ordenar por": "Usuarios" ordena por "Más nuevos primero" (la opción inicial), "Más antiguos primero" o "Nombre (A-Z)"; "Instructores", por "Nombre (A-Z)" (la inicial), "Solicitud más antigua primero" o "Solicitud más reciente primero"; "Actividades", por "Nombre (A-Z)" (la inicial), "Precio: menor", "Precio: mayor", "Mejor calificadas" o "Peor calificadas" (las actividades sin reseñas quedan al final); "Reclamos", por "Más recientes primero" (la inicial) o "Más antiguos primero"; "Reseñas", por "Más recientes primero" (la inicial), "Más antiguas primero", "Peor puntaje" o "Mejor puntaje"; y "Soporte", por "Abiertos primero" (la inicial), "Más recientes primero" o "Más antiguos primero". Cambiar el orden vuelve a la primera página; "Limpiar filtros" no lo modifica."
+
+DETALLE TÉCNICO:
+  - Pedido del usuario (26/10/2026), después de proponerle qué órdenes tenían sentido en cada
+    pestaña. Solo frontend.
+  - lib/filtrosGestion.ts: ORDENES_* (opciones por pestaña, la primera es la inicial) y una
+    función de orden pura por pestaña (devuelve una copia). Los nombres se comparan con
+    Intl.Collator("es-AR") sin distinguir tildes. En las actividades, rating 0 = sin reseñas: va
+    al final en los dos órdenes por calificación (no es "la peor"). En reseñas, a igual puntaje,
+    la más reciente primero.
+  - admin/Gestion.tsx: un orden por pestaña (aparte de los filtros); se filtra, después se
+    ordena y recién entonces se pagina; la clave de reinicio de la paginación incluye el orden.
+
+ESTADO: IMPLEMENTADO y PROBADO con pruebas automatizadas. No probado en el navegador.
+
+HISTORIAS Y CRITERIOS: E4Ad (Gestión): criterio NUEVO propuesto "cada listado se puede ordenar".
+
+PANTALLAS: Gestión del administrador; "Manual de usuario" (SYS-PAN-MAN, texto).
+
+REGLAS DE NEGOCIO: sin cambios.
+
+MÓDULOS: 2. Gestión de Usuarios, Roles y Permisos; 11. Administración y Soporte; 15. Ayuda y
+  Soporte al Usuario (manual).
+
+CASOS DE USO: sin cambios (116).
+
+ENTIDADES Y MIGRACIONES: sin cambios.
+
+TECNOLOGÍAS: sin cambios.
+
+COSTOS: sin cambios.
+
+RIESGOS: sin cambios.
+
+SEGURIDAD: sin cambios.
+
+PRUEBAS:
+  - lib/filtrosGestion.test.ts suma 5 (orden de cada pestaña, que no modifica la lista
+    original y las actividades sin calificar al final). admin/Gestion.test.tsx suma 1 (orden por
+    nombre por defecto, por precio, y "Limpiar filtros" no lo cambia).
+  - Frontend completo (npx vitest run --maxWorkers=1, 26/10/2026): "Test Files  49 passed
+    (49)" y "Tests  295 passed (295)". Antes: 289.
+  - Manual: frontend y backend sin fallas (ver ESTADO GENERAL).
+
+ANÁLISIS ESTÁTICO: "10 problems (0 errors, 10 warnings)", sin cambios. npx tsc -b: sin
+  errores. npm run build: correcto.
+
+DESPLIEGUE Y CONFIGURACIÓN: sin cambios. Reiniciar el backend para el manual del asistente.
+
+DECISIONES: opciones distintas por pestaña (las que sirven para trabajar cada lista) en lugar
+  de las mismas en todas; el orden va aparte de los filtros, para que limpiarlos no lo pierda.
+
+ERRORES DETECTADOS: ninguno.
+
+CAPTURAS SUGERIDAS: una pestaña de Gestión con "Ordenar por" desplegado.
+
+PENDIENTE QUE QUEDA: probar en el navegador con una cuenta de administrador.
+
 --------------------------------------------------------------------------------
 DUDAS ABIERTAS
 --------------------------------------------------------------------------------
@@ -1609,8 +2517,8 @@ DUDAS ABIERTAS
    confirmar contra el catálogo del informe.
 7. Desborde horizontal de AlumnoNav en anchos de 800 px o menos (ENTRADA 004): decidir si se
    corrige.
-8. Origen y licencia de public/home-hero.webp (ENTRADA 007) y de public/explorar-hero.webp
-   (ENTRADA 009): las entregó el usuario; registrar de dónde salen y bajo qué licencia antes
+8. Origen y licencia de public/home-hero.webp (ENTRADA 007), de public/explorar-hero.webp
+   (ENTRADA 009) y de public/login-fondo.webp (ENTRADA 015): las entregó el usuario; registrar de dónde salen y bajo qué licencia antes
    de presentar el proyecto.
 9. La barra del buscador del Home no entra en el ancho de un celular (ENTRADA 007): RESUELTO
    en la ENTRADA 008.

@@ -1,15 +1,20 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
 import { CargandoSeccion } from "../../components/Cargando";
 import StatusBadge from "../../components/StatusBadge";
 import FiltroActividad, { TODAS_LAS_ACTIVIDADES } from "../../components/FiltroActividad";
+import Paginacion from "../../components/Paginacion";
+import { usePaginado } from "../../lib/paginado";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import type { MiClaseInstructor } from "../../context/DataContext";
 import { formatFecha, formatHora, disponibilidad } from "../../lib/mockData";
 import type { EstadoClase } from "../../lib/types";
+
+/** Clases por página (2026-10-25). La lista además tiene scroll propio. */
+const POR_PAGINA = 10;
 
 const ESTADO_DOT: Record<EstadoClase, string> = {
   Programada: "#3A6FF0",
@@ -32,6 +37,7 @@ export default function InstructorProximasClases() {
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState(false);
   const [actividadId, setActividadId] = useState<string>(TODAS_LAS_ACTIVIDADES);
+  const listaRef = useRef<HTMLDivElement>(null);
 
   const cargar = useCallback(() => {
     if (!aprobado) return;
@@ -58,13 +64,27 @@ export default function InstructorProximasClases() {
     );
   }, [misClases]);
 
+  // `misClases` viene del endpoint del instructor, así que la pantalla ya no depende
+  // de haber visitado antes el detalle de una actividad.
+  const ordenadas = useMemo(
+    () =>
+      futuras
+        .filter((c) => actividadId === TODAS_LAS_ACTIVIDADES || c.actividadId === actividadId)
+        .sort((a, b) => new Date(a.fechaHora).getTime() - new Date(b.fechaHora).getTime()),
+    [futuras, actividadId],
+  );
+
+  // Se pagina por clase y después se agrupa por día la página: un día que cruza de página
+  // repite su encabezado arriba de la siguiente, así ninguna clase queda sin su fecha.
+  const pag = usePaginado(ordenadas, POR_PAGINA, actividadId);
+  const irAPagina = (n: number) => {
+    pag.irAPagina(n);
+    if (listaRef.current) listaRef.current.scrollTop = 0;
+  };
+
   const grupos = useMemo(() => {
     if (!currentUser) return [];
-    // `misClases` viene del endpoint del instructor, así que la pantalla ya no depende
-    // de haber visitado antes el detalle de una actividad.
-    const upcoming = futuras
-      .filter((c) => actividadId === TODAS_LAS_ACTIVIDADES || c.actividadId === actividadId)
-      .sort((a, b) => new Date(a.fechaHora).getTime() - new Date(b.fechaHora).getTime());
+    const upcoming = pag.visibles;
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -97,7 +117,7 @@ export default function InstructorProximasClases() {
         dot: ESTADO_DOT[c.estado],
       })),
     }));
-  }, [currentUser, futuras, actividadId]);
+  }, [currentUser, pag.visibles]);
 
   if (!currentUser || !aprobado) return null;
 
@@ -140,6 +160,15 @@ export default function InstructorProximasClases() {
               : "No tenés clases próximas de esa actividad."}
           </div>
         )}
+        {grupos.length > 0 && (
+          <>
+          {/* Scroll propio (`.ah-scroll`) + paginación. */}
+          <div
+            ref={listaRef}
+            className="ah-scroll"
+            data-testid="lista-proximas"
+            style={s("max-height:680px;overflow-y:auto;padding-right:6px;")}
+          >
         {grupos.map((g) => (
           <div key={g.dia} style={s("margin-bottom:24px;")}>
             <div style={s("font:700 12px Manrope;color:#FF6A2B;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;")}>
@@ -188,6 +217,10 @@ export default function InstructorProximasClases() {
             </div>
           </div>
         ))}
+          </div>
+          <Paginacion paginaActual={pag.paginaActual} totalPaginas={pag.totalPaginas} irAPagina={irAPagina} />
+          </>
+        )}
       </div>
     </DashLayout>
   );

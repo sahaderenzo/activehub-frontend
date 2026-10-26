@@ -25,6 +25,7 @@ export type StatusType =
   | "resuelta"
   | "validado"
   | "revision"
+  | "validacionRechazada"
   | "penalizado"
   | "suspendido"
   | "activo";
@@ -53,6 +54,9 @@ const MAP: Record<StatusType, [bg: string, fg: string, bd: string, dot: string, 
   resuelta: ["#E7F8F5", "#0C8576", "#CBEDE7", "#12B5A5", "Resuelta"],
   validado: ["#E7F8F5", "#0C8576", "#CBEDE7", "#12B5A5", "Validado"],
   revision: ["#FFF3E0", "#B9741A", "#F6E2C0", "#F5A623", "En revisión"],
+  // La solicitud de un instructor rechazada (2026-10-26). Usaba `rechazado`, que es el de los
+  // pagos, y el admin leía "Pago rechazado" en Gestión › Instructores.
+  validacionRechazada: ["#FBEAEB", "#BE3A3E", "#F3D2D3", "#E5484D", "Validación rechazada"],
   penalizado: ["#FBEAEB", "#BE3A3E", "#F3D2D3", "#E5484D", "Penalizado"],
   suspendido: ["#FBEAEB", "#BE3A3E", "#F3D2D3", "#E5484D", "Suspendido"],
   activo: ["#E7F8F5", "#0C8576", "#CBEDE7", "#12B5A5", "Activo"],

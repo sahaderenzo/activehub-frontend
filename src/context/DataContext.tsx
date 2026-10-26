@@ -151,6 +151,9 @@ interface ClaseDetalleResp extends ClaseResp {
 interface ActividadDetalleResp extends ActividadCamposComunes {
   descripcion: string;
   imagenes: string[];
+  tienePortada: boolean;
+  /** La imagen de la galería que comparte archivo con la portada (la primera que se subió). */
+  portadaImagenId: string | null;
   clases: ClaseDetalleResp[];
 }
 
@@ -186,6 +189,10 @@ export interface DocumentoInstructor {
   tipoDocumento: string;
   tamanioBytes: number;
   createdAt: string;
+  /** Subido después del último rechazo: lo que el instructor mandó para corregir (2026-10-26). */
+  nuevo?: boolean;
+  /** Sólo en el listado del admin: el instructor lo quitó y queda como historial. */
+  retirado?: boolean;
 }
 
 export interface ClaseAdmin {
@@ -730,10 +737,15 @@ interface DataContextValue {
   listarClasesInstructor: (id: string) => Promise<ClaseInstructorAdmin[]>;
   listarClasesAdmin: () => Promise<ClaseAdmin[]>;
   subirDocumento: (archivo: File) => Promise<DocumentoInstructor>;
+  /** La documentación propia del instructor, sin las que retiró (2026-10-26). */
+  listarMisDocumentos: () => Promise<DocumentoInstructor[]>;
+  verMiDocumento: (documentoId: string) => Promise<void>;
+  retirarMiDocumento: (documentoId: string) => Promise<void>;
   listarDocumentosInstructor: (instructorId: string) => Promise<DocumentoInstructor[]>;
   verDocumentoInstructor: (instructorId: string, documentoId: string) => Promise<void>;
   aprobarInstructor: (id: string) => Promise<void>;
-  rechazarInstructor: (id: string, motivo?: string) => Promise<void>;
+  /** El motivo es obligatorio (2026-10-26): es lo que lee el instructor. */
+  rechazarInstructor: (id: string, motivo: string) => Promise<void>;
   subirFotoPerfil: (archivo: File) => Promise<{ usuarioId: string }>;
   subirFotoActividad: (actividadId: string, archivo: File) => Promise<{ actividadId: string }>;
 
@@ -895,6 +907,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const plano: Actividad = {
         ...aplanarActividad(r, anterior?.proximaClase),
         descripcion: r.descripcion,
+        tienePortada: r.tienePortada,
+        portadaImagenId: r.portadaImagenId ?? null,
         aceptaMercadoPago: r.instructor.aceptaMercadoPago === true,
         mpPublicKey: r.instructor.mpPublicKey ?? null,
       };
@@ -1134,6 +1148,30 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return api.postForm<DocumentoInstructor>("/api/instructor/documentos", formData);
   }, []);
 
+  const listarMisDocumentos = useCallback(async () => {
+    return api.get<DocumentoInstructor[]>("/api/instructor/documentos");
+  }, []);
+
+  const verMiDocumento = useCallback(async (documentoId: string) => {
+    // Mismo cuidado que verDocumentoInstructor: la pestaña se abre dentro del click y el archivo
+    // se carga después; si no, el bloqueador de ventanas emergentes la corta.
+    const ventana = window.open("", "_blank");
+    try {
+      const blob = await api.getBlob(`/api/instructor/documentos/${documentoId}/archivo`);
+      const url = URL.createObjectURL(blob);
+      if (ventana) ventana.location.href = url;
+      else window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      ventana?.close();
+      throw err;
+    }
+  }, []);
+
+  const retirarMiDocumento = useCallback(async (documentoId: string) => {
+    await api.delete(`/api/instructor/documentos/${documentoId}`);
+  }, []);
+
   const subirFotoPerfil = useCallback(async (archivo: File) => {
     const formData = new FormData();
     formData.append("archivo", archivo);
@@ -1171,7 +1209,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await api.post(`/api/admin/instructores/${id}/aprobar`);
   }, []);
 
-  const rechazarInstructor = useCallback(async (id: string, motivo?: string) => {
+  const rechazarInstructor = useCallback(async (id: string, motivo: string) => {
     await api.post(`/api/admin/instructores/${id}/rechazar`, { motivo });
   }, []);
 
@@ -1433,6 +1471,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       listarClasesInstructor,
       listarClasesAdmin,
       subirDocumento,
+      listarMisDocumentos,
+      verMiDocumento,
+      retirarMiDocumento,
       listarDocumentosInstructor,
       verDocumentoInstructor,
       aprobarInstructor,
@@ -1526,6 +1567,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       listarClasesInstructor,
       listarClasesAdmin,
       subirDocumento,
+      listarMisDocumentos,
+      verMiDocumento,
+      retirarMiDocumento,
       listarDocumentosInstructor,
       verDocumentoInstructor,
       aprobarInstructor,

@@ -4,11 +4,18 @@ import DashLayout from "../../components/DashLayout";
 import ActivityPhoto from "../../components/ActivityPhoto";
 import ErrorReintentar from "../../components/ErrorReintentar";
 import { CargandoSeccion } from "../../components/Cargando";
+import BuscadorLupa from "../../components/BuscadorLupa";
+import Paginacion from "../../components/Paginacion";
+import { usePaginado } from "../../lib/paginado";
+import { incluye } from "../../lib/texto";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import { ApiError } from "../../lib/api";
 import { nivelStyle } from "../../lib/nivelStyle";
+
+/** Actividades por página (2026-10-25, pedido del usuario). */
+const POR_PAGINA = 12;
 
 export default function InstructorMisActividades() {
   const { currentUser } = useAuth();
@@ -24,6 +31,22 @@ export default function InstructorMisActividades() {
     () => (currentUser ? data.actividades.filter((a) => a.instructorId === currentUser.id) : []),
     [data.actividades, currentUser],
   );
+
+  // Búsqueda por nombre, categoría, tipo o nivel, sin tildes.
+  const [busqueda, setBusqueda] = useState("");
+  const { getTipoActividad, getCategoria } = data;
+  const filtradas = useMemo(() => {
+    const t = busqueda.trim();
+    if (!t) return misActividades;
+    return misActividades.filter((a) => {
+      const tipo = getTipoActividad(a.tipoActividadId);
+      const cat = tipo ? getCategoria(tipo.categoriaId) : undefined;
+      return [a.nombre, tipo?.nombre ?? "", cat?.nombre ?? "", a.nivelIntensidad].some((campo) => incluye(campo, t));
+    });
+  }, [misActividades, busqueda, getTipoActividad, getCategoria]);
+  // Borrar una actividad no manda a la página 1 (la clave es la búsqueda); si la página queda
+  // vacía, `usePaginado` cae a la última que existe.
+  const pag = usePaginado(filtradas, POR_PAGINA, busqueda.trim());
 
   const [error, setError] = useState<string | null>(null);
   const [errorCarga, setErrorCarga] = useState(false);
@@ -112,8 +135,31 @@ export default function InstructorMisActividades() {
             Todavía no creaste ninguna actividad.
           </div>
         ) : (
+          <>
+          <div style={s("display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-bottom:18px;")}>
+            <BuscadorLupa
+              valor={busqueda}
+              onChange={setBusqueda}
+              placeholder="Buscar por nombre, categoría, tipo o nivel"
+              etiqueta="Buscar actividades"
+            />
+            <span style={s("font-size:13.5px;color:#65788C;font-weight:600;")}>
+              {busqueda.trim()
+                ? `${filtradas.length} de ${misActividades.length} ${misActividades.length === 1 ? "actividad" : "actividades"}`
+                : `${misActividades.length} ${misActividades.length === 1 ? "actividad" : "actividades"}`}
+            </span>
+          </div>
+          {filtradas.length === 0 && (
+            <div
+              style={s(
+                "background:#fff;border:1px dashed #D6DEE7;border-radius:18px;padding:40px;text-align:center;color:#7A8C9E;font-weight:600;",
+              )}
+            >
+              Ninguna de tus actividades coincide con la búsqueda.
+            </div>
+          )}
           <div className="ah-grid-auto" style={s("display:grid;grid-template-columns:repeat(auto-fill,minmax(440px,1fr));gap:18px;")}>
-            {misActividades.map((a) => {
+            {pag.visibles.map((a) => {
               const tipo = data.getTipoActividad(a.tipoActividadId);
               const cat = tipo ? data.getCategoria(tipo.categoriaId) : undefined;
               const [nivelBg, nivelFg, nivelBd] = nivelStyle(a.nivelIntensidad);
@@ -212,6 +258,8 @@ export default function InstructorMisActividades() {
               );
             })}
           </div>
+          <Paginacion paginaActual={pag.paginaActual} totalPaginas={pag.totalPaginas} irAPagina={pag.irAPagina} />
+          </>
         )}
       </div>
     </DashLayout>

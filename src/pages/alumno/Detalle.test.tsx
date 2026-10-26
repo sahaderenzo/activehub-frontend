@@ -62,7 +62,6 @@ vi.mock("../../context/AuthContext", () => ({
 vi.mock("../../components/AlumnoNav", () => ({ default: () => null }));
 vi.mock("../../components/LeafletMap", () => ({ default: () => null }));
 vi.mock("../../components/Avatar", () => ({ default: () => null }));
-vi.mock("../../components/ActivityPhoto", () => ({ default: () => null }));
 
 async function montar() {
   render(

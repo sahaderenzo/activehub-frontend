@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
+import DocumentacionCard from "../../components/DocumentacionCard";
+import type { DocumentoInstructor } from "../../context/DataContext";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { ApiError } from "../../lib/api";
@@ -31,6 +33,9 @@ export default function InstructorSolicitud() {
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [reabriendo, setReabriendo] = useState(false);
+  // La documentación cargada, que informa la tarjeta. Para volver a postularse tiene que haber al
+  // menos un documento subido después del rechazo (`nuevo`); el backend lo exige igual.
+  const [documentos, setDocumentos] = useState<DocumentoInstructor[]>([]);
 
   useEffect(() => {
     if (currentUser && estado === "APROBADO") {
@@ -41,6 +46,7 @@ export default function InstructorSolicitud() {
   if (!currentUser || !currentUser.perfilInstructor || estado === "APROBADO") return null;
 
   const isRechazada = estado === "RECHAZADO";
+  const hayDocumentoNuevo = documentos.some((d) => d.nuevo);
   const perfil = currentUser.perfilInstructor;
 
   const solBd = isRechazada ? "#F3D2D3" : "#F6E2C0";
@@ -49,7 +55,7 @@ export default function InstructorSolicitud() {
   const solBadge = isRechazada ? "Rechazada" : "En revisión";
   const solTitle = isRechazada ? "Tu solicitud fue rechazada" : "Tu solicitud está en revisión";
   const solText = isRechazada
-    ? "No pudimos validar tu perfil de instructor con los datos enviados. Revisá el motivo más abajo, actualizá lo que haga falta y volvé a postularte."
+    ? "No pudimos validar tu perfil de instructor con lo que enviaste. Revisá el motivo, subí la documentación que te piden y volvé a postularte."
     : "Nuestro equipo está revisando tus datos y certificaciones como instructor. Te avisaremos por correo apenas se apruebe tu cuenta — normalmente lleva entre 24 y 72 horas.";
 
   const solDatos: { label: string; value: string }[] = [
@@ -161,10 +167,21 @@ export default function InstructorSolicitud() {
               <span style={s("font-size:13.5px;line-height:1.5;color:#BE3A3E;font-weight:600;")}>
                 Motivo:{" "}
                 {perfil.motivoRechazo ||
-                  "la documentación de certificación adjunta no pudo ser validada. Podés actualizar tus datos y volver a postularte."}
+                  "la documentación adjunta no pudo ser validada. Subí documentación nueva y volvé a postularte."}
               </span>
             </div>
           )}
+        </div>
+
+        <div style={s("margin-bottom:22px;")}>
+          <DocumentacionCard
+            descripcion={
+              isRechazada
+                ? "Subí la documentación que te pidieron. Para volver a postularte tiene que haber al menos un documento nuevo."
+                : "Es la documentación que revisa el equipo de ActiveHub. Si te falta algo, podés sumarlo."
+            }
+            onCambio={setDocumentos}
+          />
         </div>
 
         <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:20px;overflow:hidden;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
@@ -178,7 +195,7 @@ export default function InstructorSolicitud() {
             <div>
               <div style={s("font:700 16px Space Grotesk;color:#0E2A47;")}>Mis datos personales</div>
               <div style={s("font-size:12.5px;color:#90A1B2;font-weight:600;")}>
-                Mientras tu solicitud no esté aprobada, solo podés ver y editar tus datos.
+                Mientras tu solicitud no esté aprobada, solo podés ver y editar tus datos y tu documentación.
               </div>
             </div>
           </div>
@@ -263,15 +280,21 @@ export default function InstructorSolicitud() {
               <button
                 className="ah-btn"
                 onClick={volverAPostularme}
-                disabled={reabriendo}
+                disabled={reabriendo || !hayDocumentoNuevo}
+                title={hayDocumentoNuevo ? undefined : "Subí al menos un documento nuevo para volver a postularte."}
                 style={s(
-                  `background:${reabriendo ? "#F0B392" : "#FF6A2B"};color:#fff;border:none;border-radius:11px;padding:12px 20px;font:700 14px Manrope;cursor:${reabriendo ? "wait" : "pointer"};box-shadow:0 8px 18px rgba(255,106,43,.26);`,
+                  `background:${reabriendo || !hayDocumentoNuevo ? "#F0B392" : "#FF6A2B"};color:#fff;border:none;border-radius:11px;padding:12px 20px;font:700 14px Manrope;cursor:${reabriendo ? "wait" : hayDocumentoNuevo ? "pointer" : "not-allowed"};box-shadow:0 8px 18px rgba(255,106,43,.26);`,
                 )}
               >
                 {reabriendo ? "Enviando…" : "Volver a postularme"}
               </button>
             )}
           </div>
+          {isRechazada && !editando && !hayDocumentoNuevo && (
+            <div style={s("padding:0 24px 20px;font-size:12.5px;color:#B9741A;font-weight:600;")}>
+              Subí al menos un documento nuevo en "Documentación" para volver a postularte.
+            </div>
+          )}
         </div>
       </div>
     </DashLayout>

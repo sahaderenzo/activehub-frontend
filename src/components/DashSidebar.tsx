@@ -183,10 +183,10 @@ export default function DashSidebar({ role, active }: DashSidebarProps) {
       )}
     >
       <div style={s("padding:22px 22px 18px;display:flex;align-items:center;gap:10px;")}>
-        <div
-          style={s("display:flex;align-items:center;gap:10px;cursor:pointer;")}
-          onClick={() => navigate("/")}
-        >
+        {/* Sólo identidad, sin acción (2026-10-25, pedido del usuario): llevaba a la landing
+            pública, que no es un lugar al que el instructor o el administrador quieran ir
+            desde su panel. Para cambiar de pantalla está el menú de abajo. */}
+        <div style={s("display:flex;align-items:center;gap:10px;")} data-testid="logo-panel">
           <div
             style={s(
               "width:36px;height:36px;border-radius:10px;background:linear-gradient(140deg,#12B5A5,#FF6A2B);display:flex;align-items:center;justify-content:center;font:700 19px Space Grotesk,sans-serif;color:#fff;",

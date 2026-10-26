@@ -464,6 +464,10 @@ export const MANUAL: SeccionManual[] = [
           },
           {
             tipo: "p",
+            texto: 'Las fotos de la actividad se recorren en el recuadro grande del encabezado: primero la portada y después el resto de la galería, sin repetir ninguna. Con más de una foto aparecen las flechas a los costados, el contador (por ejemplo, "2 / 5") y las miniaturas debajo, que permiten elegir una foto directamente; también se puede avanzar con las flechas del teclado o deslizando con el dedo en el celular. Una foto que no puede cargarse no se muestra.',
+          },
+          {
+            tipo: "p",
             texto: 'El importe que se muestra corresponde al precio de la clase seleccionada. Al pie de la pantalla, en "Opiniones de alumnos", se encuentran las reseñas de la actividad, con la calificación promedio, los comentarios y las respuestas del instructor. La lista muestra todas las opiniones y se desplaza dentro de su propio recuadro; se puede filtrar por "Calificación" ("Todas" o de 5 a 1 estrella, con la cantidad de cada una) y ordenar con "Ordenar por": "Más recientes" (la opción inicial), "Más antiguas", "Mejor calificación" o "Peor calificación". Con un filtro aplicado se indica cuántas se muestran, por ejemplo "Mostrando 12 de 19 opiniones". La sección "Asistente de beneficios y prevenciones" permite generar, con el botón "Generar beneficios y prevenciones", un informe elaborado con inteligencia artificial que cruza los datos de la actividad y de la clase elegida con el perfil del alumno: intereses declarados, edad, condición de salud si la cargó e historial de actividades y reseñas. El informe incluye un resumen breve, una etiqueta de afinidad ("Afinidad alta", "Afinidad media" o "Afinidad baja"), los beneficios y las prevenciones a considerar, y puede volver a generarse con "Actualizar informe". Su función es exclusivamente orientativa: no es un diagnóstico médico, no indica ejercicios ni tratamientos y nunca impide la inscripción. Si el asistente no está disponible o recibió muchas consultas seguidas, la sección muestra igualmente los beneficios y prevenciones generales del nivel de intensidad, con un aviso que lo aclara e indica cuándo volver a intentarlo.',
           },
           {
@@ -714,9 +718,13 @@ export const MANUAL: SeccionManual[] = [
             tipo: "lista",
             items: [
               "**En revisión**: la solicitud está pendiente de validación.",
-              '**Rechazada**: se muestra el motivo informado por el administrador y el botón "Volver a postularme", que reabre la solicitud y la devuelve al estado "En revisión".',
+              '**Rechazada**: se muestra el motivo informado por el administrador. Para volver a postularse hay que subir al menos un documento nuevo en "Documentación": recién entonces se habilita el botón "Volver a postularme", que reabre la solicitud y la devuelve al estado "En revisión". Mientras no haya documentación nueva, la pantalla lo indica: "Subí al menos un documento nuevo en "Documentación" para volver a postularte."',
               "**Verificado**: en el siguiente ingreso se habilita el panel completo del instructor.",
             ],
+          },
+          {
+            tipo: "p",
+            texto: 'La tarjeta "Documentación" muestra los documentos cargados, con la fecha y el tamaño de cada uno, y permite verlos ("Ver"), sumar otros ("Subir documento"; PDF, JPG o PNG de hasta 5 MB, hasta 10 documentos) y quitar los que ya no sirven ("Quitar", con confirmación). No es posible quitar el último documento: para reemplazarlo, primero se sube el nuevo. Los documentos subidos después de un rechazo llevan la marca "Nuevo". La tarjeta está en "Mis datos" mientras la solicitud no está aprobada y en "Mi perfil" una vez aprobada, para sumar, por ejemplo, un curso nuevo. Lo que se quita deja de verse en la cuenta del instructor, pero el administrador lo conserva en el historial de la solicitud.',
           },
           {
             tipo: "p",
@@ -777,7 +785,7 @@ export const MANUAL: SeccionManual[] = [
             items: [
               'Presionar "Crear actividad" desde "Mis actividades" (o "Nueva actividad" desde el panel).',
               'Completar la "Información general": Nombre*, Categoría* y Tipo de actividad* (el listado de tipos se actualiza según la categoría elegida), Descripción, Duración, Precio por clase y Nivel de intensidad.',
-              "Cargar las imágenes de la actividad: se admiten hasta seis, y la primera se utiliza como portada.",
+              'Cargar las imágenes de la actividad: se admiten hasta seis, y la primera se utiliza como portada. La portada puede cambiarse después con "Cambiar foto" sin que esa primera imagen salga de la galería.',
               'Indicar la ubicación: escribir la dirección, presionar "Buscar" y seleccionar el resultado correcto; el mapa se centra en ese punto y el sistema guarda sus coordenadas.',
               'Guardar la actividad. El sistema la publica en "Mis actividades" y en el catálogo.',
             ],
@@ -785,6 +793,10 @@ export const MANUAL: SeccionManual[] = [
           {
             tipo: "p",
             texto: 'El precio por clase no puede superar $1.000.000 ("El precio no puede superar los $1.000.000."). El cupo máximo no se define en la actividad sino en cada clase. Si el nombre ya existe entre las actividades propias, el sistema lo advierte y permite confirmar la creación o cambiar el nombre.',
+          },
+          {
+            tipo: "p",
+            texto: 'La pantalla "Mis actividades" muestra 12 actividades por página, con los controles de paginación al pie. La barra "Buscar por nombre, categoría, tipo o nivel" filtra mientras se escribe e indica cuántas coinciden (por ejemplo, "3 de 14 actividades"); si ninguna coincide, se muestra "Ninguna de tus actividades coincide con la búsqueda.".',
           },
           {
             tipo: "sub",
@@ -892,6 +904,10 @@ export const MANUAL: SeccionManual[] = [
             tipo: "p",
             texto: 'Las dos pantallas tienen el filtro "Actividad", que permite ver solo las clases de una actividad; la opción "Todas las actividades" quita el filtro. En el historial, la cantidad de clases de cada estado se calcula sobre la actividad elegida.',
           },
+          {
+            tipo: "p",
+            texto: 'Las dos listas muestran 10 clases por página, con los controles de paginación al pie, y se desplazan dentro de su propio recuadro. En "Próximas clases", si un día continúa en la página siguiente, su fecha se repite arriba. En el historial, la lupa "Buscar por actividad o fecha (ej. 24/10)" filtra por el nombre de la actividad o por la fecha de la clase, escrita en números ("24/10" o "24/10/2026") o con palabras ("sáb 24 oct", "24 de octubre"); la cruz del campo limpia la búsqueda. La cantidad de clases de cada estado se calcula también sobre lo que se está buscando.',
+          },
         ],
       },
       {
@@ -929,6 +945,10 @@ export const MANUAL: SeccionManual[] = [
               '**Denunciar una reseña inapropiada**: presionar "Denunciar reseña", completar el campo obligatorio "Motivo del reporte" y presionar "Enviar reporte". La denuncia se envía a la bandeja del administrador, y una misma reseña no puede denunciarse dos veces.',
             ],
           },
+          {
+            tipo: "p",
+            texto: 'Encima de la lista, las reseñas de la actividad seleccionada se pueden filtrar por "Estado" ("Todas", "Sin responder", "Respondidas", "Denunciadas" u "Ocultas") y por "Calificación" ("Todas" o de 5 a 1 estrella), cada opción con su cantidad, y ordenar con "Ordenar por": "Más recientes" (la opción inicial), "Más antiguas", "Mejor calificación" o "Peor calificación". Con un filtro aplicado se indica cuántas se muestran (por ejemplo, "Mostrando 2 de 4 reseñas") y aparece el enlace "Limpiar filtros". La lista se desplaza dentro de su propio recuadro.',
+          },
         ],
       },
       {
@@ -963,6 +983,10 @@ export const MANUAL: SeccionManual[] = [
             tipo: "p",
             texto: 'El dashboard presenta las tarjetas "Usuarios activos", "Instructores" (con la cantidad en revisión), "Actividades publicadas", "Inscripciones del período" y "Reclamos pendientes". Cada tarjeta es presionable y conduce a la sección que permite resolver el caso. El selector de período recorta los flujos, como las inscripciones y las altas, pero no los indicadores que reflejan el estado actual, como los usuarios activos o las actividades publicadas.',
           },
+          {
+            tipo: "p",
+            texto: 'En "Gestión", las seis pestañas ("Usuarios", "Instructores", "Actividades", "Reclamos", "Reseñas" y "Soporte") muestran 10 filas por página, con los controles de paginación al pie, dentro de un recuadro con scroll propio. Cada una tiene un buscador que ignora las tildes y los filtros que corresponden a su contenido: rol y estado en "Usuarios"; estado de validación en "Instructores"; categoría y nivel en "Actividades"; tipo (clase o reseña) y estado en "Reclamos"; visibilidad (visibles u ocultas) y puntaje en "Reseñas"; y estado (abiertos o cerrados) en "Soporte". Junto a los filtros se indica cuántas filas coinciden (por ejemplo, "3 de 25") y el enlace "Limpiar filtros" los restablece. Cada pestaña tiene además el selector "Ordenar por": "Usuarios" ordena por "Más nuevos primero" (la opción inicial), "Más antiguos primero" o "Nombre (A-Z)"; "Instructores", por "Nombre (A-Z)" (la inicial), "Solicitud más antigua primero" o "Solicitud más reciente primero"; "Actividades", por "Nombre (A-Z)" (la inicial), "Precio: menor", "Precio: mayor", "Mejor calificadas" o "Peor calificadas" (las actividades sin reseñas quedan al final); "Reclamos", por "Más recientes primero" (la inicial) o "Más antiguos primero"; "Reseñas", por "Más recientes primero" (la inicial), "Más antiguas primero", "Peor puntaje" o "Mejor puntaje"; y "Soporte", por "Abiertos primero" (la inicial), "Más recientes primero" o "Más antiguos primero". Cambiar el orden vuelve a la primera página; "Limpiar filtros" no lo modifica. En "Actividades" la única acción es "Quitar": el contenido de una actividad lo edita su instructor.',
+          },
         ],
       },
       {
@@ -975,7 +999,7 @@ export const MANUAL: SeccionManual[] = [
             items: [
               'Ingresar a "Gestión" y seleccionar la pestaña "Instructores". El listado puede filtrarse por estado de validación.',
               'Presionar "Ver información" en la solicitud a revisar.',
-              "Revisar los datos personales, la especialidad y la documentación adjunta; cada archivo puede descargarse desde su enlace.",
+              'Revisar los datos personales, la especialidad y la documentación adjunta; cada archivo puede descargarse desde su enlace. Si el instructor volvió a postularse, se muestra el motivo del rechazo anterior, los documentos subidos desde entonces llevan la marca "Nuevo desde el rechazo" y los que quitó, "Quitado por el instructor".',
               "Resolver la solicitud:",
             ],
             sub: [
@@ -990,6 +1014,10 @@ export const MANUAL: SeccionManual[] = [
           },
           {
             tipo: "p",
+            texto: 'El botón "Rechazar" del listado de "Instructores" abre la solicitud con el campo "Motivo del rechazo" ya visible, para decidir con la documentación a la vista. Una solicitud rechazada figura con el estado "Validación rechazada".',
+          },
+          {
+            tipo: "p",
             texto: "Rechazar a un instructor previamente aprobado retira su oferta del catálogo público y bloquea las inscripciones a sus clases. Todas las decisiones quedan registradas en auditoría.",
           },
         ],
@@ -1001,7 +1029,7 @@ export const MANUAL: SeccionManual[] = [
         bloques: [
           {
             tipo: "p",
-            texto: 'En "Gestión", pestaña "Usuarios", el administrador puede buscar y filtrar cuentas por nombre, correo o rol, y ejecutar las siguientes acciones:',
+            texto: 'En "Gestión", pestaña "Usuarios", el administrador puede buscar cuentas por nombre o correo y filtrarlas por rol y por estado (activos o suspendidos), y ejecutar las siguientes acciones:',
           },
           {
             tipo: "lista",

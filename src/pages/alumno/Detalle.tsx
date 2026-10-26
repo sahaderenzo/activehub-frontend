@@ -4,7 +4,7 @@ import AlumnoNav from "../../components/AlumnoNav";
 import StatusBadge from "../../components/StatusBadge";
 import LeafletMap from "../../components/LeafletMap";
 import Avatar from "../../components/Avatar";
-import ActivityPhoto from "../../components/ActivityPhoto";
+import GaleriaActividad from "../../components/GaleriaActividad";
 import ErrorReintentar from "../../components/ErrorReintentar";
 import { CargandoSeccion } from "../../components/Cargando";
 import { s } from "../../lib/style";
@@ -14,7 +14,8 @@ import type { InformeActividad, MiInscripcion, ReseniaActividad } from "../../co
 import { esIaNoDisponible, esSinCuota } from "../../lib/ia";
 import { ORDENES_OPINIONES, opinionesVisibles } from "../../lib/opiniones";
 import type { OrdenOpiniones } from "../../lib/opiniones";
-import { ApiError, BASE_URL } from "../../lib/api";
+import { ApiError } from "../../lib/api";
+import { fotosDeActividad } from "../../lib/galeria";
 import { diasHastaClase, disponibilidad, formatFecha, formatHora, tipoIngreso } from "../../lib/mockData";
 import { formatDistanciaKm, haversineKm, useGeolocation } from "../../lib/geo";
 import ActivarUbicacion from "../../components/ActivarUbicacion";
@@ -105,7 +106,6 @@ export default function AlumnoDetalle() {
 
   const [selectedClaseId, setSelectedClaseId] = useState<string | null>(null);
   /** Imagen de la galería que se está viendo. Null = portada. */
-  const [imagenActiva, setImagenActiva] = useState<string | null>(null);
   const [aiState, setAiState] = useState<AiState>("idle");
   const [aiActualizado, setAiActualizado] = useState(false);
   const [aiFecha, setAiFecha] = useState<string>("");
@@ -311,52 +311,15 @@ export default function AlumnoDetalle() {
                 "border-radius:22px;overflow:hidden;border:1px solid #E7EDF3;box-shadow:0 1px 2px rgba(14,42,71,.05);margin-bottom:14px;",
               )}
             >
-              <div style={s(`position:relative;height:360px;background:${actividad.photoTint};`)}>
-                <div
-                  style={s(
-                    "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.82);font:600 13px ui-monospace,Menlo,monospace;letter-spacing:.5px;",
-                  )}
-                >
-                  FOTO · {actividad.nombre}
-                </div>
-                {/* Si el alumno eligió una imagen de la galería se muestra esa; si no, la portada. */}
-                {imagenActiva ? (
-                  <img
-                    src={`${BASE_URL}/api/fotos/actividad/imagen/${imagenActiva}`}
-                    alt={actividad.nombre}
-                    style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
-                  />
-                ) : (
-                  <ActivityPhoto actividadId={actividad.id} />
-                )}
-                <div style={s("position:absolute;top:16px;left:16px;")}>
-                  <StatusBadge type={selectedClase ? disponibilidad(selectedClase).type : "disponible"} />
-                </div>
-              </div>
-
-              {/* Galería: sección 2 pide `imagenes[]`, hasta ahora solo se veía una foto. */}
-              {(actividad.imagenes?.length ?? 0) > 1 && (
-                <div style={s("display:flex;gap:8px;padding:10px;background:#fff;overflow-x:auto;")}>
-                  {actividad.imagenes!.map((imagenId) => (
-                    <button
-                      key={imagenId}
-                      className="ah-btn"
-                      onClick={() => setImagenActiva(imagenId)}
-                      style={s(
-                        `flex:none;width:78px;height:58px;border-radius:9px;overflow:hidden;padding:0;cursor:pointer;background:none;border:2px solid ${
-                          imagenActiva === imagenId ? "#12B5A5" : "transparent"
-                        };`,
-                      )}
-                    >
-                      <img
-                        src={`${BASE_URL}/api/fotos/actividad/imagen/${imagenId}`}
-                        alt=""
-                        style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                      />
-                    </button>
-                  ))}
-                </div>
-              )}
+              {/* Portada + galería sin repetir, con flechas y miniaturas (2026-10-25). El `key`
+                  evita que la foto elegida de una actividad pase a otra. */}
+              <GaleriaActividad
+                key={actividad.id}
+                fotos={fotosDeActividad(actividad)}
+                nombre={actividad.nombre}
+                tinte={actividad.photoTint}
+                encima={<StatusBadge type={selectedClase ? disponibilidad(selectedClase).type : "disponible"} />}
+              />
             </div>
 
             <span

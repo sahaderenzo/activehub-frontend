@@ -2,6 +2,7 @@ import { useState } from "react";
 import DashLayout from "../../components/DashLayout";
 import Avatar from "../../components/Avatar";
 import CambiarEmailCard from "../../components/CambiarEmailCard";
+import DocumentacionCard from "../../components/DocumentacionCard";
 import { s } from "../../lib/style";
 import { useAuth, passwordStrength } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
@@ -131,7 +132,7 @@ export default function InstructorPerfil() {
       <div style={s("background:#fff;border-bottom:1px solid #E7EDF3;padding:18px 32px;")}>
         <h1 style={s("font:700 22px Space Grotesk,sans-serif;margin:0;")}>Mi perfil</h1>
         <p style={s("font-size:13.5px;color:#7A8C9E;margin:3px 0 0;")}>
-          Tus datos de cuenta y tu foto. La documentación y el estado de tu solicitud están en “Mis datos”.
+          Tus datos de cuenta, tu foto y tu documentación de instructor.
         </p>
       </div>
 
@@ -213,6 +214,12 @@ export default function InstructorPerfil() {
 
         {/* Ver `CambiarEmailCard`: el correo es credencial, no un dato más del formulario. */}
         <CambiarEmailCard />
+
+        {/* Ya aprobado, "Mis datos" redirige al panel: la documentación (un curso nuevo, un
+            certificado renovado) se actualiza desde acá. */}
+        <div style={s("margin:20px 0;")}>
+          <DocumentacionCard descripcion="Tus certificaciones y la documentación con la que te validaron. Si hacés un curso nuevo, sumalo acá." />
+        </div>
 
         <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:18px;padding:24px;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
           <div style={s("font:700 16px Space Grotesk,sans-serif;margin-bottom:6px;")}>Seguridad de la cuenta</div>

@@ -79,36 +79,25 @@ export default function Login() {
   return (
     <div className="ah-screen ah-grid-side" style={s("min-height:100vh;display:grid;grid-template-columns:1.05fr .95fr;")}>
       <div
-        style={s(
-          "position:relative;background:linear-gradient(160deg,#0E2A47,#0A1F36);padding:46px 56px;display:flex;flex-direction:column;overflow:hidden;",
-        )}
+        className="ah-login-panel"
+        style={s("position:relative;background:#0E2A47;padding:46px 56px;display:flex;flex-direction:column;overflow:hidden;")}
       >
-        <div
-          style={s(
-            "position:absolute;inset:0;background:radial-gradient(circle at 30% 20%,rgba(18,181,165,.22),transparent 55%),radial-gradient(circle at 80% 80%,rgba(255,106,43,.16),transparent 50%);",
-          )}
-        />
-        <div style={s("position:absolute;inset:0;background:linear-gradient(160deg,rgba(14,42,71,.5),rgba(10,31,54,.62));")} />
-        <div
-          style={s(
-            "position:absolute;top:-80px;right:-60px;width:320px;height:320px;border-radius:50%;background:radial-gradient(circle,rgba(18,181,165,.3),transparent 70%);",
-          )}
-        />
-        <div
-          style={s(
-            "position:absolute;bottom:-100px;left:-40px;width:300px;height:300px;border-radius:50%;background:radial-gradient(circle,rgba(255,106,43,.18),transparent 70%);",
-          )}
-        />
-        <div style={s("display:flex;align-items:center;gap:11px;cursor:pointer;position:relative;")} onClick={() => navigate("/")}>
-          <div
-            style={s(
-              "width:38px;height:38px;border-radius:11px;background:linear-gradient(140deg,#12B5A5,#FF6A2B);display:flex;align-items:center;justify-content:center;font:700 20px Space Grotesk;color:#fff;",
-            )}
-          >
-            A
-          </div>
-          <span style={s("font:700 21px Space Grotesk;color:#fff;")}>ActiveHub</span>
+        {/* Ilustración de fondo (2026-10-25, provista por el usuario): ya trae el logo arriba a la
+            izquierda, así que el panel no dibuja el suyo. Es un cuadrado que cubre el panel
+            anclado arriba a la izquierda (`.ah-login-fondo` en index.css): el logo queda siempre
+            visible y en el mismo lugar relativo, y el enlace al inicio va encima de él. */}
+        <div className="ah-login-fondo">
+          <a
+            href="/"
+            aria-label="ActiveHub, ir al inicio"
+            className="ah-login-logo"
+            onClick={(e) => {
+              e.preventDefault();
+              navigate("/");
+            }}
+          />
         </div>
+        <div className="ah-login-velo" />
         <div style={s("margin:auto 0;position:relative;")}>
           <h2
             style={s(

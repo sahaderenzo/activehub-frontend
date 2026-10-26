@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import InstructorResenas from "./Resenas";
 import type { ReseniaInstructor } from "../../context/DataContext";
@@ -80,5 +81,58 @@ describe("calificación y cantidad", () => {
     expect((await screen.findAllByText("3.0")).length).toBeGreaterThan(0);
     expect(screen.getAllByText("2 reseñas").length).toBeGreaterThan(0);
     expect(screen.queryByText(/no cuenta/)).not.toBeInTheDocument();
+  });
+});
+
+describe("filtros de la lista (2026-10-25)", () => {
+  // Una de cada estado, con puntajes y fechas distintos.
+  function con(id: string, puntaje: number, dia: number, extra: Partial<ReseniaInstructor>): ReseniaInstructor {
+    return { ...resenia(id, puntaje, false), comentario: `Comentario ${id}`, createdAt: `2026-10-${dia}T20:00:00Z`, ...extra };
+  }
+  const RESENIAS = [
+    con("r1", 5, 10, { respuestaInstructor: "¡Gracias!" }),
+    con("r2", 3, 12, { denunciada: true }),
+    con("r3", 1, 14, {}),
+    con("r4", 4, 16, { oculta: true }),
+  ];
+  const comentarios = () =>
+    within(screen.getByTestId("lista-resenas"))
+      .queryAllByText(/^Comentario r\d$/)
+      .map((n) => n.textContent);
+
+  it("filtra por estado y por calificación, con la cantidad de cada opción", async () => {
+    listarResenasInstructor.mockResolvedValue(RESENIAS);
+    montar();
+    const usuario = userEvent.setup();
+    await screen.findByText("Mostrando las 4 reseñas");
+
+    // "Sin responder" incluye la denunciada: todavía no tiene respuesta. Las ocultas no.
+    await usuario.click(screen.getByText("Sin responder"));
+    expect(comentarios()).toEqual(["Comentario r3", "Comentario r2"]);
+    expect(screen.getByText("Mostrando 2 de 4 reseñas")).toBeInTheDocument();
+
+    await usuario.click(screen.getByText("Denunciadas"));
+    expect(comentarios()).toEqual(["Comentario r2"]);
+
+    await usuario.click(screen.getByText("Limpiar filtros"));
+    await usuario.click(screen.getByRole("button", { name: "5 estrellas (1)" }));
+    expect(comentarios()).toEqual(["Comentario r1"]);
+
+    await usuario.click(screen.getByRole("button", { name: "2 estrellas (0)" }));
+    expect(screen.getByText("Ninguna reseña de esta actividad coincide con los filtros.")).toBeInTheDocument();
+  });
+
+  it("ordena por fecha o por calificación", async () => {
+    listarResenasInstructor.mockResolvedValue(RESENIAS);
+    montar();
+    const usuario = userEvent.setup();
+    await screen.findByText("Mostrando las 4 reseñas");
+    expect(comentarios()).toEqual(["Comentario r4", "Comentario r3", "Comentario r2", "Comentario r1"]);
+
+    await usuario.selectOptions(screen.getByRole("combobox"), "Peor calificación");
+    expect(comentarios()).toEqual(["Comentario r3", "Comentario r2", "Comentario r4", "Comentario r1"]);
+
+    await usuario.selectOptions(screen.getByRole("combobox"), "Más antiguas");
+    expect(comentarios()[0]).toBe("Comentario r1");
   });
 });

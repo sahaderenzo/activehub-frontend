@@ -1,9 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
 import { CargandoSeccion } from "../../components/Cargando";
 import StatusBadge from "../../components/StatusBadge";
 import FiltroActividad, { TODAS_LAS_ACTIVIDADES } from "../../components/FiltroActividad";
+import BuscadorLupa from "../../components/BuscadorLupa";
+import Paginacion from "../../components/Paginacion";
+import { usePaginado } from "../../lib/paginado";
+import { claseCoincide } from "../../lib/busquedaClases";
 import { s } from "../../lib/style";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
@@ -12,6 +16,9 @@ import { formatFecha, formatHora } from "../../lib/mockData";
 import { claseStatusType } from "../../lib/status";
 
 type Filtro = "todas" | "Finalizada" | "Cancelada";
+
+/** Clases por página (2026-10-25). La lista además tiene scroll propio. */
+const POR_PAGINA = 10;
 
 const FILTROS: { key: Filtro; label: string }[] = [
   { key: "todas", label: "Todas" },
@@ -42,6 +49,9 @@ export default function InstructorHistorialClases() {
   const [errorCarga, setErrorCarga] = useState(false);
   const [filtro, setFiltro] = useState<Filtro>("todas");
   const [actividadId, setActividadId] = useState<string>(TODAS_LAS_ACTIVIDADES);
+  // Lupa (2026-10-25): por nombre de la actividad o por fecha ("24/10", "sáb 24 oct", "octubre").
+  const [busqueda, setBusqueda] = useState("");
+  const listaRef = useRef<HTMLDivElement>(null);
 
   const cargar = useCallback(() => {
     if (!aprobado) return;
@@ -68,11 +78,14 @@ export default function InstructorHistorialClases() {
     [misClases],
   );
 
-  // El filtro de actividad va primero y los conteos de estado se calculan sobre lo que deja:
-  // "Finalizadas (3)" tiene que ser de la actividad elegida, no del historial entero.
+  // El filtro de actividad y la búsqueda van primero y los conteos de estado se calculan sobre lo
+  // que dejan: "Finalizadas (3)" tiene que ser de lo que se está buscando, no del historial entero.
   const deLaActividad = useMemo(
-    () => (actividadId === TODAS_LAS_ACTIVIDADES ? pasadas : pasadas.filter((c) => c.actividadId === actividadId)),
-    [pasadas, actividadId],
+    () =>
+      pasadas.filter(
+        (c) => (actividadId === TODAS_LAS_ACTIVIDADES || c.actividadId === actividadId) && claseCoincide(c, busqueda),
+      ),
+    [pasadas, actividadId, busqueda],
   );
 
   const visibles = useMemo(
@@ -89,6 +102,12 @@ export default function InstructorHistorialClases() {
     [deLaActividad],
   );
 
+  const pag = usePaginado(visibles, POR_PAGINA, [filtro, actividadId, busqueda.trim()].join("|"));
+  const irAPagina = (n: number) => {
+    pag.irAPagina(n);
+    if (listaRef.current) listaRef.current.scrollTop = 0;
+  };
+
   if (!currentUser || !aprobado) return null;
 
   return (
@@ -103,8 +122,14 @@ export default function InstructorHistorialClases() {
       <div style={s("max-width:900px;padding:26px 32px 50px;")}>
         {/* Los filtros aparecen con sus conteos ya calculados, no en (0). */}
         {!cargando && !errorCarga && pasadas.length > 0 && (
-          <div style={s("margin-bottom:14px;")}>
+          <div style={s("margin-bottom:14px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;")}>
             <FiltroActividad clases={pasadas} valor={actividadId} onChange={setActividadId} />
+            <BuscadorLupa
+              valor={busqueda}
+              onChange={setBusqueda}
+              placeholder="Buscar por actividad o fecha (ej. 24/10)"
+              etiqueta="Buscar clases"
+            />
           </div>
         )}
         <div style={s("display:flex;gap:9px;margin-bottom:20px;flex-wrap:wrap;")}>
@@ -159,8 +184,15 @@ export default function InstructorHistorialClases() {
         )}
 
         {!errorCarga && visibles.length > 0 && (
-          <div style={s("display:flex;flex-direction:column;gap:11px;")}>
-            {visibles.map((c) => (
+          <>
+          {/* Scroll propio (`.ah-scroll`, el mismo de las opiniones del detalle) + paginación. */}
+          <div
+            ref={listaRef}
+            className="ah-scroll"
+            data-testid="lista-historial"
+            style={s("display:flex;flex-direction:column;gap:11px;max-height:640px;overflow-y:auto;padding-right:6px;")}
+          >
+            {pag.visibles.map((c) => (
               // El click abre la misma pantalla de la clase que usa "Mis actividades", en modo
               // consulta (sin editar, cancelar ni cobrar): quiénes se inscribieron, qué pagó cada
               // uno y qué pasó con ese pago. `desde=historial` hace que "Volver" regrese acá.
@@ -218,6 +250,8 @@ export default function InstructorHistorialClases() {
               </div>
             ))}
           </div>
+          <Paginacion paginaActual={pag.paginaActual} totalPaginas={pag.totalPaginas} irAPagina={irAPagina} />
+          </>
         )}
       </div>
     </DashLayout>

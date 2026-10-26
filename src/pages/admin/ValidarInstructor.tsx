@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
 import { CargandoSeccion } from "../../components/Cargando";
 import StatusBadge from "../../components/StatusBadge";
@@ -31,7 +31,10 @@ export default function AdminValidarInstructor() {
   } = useData();
   const [instructor, setInstructor] = useState<InstructorAdmin | null | undefined>(undefined);
   const [motivoRechazo, setMotivoRechazo] = useState("");
-  const [showRechazo, setShowRechazo] = useState(false);
+  // `?accion=rechazar`: viene de "Rechazar" en Gestión › Instructores, que ya no rechaza de un
+  // clic porque el motivo es obligatorio. Llega con el formulario abierto, y la documentación a la vista.
+  const [searchParams] = useSearchParams();
+  const [showRechazo, setShowRechazo] = useState(searchParams.get("accion") === "rechazar");
   const [error, setError] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [clases, setClases] = useState<ClaseInstructorAdmin[]>([]);
@@ -107,7 +110,22 @@ export default function AdminValidarInstructor() {
   }
 
   const nombreCompleto = `${instructor.nombre} ${instructor.apellido}`;
-  const badgeType = instructor.estadoVerificacion === "APROBADO" ? "validado" : instructor.estadoVerificacion === "RECHAZADO" ? "rechazado" : "revision";
+
+  // Un solo campo para las dos ramas (solicitud pendiente o ya procesada).
+  const campoMotivo = (
+    <label style={s("display:flex;flex-direction:column;gap:6px;")}>
+      <span style={s("font:700 12.5px Manrope,sans-serif;color:#41566B;")}>Motivo del rechazo *</span>
+      <textarea
+        value={motivoRechazo}
+        onChange={(e) => setMotivoRechazo(e.target.value)}
+        placeholder="Qué le falta o qué tiene que corregir. Es lo que va a leer el instructor."
+        rows={3}
+        maxLength={1000}
+        style={s("width:100%;box-sizing:border-box;border:1px solid #E2E9F0;border-radius:11px;padding:11px 13px;font:600 13.5px Manrope,sans-serif;color:#0E2A47;resize:vertical;")}
+      />
+    </label>
+  );
+  const badgeType = instructor.estadoVerificacion === "APROBADO" ? "validado" : instructor.estadoVerificacion === "RECHAZADO" ? "validacionRechazada" : "revision";
 
   const datos: { label: string; value: string }[] = [
     { label: "Nombre completo", value: nombreCompleto },
@@ -133,9 +151,14 @@ export default function AdminValidarInstructor() {
 
   const confirmarRechazo = async () => {
     setError(null);
+    // Obligatorio (2026-10-26): es lo que lee el instructor para saber qué corregir.
+    if (!motivoRechazo.trim()) {
+      setError("Escribí el motivo del rechazo: es lo que va a leer el instructor para corregir su solicitud.");
+      return;
+    }
     setEnviando(true);
     try {
-      await rechazarInstructor(instructor.id, motivoRechazo.trim() || undefined);
+      await rechazarInstructor(instructor.id, motivoRechazo.trim());
       goGestion();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No pudimos rechazar la solicitud.");
@@ -191,6 +214,13 @@ export default function AdminValidarInstructor() {
             {instructor.estadoVerificacion === "RECHAZADO" && instructor.motivoRechazo && (
               <div style={s("margin-top:8px;font-size:12.5px;color:#BE3A3E;font-weight:700;")}>Motivo de rechazo: {instructor.motivoRechazo}</div>
             )}
+            {/* Desde el 2026-10-26 el motivo se conserva al volver a postularse: sirve para
+                comparar con la documentación nueva (marcada "Nuevo" en la lista). */}
+            {instructor.estadoVerificacion === "PENDIENTE" && instructor.motivoRechazo && (
+              <div style={s("margin-top:8px;font-size:12.5px;color:#B9741A;font-weight:700;")}>
+                Se volvió a postular. Motivo del rechazo anterior: {instructor.motivoRechazo}
+              </div>
+            )}
           </div>
         </div>
 
@@ -221,7 +251,12 @@ export default function AdminValidarInstructor() {
                 </div>
               )}
               {documentos.map((doc) => (
-                <div key={doc.id} style={s("display:flex;align-items:center;gap:11px;border:1px solid #E7EDF3;border-radius:11px;padding:11px 13px;")}>
+                <div
+                  key={doc.id}
+                  style={s(
+                    `display:flex;align-items:center;gap:11px;border:1px solid ${doc.nuevo ? "#CBEDE7" : "#E7EDF3"};border-radius:11px;padding:11px 13px;opacity:${doc.retirado ? ".6" : "1"};`,
+                  )}
+                >
                   <span style={s("width:34px;height:34px;border-radius:9px;background:#EEF4FB;display:flex;align-items:center;justify-content:center;flex:none;")}>
                     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#2D5BC8" strokeWidth={2}>
                       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -233,6 +268,20 @@ export default function AdminValidarInstructor() {
                     <div style={s("font-size:11.5px;color:#90A1B2;font-weight:600;")}>
                       Subido {formatFecha(doc.createdAt)} · {formatTamanioDoc(doc.tamanioBytes)}
                     </div>
+                    {(doc.nuevo || doc.retirado) && (
+                      <div style={s("display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;")}>
+                        {doc.nuevo && (
+                          <span style={s("font:700 10.5px Manrope,sans-serif;background:#E7F8F5;color:#0C8576;border:1px solid #CBEDE7;padding:2px 7px;border-radius:99px;")}>
+                            Nuevo desde el rechazo
+                          </span>
+                        )}
+                        {doc.retirado && (
+                          <span style={s("font:700 10.5px Manrope,sans-serif;background:#EEF2F6;color:#65788C;border:1px solid #DDE5EC;padding:2px 7px;border-radius:99px;")}>
+                            Quitado por el instructor
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <span
                     className="ah-link"
@@ -352,6 +401,11 @@ export default function AdminValidarInstructor() {
               <p style={s("font-size:13.5px;color:#7A8C9E;margin:0;line-height:1.5;")}>
                 Esta solicitud fue {instructor.estadoVerificacion === "APROBADO" ? "aprobada" : "rechazada"}. Podés volver a cambiar su estado desde acá si fue un error.
               </p>
+              {/* Antes este botón abría un formulario que sólo existía en la rama de las
+                  pendientes: en una solicitud aprobada, "Rechazar solicitud" no hacía nada. */}
+              {showRechazo && instructor.estadoVerificacion !== "RECHAZADO" && (
+                <div style={s("margin-top:14px;")}>{campoMotivo}</div>
+              )}
               <div style={s("display:flex;gap:11px;margin-top:16px;")}>
                 {instructor.estadoVerificacion !== "APROBADO" && (
                   <button
@@ -368,7 +422,7 @@ export default function AdminValidarInstructor() {
                 {instructor.estadoVerificacion !== "RECHAZADO" && (
                   <button
                     className="ah-btn"
-                    onClick={() => setShowRechazo(true)}
+                    onClick={() => (showRechazo ? confirmarRechazo() : setShowRechazo(true))}
                     disabled={enviando}
                     style={s(
                       "flex:1;background:#FBEAEB;color:#BE3A3E;border:1px solid #F3D2D3;border-radius:12px;padding:14px;font:700 14.5px Manrope,sans-serif;cursor:pointer;",
@@ -383,19 +437,9 @@ export default function AdminValidarInstructor() {
             <>
               <div style={s("font:700 15px Space Grotesk,sans-serif;margin-bottom:4px;")}>Decisión sobre la solicitud</div>
               <p style={s("font-size:13.5px;color:#7A8C9E;margin:0 0 16px;line-height:1.5;")}>
-                Revisá los datos y la documentación. Si aprobás, el instructor podrá publicar actividades. Si rechazás, podés indicar el motivo.
+                Revisá los datos y la documentación. Si aprobás, el instructor podrá publicar actividades. Si rechazás, tenés que escribir el motivo: es lo que va a leer el instructor para corregir su solicitud.
               </p>
-              {showRechazo && (
-                <div style={s("margin-bottom:14px;")}>
-                  <textarea
-                    value={motivoRechazo}
-                    onChange={(e) => setMotivoRechazo(e.target.value)}
-                    placeholder="Motivo del rechazo (opcional)"
-                    rows={3}
-                    style={s("width:100%;border:1px solid #E2E9F0;border-radius:11px;padding:11px 13px;font:600 13.5px Manrope,sans-serif;color:#0E2A47;resize:vertical;")}
-                  />
-                </div>
-              )}
+              {showRechazo && <div style={s("margin-bottom:14px;")}>{campoMotivo}</div>}
               <div style={s("display:flex;gap:11px;")}>
                 <button
                   className="ah-btn"

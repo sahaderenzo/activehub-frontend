@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
 import StatusBadge from "../../components/StatusBadge";
 import { s } from "../../lib/style";
-import { incluye } from "../../lib/texto";
 import Modal from "../../components/Modal";
 import { CargandoSeccion } from "../../components/Cargando";
 import Paginacion from "../../components/Paginacion";
+import BuscadorLupa from "../../components/BuscadorLupa";
 import { usePaginado } from "../../lib/paginado";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
@@ -24,7 +24,34 @@ import { denunciaStatusType } from "../../lib/status";
 import { ACCIONES_POR_TIPO, DESCRIPCION_ACCION, ETIQUETA_ACCION } from "../../lib/denuncias";
 import { MAX_DIAS_SUSPENSION, MIN_DIAS_SUSPENSION, MULTA_MAXIMA, MULTA_MINIMA, errorDiasSuspension, errorMulta } from "../../lib/limites";
 import { formatFecha } from "../../lib/mockData";
-import type { RolNombre } from "../../lib/types";
+import {
+  ORDENES_ACTIVIDADES,
+  ORDENES_INSTRUCTORES,
+  ORDENES_RECLAMOS,
+  ORDENES_RESENAS,
+  ORDENES_SOPORTE,
+  ORDENES_USUARIOS,
+  TODOS,
+  ordenarActividades,
+  ordenarInstructores,
+  ordenarReclamos,
+  ordenarReportes,
+  ordenarResenas,
+  ordenarUsuarios,
+  type OpcionOrden,
+  filtrarActividades,
+  filtrarInstructores,
+  filtrarReclamos,
+  filtrarReportes,
+  filtrarResenas,
+  filtrarUsuarios,
+  type FiltroActividades,
+  type FiltroInstructores,
+  type FiltroReclamos,
+  type FiltroResenas,
+  type FiltroSoporte,
+  type FiltroUsuarios,
+} from "../../lib/filtrosGestion";
 
 type Tab = "usuarios" | "instructores" | "actividades" | "reclamos" | "resenas" | "soporte";
 
@@ -74,10 +101,39 @@ function initials(nombre: string, apellido: string): string {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
- * Filas por página de Reclamos y Reseñas. Las dos crecen con el uso (cada clase y cada reseña
- * suman filas, y las resueltas no se van), y sin paginar la pestaña era una sola tira larga.
+ * Filas por página de TODAS las pestañas (2026-10-26; antes sólo paginaban Reclamos y Reseñas).
+ * Todas crecen con el uso y sin paginar cada una era una sola tira larga. Además las filas van
+ * dentro de un recuadro con scroll propio (`.ah-scroll`, `ALTO_LISTA`), con el encabezado fijo.
  */
 const POR_PAGINA = 10;
+const ALTO_LISTA = "max-height:620px;overflow-y:auto;";
+
+const SELECT =
+  "background:#fff;border:1px solid #D6DEE7;border-radius:12px;padding:10px 12px;font:600 13.5px Manrope,sans-serif;color:#0E2A47;cursor:pointer;";
+
+/** Estado inicial de los filtros de cada pestaña (también lo que restablece "Limpiar filtros"). */
+const SIN_FILTRO_USUARIOS: FiltroUsuarios = { texto: "", rol: TODOS, estado: TODOS };
+const SIN_FILTRO_INSTRUCTORES: FiltroInstructores = { texto: "", estado: TODOS };
+const SIN_FILTRO_ACTIVIDADES: FiltroActividades = { texto: "", categoriaId: TODOS, nivel: TODOS };
+const SIN_FILTRO_RECLAMOS: FiltroReclamos = { texto: "", tipo: TODOS, estado: TODOS };
+const SIN_FILTRO_RESENAS: FiltroResenas = { texto: "", estado: TODOS, puntaje: TODOS };
+const SIN_FILTRO_SOPORTE: FiltroSoporte = { texto: "", estado: TODOS };
+
+/**
+ * Orden por defecto de cada pestaña (2026-10-26): el primero de sus opciones, que es el orden en
+ * que ya venía la lista. Va aparte de los filtros: "Limpiar filtros" no lo toca.
+ */
+const ORDEN_INICIAL: Record<Tab, string> = {
+  usuarios: ORDENES_USUARIOS[0].valor,
+  instructores: ORDENES_INSTRUCTORES[0].valor,
+  actividades: ORDENES_ACTIVIDADES[0].valor,
+  reclamos: ORDENES_RECLAMOS[0].valor,
+  resenas: ORDENES_RESENAS[0].valor,
+  soporte: ORDENES_SOPORTE[0].valor,
+};
+
+/** Hay algún filtro aplicado (texto escrito o algún selector distinto de "todos"). */
+const hayFiltro = (f: object) => Object.values(f).some((v) => typeof v === "string" && v.trim() !== "" && v !== TODOS);
 
 interface SuspensionEnCurso {
   denuncia: DenunciaAdmin;
@@ -121,7 +177,6 @@ export default function AdminGestion() {
     getCategoria,
     listarInstructores,
     aprobarInstructor: aprobarInstructorReal,
-    rechazarInstructor: rechazarInstructorReal,
     listarResenasPublicadas,
     ocultarResenia,
     listarUsuariosAdmin,
@@ -131,9 +186,15 @@ export default function AdminGestion() {
     asignarRolUsuario,
     cargandoCatalogo,
   } = useData();
-  const [query, setQuery] = useState("");
-  const [rolFiltro, setRolFiltro] = useState<RolNombre | "todos">("todos");
-  const [queryActividades, setQueryActividades] = useState("");
+  const [fUsuarios, setFUsuarios] = useState<FiltroUsuarios>(SIN_FILTRO_USUARIOS);
+  const [fInstructores, setFInstructores] = useState<FiltroInstructores>(SIN_FILTRO_INSTRUCTORES);
+  const [fActividades, setFActividades] = useState<FiltroActividades>(SIN_FILTRO_ACTIVIDADES);
+  const [fReclamos, setFReclamos] = useState<FiltroReclamos>(SIN_FILTRO_RECLAMOS);
+  const [fResenas, setFResenas] = useState<FiltroResenas>(SIN_FILTRO_RESENAS);
+  const [fSoporte, setFSoporte] = useState<FiltroSoporte>(SIN_FILTRO_SOPORTE);
+  const [orden, setOrden] = useState<Record<Tab, string>>(ORDEN_INICIAL);
+  // Una sola lista se ve por vez: el ref apunta a la de la pestaña abierta.
+  const listaRef = useRef<HTMLDivElement>(null);
   const [instructores, setInstructores] = useState<InstructorAdmin[]>([]);
   const [errorInstructores, setErrorInstructores] = useState<string | null>(null);
   const [errorResenas, setErrorResenas] = useState<string | null>(null);
@@ -175,21 +236,81 @@ export default function AdminGestion() {
   const [tabsCargados, setTabsCargados] = useState<Set<Tab>>(new Set());
   const marcarCargado = (t: Tab) => setTabsCargados((prev) => (prev.has(t) ? prev : new Set(prev).add(t)));
   // "actividades" sale del catálogo del Context, no de un loader propio de esta pantalla.
-  const pagDenuncias = usePaginado(denuncias, POR_PAGINA);
-  const pagPublicadas = usePaginado(resenasPublicadas, POR_PAGINA);
   const cargandoTab = tab === "actividades" ? cargandoCatalogo : !tabsCargados.has(tab);
 
-  const usuariosFiltrados = useMemo(() => {
-    return usuarios.filter((u) => {
-      const coincideQuery = incluye(`${u.nombre} ${u.apellido}`, query) || incluye(u.email, query);
-      const coincideRol = rolFiltro === "todos" || u.rol === rolFiltro;
-      return coincideQuery && coincideRol;
-    });
-  }, [usuarios, query, rolFiltro]);
+  // Primero se filtra y después se ordena; recién entonces se pagina.
+  const usuariosFiltrados = useMemo(
+    () => ordenarUsuarios(filtrarUsuarios(usuarios, fUsuarios), orden.usuarios),
+    [usuarios, fUsuarios, orden.usuarios],
+  );
+  const instructoresFiltrados = useMemo(
+    () => ordenarInstructores(filtrarInstructores(instructores, fInstructores), orden.instructores),
+    [instructores, fInstructores, orden.instructores],
+  );
+  const actividadesFiltradas = useMemo(
+    () =>
+      ordenarActividades(
+        filtrarActividades(actividades, fActividades, instructorNombre, (a) => getTipoActividad(a.tipoActividadId)?.categoriaId),
+        orden.actividades,
+      ),
+    [actividades, fActividades, instructorNombre, getTipoActividad, orden.actividades],
+  );
+  const denunciasFiltradas = useMemo(
+    () => ordenarReclamos(filtrarReclamos(denuncias, fReclamos), orden.reclamos),
+    [denuncias, fReclamos, orden.reclamos],
+  );
+  const resenasFiltradas = useMemo(
+    () => ordenarResenas(filtrarResenas(resenasPublicadas, fResenas), orden.resenas),
+    [resenasPublicadas, fResenas, orden.resenas],
+  );
+  const reportesFiltrados = useMemo(
+    () => ordenarReportes(filtrarReportes(reportes, fSoporte), orden.soporte),
+    [reportes, fSoporte, orden.soporte],
+  );
 
-  const actividadesFiltradas = useMemo(() => {
-    return actividades.filter((a) => incluye(a.nombre, queryActividades));
-  }, [actividades, queryActividades]);
+  // Las opciones de los selectores salen de los datos cargados: los roles los crea el admin, y
+  // sólo tiene sentido ofrecer categorías y niveles que tengan alguna actividad.
+  const rolesEnUso = useMemo(() => [...new Set(usuarios.map((u) => u.rol))].sort(), [usuarios]);
+  const categoriasEnUso = useMemo(() => {
+    const ids = new Set(actividades.map((a) => getTipoActividad(a.tipoActividadId)?.categoriaId).filter(Boolean) as string[]);
+    return [...ids]
+      .map((id) => getCategoria(id))
+      .filter((c): c is NonNullable<typeof c> => !!c)
+      .sort((x, y) => x.nombre.localeCompare(y.nombre, "es-AR"));
+  }, [actividades, getTipoActividad, getCategoria]);
+  const nivelesEnUso = useMemo(
+    () => [...new Set(actividades.map((a) => a.nivelIntensidad))].sort((x, y) => x.localeCompare(y, "es-AR")),
+    [actividades],
+  );
+
+  // Cambiar un filtro vuelve a la página 1 (la clave es el filtro); resolver un caso o quitar
+  // algo no, porque la clave no cambia.
+  const pagUsuarios = usePaginado(usuariosFiltrados, POR_PAGINA, JSON.stringify(fUsuarios) + orden.usuarios);
+  const pagInstructores = usePaginado(instructoresFiltrados, POR_PAGINA, JSON.stringify(fInstructores) + orden.instructores);
+  const pagActividades = usePaginado(actividadesFiltradas, POR_PAGINA, JSON.stringify(fActividades) + orden.actividades);
+  const pagDenuncias = usePaginado(denunciasFiltradas, POR_PAGINA, JSON.stringify(fReclamos) + orden.reclamos);
+  const pagPublicadas = usePaginado(resenasFiltradas, POR_PAGINA, JSON.stringify(fResenas) + orden.resenas);
+  const pagReportes = usePaginado(reportesFiltrados, POR_PAGINA, JSON.stringify(fSoporte) + orden.soporte);
+  /** El selector "Ordenar por" de la pestaña abierta. */
+  const selectorOrden = (opciones: OpcionOrden[]) => (
+    <select aria-label="Ordenar por" value={orden[tab]} onChange={(e) => setOrden((o) => ({ ...o, [tab]: e.target.value }))} style={s(SELECT)}>
+      {opciones.map((o) => (
+        <option key={o.valor} value={o.valor}>
+          {o.etiqueta}
+        </option>
+      ))}
+    </select>
+  );
+
+  /** Los controles de una pestaña, con la lista de vuelta arriba al cambiar de página. */
+  const controles = (p: { paginaActual: number; totalPaginas: number; irAPagina: (n: number) => void }) => ({
+    paginaActual: p.paginaActual,
+    totalPaginas: p.totalPaginas,
+    irAPagina: (n: number) => {
+      p.irAPagina(n);
+      if (listaRef.current) listaRef.current.scrollTop = 0;
+    },
+  });
 
   const cargarInstructores = () => {
     listarInstructores()
@@ -381,16 +502,6 @@ export default function AdminGestion() {
     }
   };
 
-  const rechazarInstructor = async (ins: InstructorAdmin) => {
-    setErrorInstructores(null);
-    try {
-      await rechazarInstructorReal(ins.id);
-      cargarInstructores();
-    } catch (err) {
-      setErrorInstructores(err instanceof ApiError ? err.message : "No pudimos rechazar al instructor.");
-    }
-  };
-
   const resolverReclamo = async (d: DenunciaAdmin, accion: AccionResolucion) => {
     setErrorDenuncias(null);
     // El detalle es lo que ve el denunciante junto a la resolución (E3A-HU11 criterio 7).
@@ -432,58 +543,107 @@ export default function AdminGestion() {
           ))}
         </div>
 
-        {tab === "usuarios" && (
-          <div style={s("display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap;")}>
-            <div
-              style={s(
-                "flex:1;display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #E2E9F0;border-radius:12px;padding:11px 15px;max-width:340px;",
-              )}
-            >
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#9AAABA" strokeWidth={2}>
-                <circle cx="11" cy="11" r="7" />
-                <path d="m21 21-4.3-4.3" />
-              </svg>
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Buscar…"
-                style={s("border:none;outline:none;background:transparent;font:600 13.5px Manrope,sans-serif;color:#0E2A47;width:100%;")}
-              />
-            </div>
-            <select
-              value={rolFiltro}
-              onChange={(e) => setRolFiltro(e.target.value as RolNombre | "todos")}
-              style={s(
-                "background:#fff;border:1px solid #E2E9F0;border-radius:12px;padding:11px 15px;font:600 13.5px Manrope,sans-serif;color:#0E2A47;cursor:pointer;",
-              )}
-            >
-              <option value="todos">Todos los roles</option>
-              <option value="ALUMNO">Alumno</option>
-              <option value="INSTRUCTOR">Instructor</option>
-              <option value="ADMIN">Admin</option>
+        {/* Filtros de cada pestaña (2026-10-26): buscador sin tildes + los selectores que
+            tienen sentido para esa lista. Se muestran con los datos ya cargados. */}
+        {!cargandoTab && tab === "usuarios" && (
+          <BarraFiltros cantidad={usuariosFiltrados.length} total={usuarios.length} hay={hayFiltro(fUsuarios)} onLimpiar={() => setFUsuarios(SIN_FILTRO_USUARIOS)}>
+            <BuscadorLupa valor={fUsuarios.texto} onChange={(texto) => setFUsuarios((f) => ({ ...f, texto }))} placeholder="Buscar por nombre o correo" etiqueta="Buscar usuarios" />
+            <select aria-label="Rol" value={fUsuarios.rol} onChange={(e) => setFUsuarios((f) => ({ ...f, rol: e.target.value }))} style={s(SELECT)}>
+              <option value={TODOS}>Todos los roles</option>
+              {rolesEnUso.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
             </select>
-          </div>
+            <select aria-label="Estado" value={fUsuarios.estado} onChange={(e) => setFUsuarios((f) => ({ ...f, estado: e.target.value }))} style={s(SELECT)}>
+              <option value={TODOS}>Todos los estados</option>
+              <option value="ACTIVO">Activos</option>
+              <option value="SUSPENDIDO">Suspendidos</option>
+            </select>
+            {selectorOrden(ORDENES_USUARIOS)}
+          </BarraFiltros>
         )}
-
-        {tab === "actividades" && (
-          <div style={s("display:flex;align-items:center;gap:12px;margin-bottom:18px;")}>
-            <div
-              style={s(
-                "flex:1;display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #E2E9F0;border-radius:12px;padding:11px 15px;max-width:340px;",
-              )}
-            >
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#9AAABA" strokeWidth={2}>
-                <circle cx="11" cy="11" r="7" />
-                <path d="m21 21-4.3-4.3" />
-              </svg>
-              <input
-                value={queryActividades}
-                onChange={(e) => setQueryActividades(e.target.value)}
-                placeholder="Buscar actividad…"
-                style={s("border:none;outline:none;background:transparent;font:600 13.5px Manrope,sans-serif;color:#0E2A47;width:100%;")}
-              />
-            </div>
-          </div>
+        {!cargandoTab && tab === "instructores" && (
+          <BarraFiltros cantidad={instructoresFiltrados.length} total={instructores.length} hay={hayFiltro(fInstructores)} onLimpiar={() => setFInstructores(SIN_FILTRO_INSTRUCTORES)}>
+            <BuscadorLupa valor={fInstructores.texto} onChange={(texto) => setFInstructores((f) => ({ ...f, texto }))} placeholder="Buscar por nombre, correo o especialidad" etiqueta="Buscar instructores" />
+            <select aria-label="Validación" value={fInstructores.estado} onChange={(e) => setFInstructores((f) => ({ ...f, estado: e.target.value }))} style={s(SELECT)}>
+              <option value={TODOS}>Todas las validaciones</option>
+              <option value="PENDIENTE">En revisión</option>
+              <option value="APROBADO">Validados</option>
+              <option value="RECHAZADO">Validación rechazada</option>
+            </select>
+            {selectorOrden(ORDENES_INSTRUCTORES)}
+          </BarraFiltros>
+        )}
+        {!cargandoTab && tab === "actividades" && (
+          <BarraFiltros cantidad={actividadesFiltradas.length} total={actividades.length} hay={hayFiltro(fActividades)} onLimpiar={() => setFActividades(SIN_FILTRO_ACTIVIDADES)}>
+            <BuscadorLupa valor={fActividades.texto} onChange={(texto) => setFActividades((f) => ({ ...f, texto }))} placeholder="Buscar por actividad o instructor" etiqueta="Buscar actividades" />
+            <select aria-label="Categoría" value={fActividades.categoriaId} onChange={(e) => setFActividades((f) => ({ ...f, categoriaId: e.target.value }))} style={s(SELECT)}>
+              <option value={TODOS}>Todas las categorías</option>
+              {categoriasEnUso.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nombre}
+                </option>
+              ))}
+            </select>
+            <select aria-label="Nivel" value={fActividades.nivel} onChange={(e) => setFActividades((f) => ({ ...f, nivel: e.target.value }))} style={s(SELECT)}>
+              <option value={TODOS}>Todos los niveles</option>
+              {nivelesEnUso.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+            {selectorOrden(ORDENES_ACTIVIDADES)}
+          </BarraFiltros>
+        )}
+        {!cargandoTab && tab === "reclamos" && (
+          <BarraFiltros cantidad={denunciasFiltradas.length} total={denuncias.length} hay={hayFiltro(fReclamos)} onLimpiar={() => setFReclamos(SIN_FILTRO_RECLAMOS)}>
+            <BuscadorLupa valor={fReclamos.texto} onChange={(texto) => setFReclamos((f) => ({ ...f, texto }))} placeholder="Buscar por persona, actividad o motivo" etiqueta="Buscar reclamos" />
+            <select aria-label="Tipo" value={fReclamos.tipo} onChange={(e) => setFReclamos((f) => ({ ...f, tipo: e.target.value }))} style={s(SELECT)}>
+              <option value={TODOS}>Todos los tipos</option>
+              <option value="CLASE">Clase</option>
+              <option value="RESENIA">Reseña</option>
+            </select>
+            <select aria-label="Estado" value={fReclamos.estado} onChange={(e) => setFReclamos((f) => ({ ...f, estado: e.target.value }))} style={s(SELECT)}>
+              <option value={TODOS}>Todos los estados</option>
+              <option value="Pendiente">Pendiente</option>
+              <option value="En Auditoría">En Auditoría</option>
+              <option value="Resuelta">Resuelta</option>
+            </select>
+            {selectorOrden(ORDENES_RECLAMOS)}
+          </BarraFiltros>
+        )}
+        {!cargandoTab && tab === "resenas" && (
+          <BarraFiltros cantidad={resenasFiltradas.length} total={resenasPublicadas.length} hay={hayFiltro(fResenas)} onLimpiar={() => setFResenas(SIN_FILTRO_RESENAS)}>
+            <BuscadorLupa valor={fResenas.texto} onChange={(texto) => setFResenas((f) => ({ ...f, texto }))} placeholder="Buscar por alumno, actividad o comentario" etiqueta="Buscar reseñas" />
+            <select aria-label="Visibilidad" value={fResenas.estado} onChange={(e) => setFResenas((f) => ({ ...f, estado: e.target.value }))} style={s(SELECT)}>
+              <option value={TODOS}>Visibles y ocultas</option>
+              <option value="visibles">Visibles</option>
+              <option value="ocultas">Ocultas</option>
+            </select>
+            <select aria-label="Puntaje" value={fResenas.puntaje} onChange={(e) => setFResenas((f) => ({ ...f, puntaje: e.target.value }))} style={s(SELECT)}>
+              <option value={TODOS}>Todos los puntajes</option>
+              {[5, 4, 3, 2, 1].map((n) => (
+                <option key={n} value={String(n)}>
+                  {n} {n === 1 ? "estrella" : "estrellas"}
+                </option>
+              ))}
+            </select>
+            {selectorOrden(ORDENES_RESENAS)}
+          </BarraFiltros>
+        )}
+        {!cargandoTab && tab === "soporte" && (
+          <BarraFiltros cantidad={reportesFiltrados.length} total={reportes.length} hay={hayFiltro(fSoporte)} onLimpiar={() => setFSoporte(SIN_FILTRO_SOPORTE)}>
+            <BuscadorLupa valor={fSoporte.texto} onChange={(texto) => setFSoporte((f) => ({ ...f, texto }))} placeholder="Buscar por persona, correo, asunto o detalle" etiqueta="Buscar reportes" />
+            <select aria-label="Estado" value={fSoporte.estado} onChange={(e) => setFSoporte((f) => ({ ...f, estado: e.target.value }))} style={s(SELECT)}>
+              <option value={TODOS}>Todos los estados</option>
+              <option value="Abierto">Abiertos</option>
+              <option value="Cerrado">Cerrados</option>
+            </select>
+            {selectorOrden(ORDENES_SOPORTE)}
+          </BarraFiltros>
         )}
 
         {/* La pestaña entera espera a su consulta: una tabla vacía no es "no hay nada". */}
@@ -509,7 +669,8 @@ export default function AdminGestion() {
                   <span>Estado</span>
                   <span>Acciones</span>
                 </div>
-                {usuariosFiltrados.map((u) => {
+                <div ref={listaRef} className="ah-scroll" data-testid="lista-gestion" style={s(ALTO_LISTA)}>
+                {pagUsuarios.visibles.map((u) => {
                   const esUnoMismo = u.id === currentUser?.id;
                   const [avBg, avFg] = avatarColor(u.id);
                   return (
@@ -571,6 +732,8 @@ export default function AdminGestion() {
                 {usuariosFiltrados.length === 0 && (
                   <div style={s("padding:40px 22px;text-align:center;color:#90A1B2;font:600 13.5px Manrope,sans-serif;")}>Sin resultados.</div>
                 )}
+                </div>
+                <Paginacion {...controles(pagUsuarios)} />
               </div>
             </div>
           )}
@@ -594,10 +757,11 @@ export default function AdminGestion() {
                   <span>Información</span>
                   <span>Acciones</span>
                 </div>
-                {instructores.map((ins) => {
+                <div ref={listaRef} className="ah-scroll" data-testid="lista-gestion" style={s(ALTO_LISTA)}>
+                {pagInstructores.visibles.map((ins) => {
                   const [avBg, avFg] = avatarColor(ins.id);
                   const estado = ins.estadoVerificacion;
-                  const badgeType = estado === "APROBADO" ? "validado" : estado === "RECHAZADO" ? "rechazado" : "revision";
+                  const badgeType = estado === "APROBADO" ? "validado" : estado === "RECHAZADO" ? "validacionRechazada" : "revision";
                   return (
                     <div
                       key={ins.id}
@@ -644,7 +808,9 @@ export default function AdminGestion() {
                           </button>
                           <button
                             className="ah-btn"
-                            onClick={() => rechazarInstructor(ins)}
+                            // El motivo es obligatorio (2026-10-26): se rechaza desde la pantalla
+                            // de validación, con la documentación a la vista y el motivo escrito.
+                            onClick={() => navigate(`/admin/validar-instructor/${ins.id}?accion=rechazar`)}
                             style={s("background:#FBEAEB;border:none;border-radius:8px;padding:7px 12px;font:700 12px Manrope,sans-serif;color:#BE3A3E;cursor:pointer;")}
                           >
                             Rechazar
@@ -662,9 +828,13 @@ export default function AdminGestion() {
                     </div>
                   );
                 })}
-                {instructores.length === 0 && (
-                  <div style={s("padding:40px 22px;text-align:center;color:#90A1B2;font:600 13.5px Manrope,sans-serif;")}>No hay instructores registrados.</div>
+                {instructoresFiltrados.length === 0 && (
+                  <div style={s("padding:40px 22px;text-align:center;color:#90A1B2;font:600 13.5px Manrope,sans-serif;")}>
+                    {instructores.length === 0 ? "No hay instructores registrados." : "Sin resultados."}
+                  </div>
                 )}
+                </div>
+                <Paginacion {...controles(pagInstructores)} />
               </div>
             </div>
           )}
@@ -688,7 +858,8 @@ export default function AdminGestion() {
                   <span>Precio</span>
                   <span>Acciones</span>
                 </div>
-                {actividadesFiltradas.map((act) => {
+                <div ref={listaRef} className="ah-scroll" data-testid="lista-gestion" style={s(ALTO_LISTA)}>
+                {pagActividades.visibles.map((act) => {
                   const tipo = getTipoActividad(act.tipoActividadId);
                   const cat = tipo ? getCategoria(tipo.categoriaId) : undefined;
                   return (
@@ -702,15 +873,9 @@ export default function AdminGestion() {
                       </span>
                       <span style={s("font-size:13px;color:#65788C;font-weight:600;")}>{cat?.nombre ?? "—"}</span>
                       <span style={s("font:700 14px Space Grotesk,sans-serif;color:#0E2A47;")}>${act.precio.toLocaleString("es-AR")}</span>
+                      {/* "Editar" se retiró (2026-10-26): estaba deshabilitado ("Próximamente") y
+                          no corresponde: la actividad es del instructor; el admin sólo modera. */}
                       <div style={s("display:flex;gap:7px;")}>
-                        <button
-                          className="ah-btn"
-                          disabled
-                          title="Próximamente"
-                          style={s("background:#EEF4FB;border:none;border-radius:8px;padding:7px 12px;font:700 12px Manrope,sans-serif;color:#2D5BC8;cursor:not-allowed;opacity:.6;")}
-                        >
-                          Editar
-                        </button>
                         <button
                           className="ah-btn"
                           onClick={() => {
@@ -733,6 +898,8 @@ export default function AdminGestion() {
                     {actividades.length === 0 ? "No hay actividades cargadas." : "Sin resultados."}
                   </div>
                 )}
+                </div>
+                <Paginacion {...controles(pagActividades)} />
               </div>
             </div>
           )}
@@ -818,6 +985,7 @@ export default function AdminGestion() {
                   <span>Estado</span>
                   <span>Acciones</span>
                 </div>
+                <div ref={listaRef} className="ah-scroll" data-testid="lista-gestion" style={s(ALTO_LISTA)}>
                 {pagDenuncias.visibles.map((d) => {
                   const sobreResenia = d.tipo === "RESENIA";
                   // En una denuncia de reseña el "denunciado" es el alumno que la escribió,
@@ -895,10 +1063,13 @@ export default function AdminGestion() {
                     </div>
                   );
                 })}
-                {denuncias.length === 0 && (
-                  <div style={s("padding:40px 22px;text-align:center;color:#90A1B2;font:600 13.5px Manrope,sans-serif;")}>No hay reclamos registrados.</div>
+                {denunciasFiltradas.length === 0 && (
+                  <div style={s("padding:40px 22px;text-align:center;color:#90A1B2;font:600 13.5px Manrope,sans-serif;")}>
+                    {denuncias.length === 0 ? "No hay reclamos registrados." : "Sin resultados."}
+                  </div>
                 )}
-                <Paginacion {...pagDenuncias} />
+                </div>
+                <Paginacion {...controles(pagDenuncias)} />
               </div>
             </div>
           )}
@@ -934,6 +1105,7 @@ export default function AdminGestion() {
                   <span>Fecha</span>
                   <span>Acciones</span>
                 </div>
+                <div ref={listaRef} className="ah-scroll" data-testid="lista-gestion" style={s(ALTO_LISTA)}>
                 {pagPublicadas.visibles.map((r) => (
                     <div
                       key={r.id}
@@ -984,12 +1156,13 @@ export default function AdminGestion() {
                       </div>
                     </div>
                   ))}
-                {resenasPublicadas.length === 0 && (
+                {resenasFiltradas.length === 0 && (
                   <div style={s("padding:40px 22px;text-align:center;color:#90A1B2;font:600 13.5px Manrope,sans-serif;")}>
-                    Todavía no hay reseñas publicadas.
+                    {resenasPublicadas.length === 0 ? "Todavía no hay reseñas publicadas." : "Sin resultados."}
                   </div>
                 )}
-                <Paginacion {...pagPublicadas} />
+                </div>
+                <Paginacion {...controles(pagPublicadas)} />
               </div>
             </div>
           )}
@@ -1014,7 +1187,8 @@ export default function AdminGestion() {
                   <span>Estado</span>
                   <span>Acciones</span>
                 </div>
-                {reportes.map((r) => (
+                <div ref={listaRef} className="ah-scroll" data-testid="lista-gestion" style={s(ALTO_LISTA)}>
+                {pagReportes.visibles.map((r) => (
                   <div
                     key={r.id}
                     style={s(
@@ -1076,11 +1250,13 @@ export default function AdminGestion() {
                     </div>
                   </div>
                 ))}
-                {reportes.length === 0 && !errorReportes && (
+                {reportesFiltrados.length === 0 && !errorReportes && (
                   <div style={s("padding:40px 22px;text-align:center;color:#90A1B2;font:600 13.5px Manrope,sans-serif;")}>
-                    No hay reportes de soporte.
+                    {reportes.length === 0 ? "No hay reportes de soporte." : "Sin resultados."}
                   </div>
                 )}
+                </div>
+                <Paginacion {...controles(pagReportes)} />
               </div>
             </div>
           )}
@@ -1341,5 +1517,34 @@ function CampoModal({
         style={s("border:1px solid #E2E9F0;border-radius:10px;padding:10px 12px;font:600 14px Manrope,sans-serif;color:#0E2A47;")}
       />
     </label>
+  );
+}
+
+/** Fila de filtros de una pestaña: los controles, el contador "N de M" y "Limpiar filtros". */
+function BarraFiltros({
+  children,
+  cantidad,
+  total,
+  hay,
+  onLimpiar,
+}: {
+  children: ReactNode;
+  cantidad: number;
+  total: number;
+  hay: boolean;
+  onLimpiar: () => void;
+}) {
+  return (
+    <div style={s("display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;")}>
+      {children}
+      <span style={s("font-size:13px;color:#65788C;font-weight:600;display:flex;align-items:center;gap:12px;")}>
+        {hay ? `${cantidad} de ${total}` : `${total} en total`}
+        {hay && (
+          <span className="ah-link" role="button" onClick={onLimpiar} style={s("color:#12B5A5;font-weight:700;cursor:pointer;")}>
+            Limpiar filtros
+          </span>
+        )}
+      </span>
+    </div>
   );
 }

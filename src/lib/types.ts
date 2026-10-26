@@ -117,6 +117,10 @@ export interface Actividad {
   duracionMin: number;
   /** Ids de la galería (`GET /api/fotos/actividad/imagen/{id}`). Solo en el detalle. */
   imagenes?: string[];
+  /** Si tiene portada (`/api/fotos/actividad/{id}`). Solo en el detalle. */
+  tienePortada?: boolean;
+  /** La imagen de la galería que además es la portada, o null. Solo en el detalle. */
+  portadaImagenId?: string | null;
   lat?: number;
   lng?: number;
   /**

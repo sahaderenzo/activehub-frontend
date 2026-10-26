@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DashLayout from "../../components/DashLayout";
 import { CargandoAccion, CargandoSeccion } from "../../components/Cargando";
@@ -9,6 +9,7 @@ import { useData } from "../../context/DataContext";
 import type { ReseniaInstructor } from "../../context/DataContext";
 import { ApiError } from "../../lib/api";
 import { formatFecha } from "../../lib/mockData";
+import { ORDENES_OPINIONES, opinionesVisibles, type OrdenOpiniones } from "../../lib/opiniones";
 
 const STAR_PATH = "m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14l-5-4.87 6.91-1.01L12 2z";
 
@@ -23,6 +24,37 @@ function Stars({ value, size = 13 }: { value: number; size?: number }) {
     </div>
   );
 }
+
+/** Filtro por estado de la reseña (2026-10-25), además del de estrellas y el orden. */
+const ESTADOS = [
+  { key: "todas", label: "Todas" },
+  { key: "sinResponder", label: "Sin responder" },
+  { key: "respondidas", label: "Respondidas" },
+  { key: "denunciadas", label: "Denunciadas" },
+  { key: "ocultas", label: "Ocultas" },
+] as const;
+type Estado = (typeof ESTADOS)[number]["key"];
+
+function cumpleEstado(r: ReseniaInstructor, estado: Estado): boolean {
+  switch (estado) {
+    case "sinResponder":
+      return !r.respuestaInstructor && !r.oculta;
+    case "respondidas":
+      return !!r.respuestaInstructor;
+    case "denunciadas":
+      return r.denunciada;
+    case "ocultas":
+      return r.oculta;
+    default:
+      return true;
+  }
+}
+
+/** Mismo chip que los filtros de opiniones del detalle del alumno. */
+const chip = (on: boolean) =>
+  s(
+    `cursor:pointer;padding:6px 12px;border-radius:99px;font:700 12.5px Manrope,sans-serif;display:inline-flex;align-items:center;gap:4px;background:${on ? "#0E2A47" : "#F2F5F9"};color:${on ? "#fff" : "#41566B"};border:1px solid ${on ? "#0E2A47" : "#E2E9F0"};`,
+  );
 
 /**
  * Cantidad y promedio de las reseñas que CUENTAN: las no ocultas. Es el mismo criterio que
@@ -97,6 +129,15 @@ export default function InstructorResenas() {
   const [respondiendo, setRespondiendo] = useState<Record<string, string>>({});
   const [accionError, setAccionError] = useState<string | null>(null);
   const [enviando, setEnviando] = useState<string | null>(null);
+  // Filtros de la lista (2026-10-25): se mantienen al cambiar de actividad.
+  const [estrellasSel, setEstrellasSel] = useState<number | null>(null);
+  const [estadoSel, setEstadoSel] = useState<Estado>("todas");
+  const [orden, setOrden] = useState<OrdenOpiniones>("Más recientes");
+  const listaRef = useRef<HTMLDivElement>(null);
+  // Cambiar un filtro vuelve la lista al principio: si no, queda scrolleada a mitad de otra.
+  const alInicioDeLaLista = () => {
+    if (listaRef.current) listaRef.current.scrollTop = 0;
+  };
 
   /* eslint-disable react-hooks/set-state-in-effect -- elige la actividad por defecto cuando
      llega la lista del backend. */
@@ -128,6 +169,9 @@ export default function InstructorResenas() {
     : [];
   // La lista muestra también las ocultas (con su etiqueta); los números, sólo las que cuentan.
   const { total, prom, bars, ocultas } = estadisticas(reviews);
+  const delEstado = reviews.filter((rv) => cumpleEstado(rv, estadoSel));
+  const filtradas = opinionesVisibles(delEstado, estrellasSel, orden);
+  const hayFiltros = estrellasSel !== null || estadoSel !== "todas";
 
   const toggleResponder = (id: string) => {
     setAccionError(null);
@@ -282,7 +326,111 @@ export default function InstructorResenas() {
               </div>
             </div>
 
-            <div style={s("display:flex;flex-direction:column;gap:14px;")}>
+            {reviews.length > 0 && (
+              <div style={s("display:flex;flex-direction:column;gap:10px;margin-bottom:14px;")}>
+                <div style={s("display:flex;flex-wrap:wrap;align-items:center;gap:7px;")}>
+                  <span style={s("font:700 12.5px Manrope,sans-serif;color:#41566B;margin-right:2px;")}>Estado</span>
+                  {ESTADOS.map((e) => (
+                    <span
+                      key={e.key}
+                      className="ah-btn"
+                      role="button"
+                      onClick={() => {
+                        setEstadoSel(e.key);
+                        alInicioDeLaLista();
+                      }}
+                      style={chip(estadoSel === e.key)}
+                    >
+                      {e.label}
+                      <span style={s("font-weight:600;opacity:.75;")}>({reviews.filter((rv) => cumpleEstado(rv, e.key)).length})</span>
+                    </span>
+                  ))}
+                </div>
+                <div style={s("display:flex;flex-wrap:wrap;align-items:center;gap:7px;")}>
+                  <span style={s("font:700 12.5px Manrope,sans-serif;color:#41566B;margin-right:2px;")}>Calificación</span>
+                  <span
+                    className="ah-btn"
+                    role="button"
+                    onClick={() => {
+                      setEstrellasSel(null);
+                      alInicioDeLaLista();
+                    }}
+                    style={chip(estrellasSel === null)}
+                  >
+                    Todas
+                  </span>
+                  {[5, 4, 3, 2, 1].map((star) => {
+                    const n = delEstado.filter((rv) => rv.puntaje === star).length;
+                    return (
+                      <span
+                        key={star}
+                        className="ah-btn"
+                        role="button"
+                        aria-label={`${star} ${star === 1 ? "estrella" : "estrellas"} (${n})`}
+                        onClick={() => {
+                          setEstrellasSel(star);
+                          alInicioDeLaLista();
+                        }}
+                        style={chip(estrellasSel === star)}
+                      >
+                        {star}
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill={estrellasSel === star ? "#FFC53D" : "#F5B301"}>
+                          <path d={STAR_PATH} />
+                        </svg>
+                        <span style={s("font-weight:600;opacity:.75;")}>({n})</span>
+                      </span>
+                    );
+                  })}
+                </div>
+                <div style={s("display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;")}>
+                  <span style={s("font-size:13px;color:#7A8C9E;font-weight:600;display:flex;align-items:center;gap:12px;")}>
+                    {hayFiltros
+                      ? `Mostrando ${filtradas.length} de ${reviews.length} reseñas`
+                      : reviews.length === 1
+                        ? "Mostrando 1 reseña"
+                        : `Mostrando las ${reviews.length} reseñas`}
+                    {hayFiltros && (
+                      <span
+                        className="ah-link"
+                        role="button"
+                        onClick={() => {
+                          setEstrellasSel(null);
+                          setEstadoSel("todas");
+                          alInicioDeLaLista();
+                        }}
+                        style={s("color:#12B5A5;font-weight:700;cursor:pointer;")}
+                      >
+                        Limpiar filtros
+                      </span>
+                    )}
+                  </span>
+                  <label style={s("display:flex;align-items:center;gap:8px;font:600 13px Manrope,sans-serif;color:#7A8C9E;")}>
+                    Ordenar por
+                    <select
+                      value={orden}
+                      onChange={(e) => {
+                        setOrden(e.target.value as OrdenOpiniones);
+                        alInicioDeLaLista();
+                      }}
+                      style={s("border:1px solid #E2E9F0;border-radius:10px;padding:8px 10px;font:700 13px Manrope,sans-serif;color:#0E2A47;background:#fff;")}
+                    >
+                      {ORDENES_OPINIONES.map((o) => (
+                        <option key={o} value={o}>
+                          {o}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              </div>
+            )}
+
+            <div
+              ref={listaRef}
+              className="ah-scroll"
+              data-testid="lista-resenas"
+              style={s("display:flex;flex-direction:column;gap:14px;max-height:760px;overflow-y:auto;padding-right:6px;")}
+            >
               {errorCarga && (
                 <div
                   style={s(
@@ -311,7 +459,12 @@ export default function InstructorResenas() {
                   Esta actividad todavía no tiene reseñas.
                 </div>
               )}
-              {reviews.map((rv) => {
+              {reviews.length > 0 && filtradas.length === 0 && (
+                <div style={s("background:#fff;border:1px dashed #D6DEE7;border-radius:16px;padding:26px 20px;text-align:center;color:#7A8C9E;font-size:13.5px;font-weight:600;")}>
+                  Ninguna reseña de esta actividad coincide con los filtros.
+                </div>
+              )}
+              {filtradas.map((rv) => {
                 const avatar = `${rv.alumno.nombre.charAt(0)}${rv.alumno.apellido.charAt(0)}`.toUpperCase();
                 const respondiendoAbierto = rv.id in respondiendo;
                 return (

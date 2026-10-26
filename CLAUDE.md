@@ -24,7 +24,7 @@ SPA de ActiveHub para los 3 roles (Alumno, Instructor, Administrador). React 19 
 
 ## Pruebas automatizadas: existen, y una regresión reportada se cubre con una prueba
 
-Hasta este tramo el frontend **no tenía ninguna** (el backend sí: 842). Hoy hay **Vitest + jsdom + Testing Library**, 36 archivos y 239 pruebas (al 2026-10-24). El detalle —qué cubre cada archivo, con qué criterio se agrega una prueba y qué falta— está en **`docs/PRUEBAS.md`**; acá va sólo lo que hay que saber antes de escribir código.
+Hasta este tramo el frontend **no tenía ninguna** (el backend sí: 842). Hoy hay **Vitest + jsdom + Testing Library**, 49 archivos y 295 pruebas (al 2026-10-26). El detalle —qué cubre cada archivo, con qué criterio se agrega una prueba y qué falta— está en **`docs/PRUEBAS.md`**; acá va sólo lo que hay que saber antes de escribir código.
 
 - **Comandos**: `npm test` (una corrida, es lo que corre CI), `npm run test:watch`, `npm run test:coverage`, `npm run typecheck`.
 - **Dónde va cada prueba**: al lado del archivo que prueba, `algo.test.ts` / `algo.test.tsx`. No hay carpeta `__tests__`.
@@ -86,7 +86,7 @@ Quién usa qué:
 - `alumno/Perfil.tsx` — edición real de los datos (incluye el campo **Email**, que antes ni se mostraba en modo edición) + tarjeta "Seguridad de la cuenta" con cambio de contraseña y baja. **Desde el 2026-10-24:** sin "Historial de actividades" (repetía "Mis clases") y con la tarjeta **"Información de salud"** (`InformacionSaludCard`, en el mismo archivo): muestra y edita "¿Padecés alguna enfermedad o lesión?" vía `actualizarMiCondicionSalud` de `AuthContext` (`PUT /api/usuarios/me/salud`), que actualiza `currentUser.perfilAlumno.condicionSalud`. El dato llega en `/api/auth/me`. El texto de la tarjeta y el del registro dicen para qué se usa (el informe de beneficios) y que **no lo ve el instructor**: antes el registro decía "Ayuda al instructor a dar la clase de forma segura", y era falso. Lo cubre `Perfil.test.tsx`.
 - `alumno/MisPagos.tsx` — ahora usa `listarMisPagos()` (`GET /api/alumno/pagos`) en vez de derivarlo de `listarMisInscripciones`: **un pago sobrevive a su inscripción** (reintegro por cancelación, liberación post-clase) y esa lista lo perdía. Suma un KPI "Reintegrado" y el botón "Reintentar".
 - `alumno/MisResenas.tsx` — **sólo crea**: desde V33 del backend una reseña publicada no se edita ni se elimina (ver "Reseñas: se publican al crearse y no se tocan"). Los botones "Editar" y "Eliminar", el modal de edición y `actualizarResenia`/`eliminarResenia` del `DataContext` se retiraron.
-- `instructor/Solicitud.tsx` — "Editar mis datos" ya no es un botón muerto, y "Volver a postularme" llama al backend (antes solo parcheaba el directorio mock, así que al recargar la solicitud volvía a aparecer rechazada).
+- `instructor/Solicitud.tsx` — "Editar mis datos" ya no es un botón muerto, y "Volver a postularme" llama al backend (antes solo parcheaba el directorio mock, así que al recargar la solicitud volvía a aparecer rechazada). **Desde el 2026-10-26** tiene la tarjeta de documentación y "Volver a postularme" se habilita sólo con un documento `nuevo` (ver "Documentación del instructor").
 - `admin/Gestion.tsx` — botón "Editar" por fila de usuario, con modal (nombre, apellido, email, teléfono).
 
 Validaciones que hay que mantener en espejo con el backend: el **teléfono es obligatorio** en `actualizarmiperfil` (`@NotBlank`) pero **opcional** en `actualizarusuarioadmin`; en ambos el patrón es `\+?[0-9 ]+`. El email se normaliza a minúsculas del lado del servidor.
@@ -157,7 +157,15 @@ La sección "Opiniones de alumnos" de `alumno/Detalle.tsx` mostraba sólo las **
 
 ## Galería de imágenes de la actividad
 
-`actividad.imagenes` (ids) viene **solo del detalle** (`cargarDetalleActividad`), no del listado. Se sirven por `${BASE_URL}/api/fotos/actividad/imagen/{id}` — endpoint público, como el resto del catálogo. La portada sigue siendo `subirFotoActividad` + el componente `ActivityPhoto`; la galería usa `agregarImagenActividad` / `eliminarImagenActividad`, con tope de 6. La primera imagen que se sube cuando no hay portada pasa a serlo (lo hace el backend).
+`actividad.imagenes` (ids) viene **solo del detalle** (`cargarDetalleActividad`), no del listado. Se sirven por `${BASE_URL}/api/fotos/actividad/imagen/{id}` — endpoint público, como el resto del catálogo. La portada sigue siendo `subirFotoActividad` + el componente `ActivityPhoto`; la galería usa `agregarImagenActividad` / `eliminarImagenActividad`, con tope de 6. La primera imagen que se sube cuando no hay portada pasa a serlo (lo hace el backend), y **comparten el archivo**.
+
+**Carrusel del detalle (2026-10-25): `components/GaleriaActividad.tsx` + `lib/galeria.ts`.** Flechas circulares, contador "N / M", miniaturas, teclado (← →) y deslizamiento con el dedo. Lo que hay que saber:
+
+- **La lista sale de `fotosDeActividad`**, que usa `tienePortada` y `portadaImagenId` del detalle (`GET /api/actividades/{id}`): la portada va primero y, si es una imagen de la galería, **no se repite**; si se subió aparte, va delante de toda la galería. Antes la portada se veía dos veces y una portada subida aparte no volvía a verse después de tocar una miniatura.
+- **Una foto que falla al cargar se saca de la lista** (`onError`), en vez de mostrar el ícono de imagen rota. Se guarda la **clave** de la foto elegida y el índice se deriva, así una foto que se cae no corre la selección.
+- `Detalle.tsx` lo monta con **`key={actividad.id}`**: sin eso la foto elegida pasaba de una actividad a otra.
+- **Bug del backend corregido a la vez:** `subirfotoactividad` borraba el archivo de la portada anterior aunque fuera el de una imagen de la galería, que quedaba rota. Hoy sólo lo borra si no es de la galería. Las actividades que ya lo perdieron conservan la fila sin archivo: el carrusel la oculta y el instructor puede quitarla y volver a subirla.
+- Lo cubren `lib/galeria.test.ts` y `components/GaleriaActividad.test.tsx`.
 
 ## Mapas y distancias: OpenStreetMap, no Google Maps
 
@@ -222,6 +230,10 @@ El alta manda un código de 6 dígitos por mail y **el registro ya no aterriza e
 Editar el nombre es editar un dato; cambiar el correo es **cambiar la credencial de acceso**, y arrastra dos consecuencias que ese formulario no podía expresar: hay que confirmarlo con un código, y al confirmarse el correo anterior **queda libre para otra persona**. Vive en `components/CambiarEmailCard.tsx`, compartido por los perfiles de alumno, instructor y admin (la misma acción escrita tres veces se iba a desincronizar), pide la contraseña actual y explica las dos cosas.
 
 **El campo Email se sacó de los tres formularios de perfil**: el backend ahora rechaza un `PUT /api/usuarios/me` que traiga otro correo, así que dejarlo editable era ofrecer un error.
+
+### Panel izquierdo del Login: la ilustración trae el logo (2026-10-25)
+
+`public/login-fondo.webp` (1600×1600, 54 KB, provista por el usuario) es el fondo del panel izquierdo de `Login.tsx`, con el texto de siempre encima. **La ilustración ya trae el logo de ActiveHub**, así que el panel no dibuja el suyo, y el enlace al inicio es una zona invisible (`.ah-login-logo`, nombre accesible "ActiveHub, ir al inicio") encima del logo de la imagen. Para que esa zona caiga siempre en el mismo lugar, `.ah-login-fondo` no es un `background-size: cover` sino un **cuadrado del lado más largo del panel** (`min-width`/`min-height` 100 % + `aspect-ratio: 1`), anclado arriba a la izquierda; el enlace va en porcentajes de ese cuadrado. Si se cambia la imagen y el logo se mueve, hay que reubicar `.ah-login-logo` en `index.css`. El velo (`.ah-login-velo`) es denso a la izquierda; por debajo de 820 px se aclara arriba para no tapar el logo. Lo cubre `Login.test.tsx`.
 
 ### "¿Olvidaste tu contraseña?": `pages/auth/RecuperarPassword.tsx`
 
@@ -554,6 +566,7 @@ Antes el administrador era el único de los tres roles sin pantalla de cuenta pr
 ## Pantallas del instructor: lo que cambió en este tramo
 
 - **`instructor/Perfil.tsx` es nuevo** (`/instructor/perfil`, ítem "Mi perfil" en el sidebar). El instructor no tenía dónde cambiar su nombre, su teléfono ni su contraseña: "Mis datos" (`Solicitud.tsx`) es otra cosa —el estado de su verificación y la documentación— y su formulario sólo aparecía mientras la solicitud estaba en revisión.
+- **El logo del `DashSidebar` no tiene acción** (2026-10-25, pedido del usuario): llevaba a la landing pública. Vale para instructor y admin, que comparten el panel; el del alumno (`AlumnoNav`) sigue llevando a `/alumno`. Lo fija `components/DashSidebar.test.tsx`.
 - **La foto se sube sólo desde ahí.** El `Avatar` del `DashSidebar` perdió su `onUpload`: un avatar es identidad, no un control, y estando en todas las pantallas se abría el explorador de archivos sin querer. Es la regla que ya seguía el alumno.
 - **Métricas exporta** a PDF y a CSV, con los helpers compartidos. Antes la única forma de sacar esos números era copiarlos a mano.
 - **El Historial vuelve a ser clickeable (2026-10-16), pero en modo consulta.** Cada fila abre `/instructor/clases/:id?desde=historial`, la MISMA pantalla `GestionClase` de "Mis actividades": quiénes se inscribieron, qué pagó cada uno y qué pasó con ese pago. Con la clase Finalizada o Cancelada la pantalla es de **sólo lectura** (`soloLectura`): sin "Editar", "Cancelar clase", "Notificar ausencia" ni "Confirmar cobro", con un cartel que lo explica, y "Volver al historial". Cada fila sigue mostrando la **ganancia** (precio de la clase × inscriptos; `$0` si se canceló), que sale de `MiClaseInstructor.precio`.
@@ -562,6 +575,17 @@ Antes el administrador era el único de los tres roles sin pantalla de cuenta pr
 - **El formulario de clase pide sólo fecha y hora de inicio.** La hora de fin se calcula con `actividad.duracionMin` y se muestra como texto al lado. El backend hace lo mismo: `horaFin` ya no viaja en el request.
 - **Una clase congelada no ofrece "Editar"**, muestra un chip "Congelada" con el motivo. Espejo de `VentanaInscripcion.estaCongelada`; el backend es quien lo hace cumplir.
 - **Se sacó la pasarela de 4 pasos** del alta/edición de actividad. No es un asistente: es un formulario de una página con todos los campos visibles, y los números marcaban un avance que nunca avanzaba.
+
+## Gestión del admin: las seis pestañas paginan, scrollean y filtran (2026-10-26)
+
+- **10 por página en las seis** (`POR_PAGINA`), con las filas en un `.ah-scroll` de 620 px (`ALTO_LISTA`) bajo el encabezado de la tabla, que vuelve arriba al cambiar de página (`controles(pag)`). La clave de reinicio de cada `usePaginado` es el filtro de esa pestaña: resolver un reclamo o quitar algo **no** manda a la página 1.
+- **Los filtros son funciones puras en `lib/filtrosGestion.ts`** (una por pestaña), probadas sin montar la pantalla. La barra (`BarraFiltros`, en el mismo archivo) usa `BuscadorLupa` y muestra "N de M" + "Limpiar filtros". Las opciones de rol, categoría y nivel salen de los datos: el rol **no** es la lista fija de tres (el admin crea roles).
+- **"Ordenar por" en las seis** (`ORDENES_*` y `ordenar*` de `lib/filtrosGestion.ts`, la primera opción es la inicial y coincide con el orden en que ya venía la lista, salvo Actividades que pasa a nombre). El orden vive aparte de los filtros (`orden: Record<Tab, string>`): "Limpiar filtros" no lo toca. Se filtra, se ordena y recién después se pagina; la clave de reinicio incluye el orden. En actividades, `rating` 0 = sin reseñas y va al final en los dos órdenes por calificación.
+- **Actividades no tiene "Editar"**: estaba deshabilitado ("Próximamente") y la actividad la edita su instructor; el admin sólo "Quitar".
+- **El documento del instructor se abre como `blob:http://localhost:5173/…`** (`verDocumentoInstructor`): es una dirección temporal del navegador para un archivo bajado con la sesión del admin. En producción dice el dominio real. No es un problema.
+- Lo cubren `lib/filtrosGestion.test.ts` y `admin/Gestion.test.tsx`.
+
+**Pruebas lentas en jsdom:** `getByRole` recorre todo el árbol de accesibilidad en cada llamada. En una pantalla grande, varias por prueba la llevan a varios segundos (`HistorialClases.test.tsx` cortaba por los 5 s). Preferir `getByText` / `getByLabelText` cuando prueban lo mismo.
 
 ## Reseñas del admin: un solo listado, y qué significa "Ocultar"
 
@@ -734,6 +758,28 @@ Existen dos funciones del `DataContext` que pegan a endpoints propios del instru
 **Panel, Próximas clases, Métricas e Historial ya usan estas dos.** Ninguna pantalla del instructor debería volver a derivar sus datos de `DataContext.clases` (caché parcial) ni de `DataContext.inscripciones`/`pagos` (mock): esa combinación hacía que el panel y las métricas mostraran cero al entrar por login, porque además los ids del mock (`act-running-c0`) nunca podían cruzarse con los UUID reales.
 
 Cada una de esas pantallas tiene ahora su estado de error con botón "Reintentar"; seguí ese patrón al agregar otra.
+
+## Listas del instructor: paginación, scroll y búsqueda (2026-10-25)
+
+Pedido del usuario, todo en el cliente con `usePaginado` + `Paginacion`:
+
+- **Historial** (`HistorialClases.tsx`): 10 por página, lista con `.ah-scroll` (máx. 640 px) que vuelve arriba al cambiar de página, y la lupa **`components/BuscadorLupa.tsx`** con **`claseCoincide`** de `lib/busquedaClases.ts`: nombre de la actividad sin tildes o fecha (numérica como prefijo de "d/m/aaaa" o "dd/mm/aaaa", abreviada como en la lista, o con el mes completo). La búsqueda se aplica junto con el filtro de actividad **antes** de los conteos de estado.
+- **Próximas clases** (`ProximasClases.tsx`): se pagina **por clase** (10) y después se agrupa por día la página, así un día que sigue en la página siguiente repite su encabezado. `.ah-scroll` de 680 px.
+- **Mis actividades** (`MisActividades.tsx`): 12 por página y `BuscadorLupa` por nombre, categoría, tipo o nivel. La clave de reinicio es la búsqueda: eliminar una actividad no manda a la página 1.
+- **Reseñas** (`Resenas.tsx`): filtros "Estado" (Todas, Sin responder, Respondidas, Denunciadas, Ocultas) y "Calificación" con su cantidad, y "Ordenar por" con **`opinionesVisibles`** de `lib/opiniones.ts` (ahora genérica, la misma del detalle del alumno). "Sin responder" incluye las denunciadas sin respuesta y excluye las ocultas, que no se pueden responder. **El resumen de arriba no cambia con los filtros**: sigue contando sólo las visibles. Los filtros se mantienen al cambiar de actividad.
+- **El scroll se resetea con `scrollTop = 0`, no con `elemento.scrollTo()`**: jsdom no implementa `scrollTo` en elementos y las pruebas fallan con "scrollTo is not a function".
+- Lo cubren `lib/busquedaClases.test.ts`, `HistorialClases.test.tsx`, `ProximasClases.test.tsx`, `MisActividades.test.tsx` y `Resenas.test.tsx`.
+
+## Documentación del instructor y "Volver a postularme" (2026-10-26)
+
+El instructor no podía ver ni tocar su documentación después del registro, y "Volver a postularme" reenviaba lo mismo que el admin había rechazado. Hoy:
+
+- **`components/DocumentacionCard.tsx`**: lista (`listarMisDocumentos`), "Ver" (`verMiDocumento`, blob en pestaña nueva abierta dentro del click), "Subir documento" (`subirDocumento`, PDF/JPG/PNG hasta 5 MB, validado antes de mandar) y "Quitar" (`retirarMiDocumento`, con `confirm`; deshabilitado si es el único). Va en **"Mis datos"** (`Solicitud.tsx`, sin aprobar) y en **"Mi perfil"** (`Perfil.tsx`, aprobado): "Mis datos" redirige al aprobado al panel, así que sin la segunda un instructor aprobado no tenía dónde sumar un curso. `onCambio` se lee por ref para no reiniciar la carga.
+- **`nuevo`** = subido después del último rechazo (lo calcula el backend con `rechazado_at`). `Solicitud.tsx` habilita "Volver a postularme" sólo si hay alguno; el backend lo exige igual (`reabrirsolicitudinstructor`).
+- **Quitar no borra**: el backend lo marca `RETIRADO`; el instructor deja de verlo y el admin lo sigue viendo con la marca "Quitado por el instructor".
+- **Admin (`ValidarInstructor.tsx`)**: motivo del rechazo **obligatorio** ("Motivo del rechazo *", `rechazarInstructor(id, motivo)` ya no acepta `undefined`), marcas "Nuevo desde el rechazo" y "Quitado por el instructor", y el motivo anterior cuando el instructor se volvió a postular. `?accion=rechazar` abre el formulario: es a donde lleva "Rechazar" de Gestión › Instructores, que ya no rechaza de un clic. El campo del motivo es uno solo para las dos ramas: en una solicitud aprobada "Rechazar solicitud" abría un formulario que sólo existía en la rama de las pendientes y no hacía nada.
+- **`StatusBadge` tiene `validacionRechazada` ("Validación rechazada")**: las solicitudes usaban `rechazado`, que es el de los pagos ("Pago rechazado").
+- Lo cubren `DocumentacionCard.test.tsx`, `instructor/Solicitud.test.tsx` y `admin/ValidarInstructor.test.tsx`.
 
 ## Pantalla de Historial de clases (instructor)
 
