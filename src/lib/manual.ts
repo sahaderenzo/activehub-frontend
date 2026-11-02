@@ -608,7 +608,7 @@ export const MANUAL: SeccionManual[] = [
           },
           {
             tipo: "p",
-            texto: 'Cuando es el instructor quien cancela una clase, la tarjeta muestra la etiqueta "Cancelada" y, si se había realizado un pago, el texto correspondiente a la devolución. La notificación distingue qué ocurrió con el dinero: "Se liberó la reserva del pago en tu tarjeta: no se te va a cobrar." cuando el cobro todavía no se había hecho, o "Te reembolsamos el pago por Mercado Pago; según tu banco, puede tardar unos días en verse en tu tarjeta." cuando ya se había cobrado. Si el pago fue en efectivo, el aviso indica coordinar la devolución con el instructor.',
+            texto: 'Cuando es el instructor quien cancela una clase, la tarjeta muestra la etiqueta "Cancelada" y, si se había realizado un pago, el texto correspondiente a la devolución. La notificación distingue qué ocurrió con el dinero: "Se liberó la reserva del pago en tu tarjeta: no se te va a cobrar." cuando el cobro todavía no se había hecho, o "Te reembolsamos el pago por Mercado Pago; según tu banco, puede tardar unos días en verse en tu tarjeta." cuando ya se había cobrado. Si el pago era en efectivo, el aviso informa sólo la cancelación.',
           },
         ],
       },
@@ -631,7 +631,7 @@ export const MANUAL: SeccionManual[] = [
               '"Retención liberada": "No se te cobró: se liberó la reserva de tu tarjeta."',
               '"Reembolsado": "Se te devolvió por Mercado Pago."',
               '"Efectivo": "Se paga en mano al instructor."',
-              '"Pago cancelado" (pago en efectivo de una clase cancelada): "Coordiná con el instructor la devolución de lo que pagaste."',
+              '"Pago cancelado" (pago en efectivo de una inscripción cancelada): "La inscripción se canceló."',
             ],
           },
           {
@@ -884,7 +884,7 @@ export const MANUAL: SeccionManual[] = [
           },
           {
             tipo: "p",
-            texto: "El sistema cancela la clase y todas sus inscripciones, devuelve los pagos y notifica a cada alumno con el nombre de la actividad y la fecha y hora de la clase. La devolución depende del momento: si el pago con tarjeta todavía no se había cobrado, se libera la reserva y al alumno no se le cobra nada; si ya se había cobrado, se le reembolsa el importe total, lo que según su banco puede tardar unos días en verse reflejado. En el caso de los pagos en efectivo, la notificación indica al alumno coordinar la devolución con el instructor. La operación es transaccional: si algún paso falla —incluida la comunicación con Mercado Pago— no se aplica ningún cambio. Las clases finalizadas no pueden cancelarse.",
+            texto: "El sistema cancela la clase y todas sus inscripciones, devuelve los pagos y notifica a cada alumno con el nombre de la actividad y la fecha y hora de la clase. La devolución depende del momento: si el pago con tarjeta todavía no se había cobrado, se libera la reserva y al alumno no se le cobra nada; si ya se había cobrado, se le reembolsa el importe total, lo que según su banco puede tardar unos días en verse reflejado. En el caso de los pagos en efectivo, la notificación informa sólo la cancelación: el efectivo se arregla por fuera de la plataforma. La operación es transaccional: si algún paso falla —incluida la comunicación con Mercado Pago— no se aplica ningún cambio. Las clases finalizadas no pueden cancelarse.",
           },
         ],
       },
@@ -1308,7 +1308,7 @@ export const MANUAL: SeccionManual[] = [
               [
                 "Pago",
                 "Cancelado",
-                "La reserva de la tarjeta se liberó antes de cobrarse, de modo que al alumno no se le cobró nada. También se usa para un pago en efectivo de una clase cancelada, cuya devolución se coordina con el instructor.",
+                "La reserva de la tarjeta se liberó antes de cobrarse, de modo que al alumno no se le cobró nada. También se usa para un pago en efectivo de una inscripción cancelada, que se arregla por fuera de la plataforma.",
               ],
               [
                 "Pago",

@@ -24,7 +24,7 @@ SPA de ActiveHub para los 3 roles (Alumno, Instructor, Administrador). React 19 
 
 ## Pruebas automatizadas: existen, y una regresión reportada se cubre con una prueba
 
-Hasta este tramo el frontend **no tenía ninguna** (el backend sí: 842). Hoy hay **Vitest + jsdom + Testing Library**, 49 archivos y 295 pruebas (al 2026-10-26). El detalle —qué cubre cada archivo, con qué criterio se agrega una prueba y qué falta— está en **`docs/PRUEBAS.md`**; acá va sólo lo que hay que saber antes de escribir código.
+Hasta este tramo el frontend **no tenía ninguna** (el backend sí: 842). Hoy hay **Vitest + jsdom + Testing Library**, 49 archivos y 296 pruebas (al 2026-10-31). El detalle —qué cubre cada archivo, con qué criterio se agrega una prueba y qué falta— está en **`docs/PRUEBAS.md`**; acá va sólo lo que hay que saber antes de escribir código.
 
 - **Comandos**: `npm test` (una corrida, es lo que corre CI), `npm run test:watch`, `npm run test:coverage`, `npm run typecheck`.
 - **Dónde va cada prueba**: al lado del archivo que prueba, `algo.test.ts` / `algo.test.tsx`. No hay carpeta `__tests__`.
@@ -59,8 +59,8 @@ El backend integra Mercado Pago real como **marketplace**: cada instructor cobra
 El estado solo no alcanza para explicarle a la persona qué pasó con su plata, así que `lib/status.ts` tiene dos funciones que devuelven `{ type, label, detalle }` a partir de `{ estado, metodo, capturado }`:
 
 - **`Retenido` son dos cosas distintas** según `capturado`: reservado en la tarjeta ("Retenido hasta la clase") o ya cobrado esperando el período de denuncias ("Cobrado"). El backend manda `capturado` en `listarmispagos` y `pagoCapturado` en el roster.
-- **`Cancelado` depende del método:** con Mercado Pago es "Retención liberada" (nunca se cobró); en efectivo, "Pago cancelado" (la devolución la coordina el instructor).
-- **El instructor lo lee distinto:** le importa si la plata ya es suya. Su texto de `Retenido` cobrado nombra las 24 h del período de denuncias (`VentanaPagos.PERIODO_DENUNCIAS` del backend): si cambia allá, cambia acá.
+- **`Cancelado` depende del método:** con Mercado Pago es "Retención liberada" (nunca se cobró); en efectivo, "Pago cancelado" · "La inscripción se canceló.", sin hablar de devoluciones: el efectivo se arregla por fuera de la plataforma (decisión del usuario, 2026-10-31). Dice "inscripción" y no "clase" porque el reintegro por denuncia cancela la inscripción de una clase que sí se dictó.
+- **El instructor lo lee distinto:** le importa si la plata ya es suya. Su `Cancelado` en efectivo es "Cancelado" · "La inscripción se canceló.": no afirma "No se cobró.", que no se puede saber. Su texto de `Retenido` cobrado nombra las 24 h del período de denuncias (`VentanaPagos.PERIODO_DENUNCIAS` del backend): si cambia allá, cambia acá.
 
 Las usan `alumno/MisPagos.tsx` (columna "Estado pago", y los totales separan lo cobrado de lo reservado) e `instructor/GestionClase.tsx` (columnas "Pago" y "A recibir", más el total de la clase; el neto es `pagoNeto`, monto menos comisión, que hoy es 0).
 

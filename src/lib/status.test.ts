@@ -68,10 +68,10 @@ describe("explicarPagoAlumno", () => {
     expect(mp("EnRevision").label).toBe("En revisión");
   });
 
-  it("un efectivo cancelado lo devuelve el instructor, no la tarjeta", () => {
+  it("un efectivo cancelado no habla de devoluciones: se arregla por fuera de la plataforma", () => {
     const r = explicarPagoAlumno({ estado: "Cancelado", metodo: "Efectivo", capturado: false });
     expect(r.label).toBe("Pago cancelado");
-    expect(r.detalle).toBe("Coordiná con el instructor la devolución de lo que pagaste.");
+    expect(r.detalle).toBe("La inscripción se canceló.");
   });
 });
 
@@ -88,6 +88,15 @@ describe("explicarPagoInstructor", () => {
     expect(explicarPagoInstructor({ estado: "Reembolsado", metodo: "Mercado Pago", capturado: true }).label).toBe(
       "Reintegrado",
     );
+  });
+
+  it("un efectivo cancelado no afirma si se cobró; con Mercado Pago sigue siendo un reintegro", () => {
+    const efectivo = explicarPagoInstructor({ estado: "Cancelado", metodo: "Efectivo", capturado: false });
+    expect(efectivo.label).toBe("Cancelado");
+    expect(efectivo.detalle).toBe("La inscripción se canceló.");
+    const tarjeta = explicarPagoInstructor({ estado: "Cancelado", metodo: "Mercado Pago", capturado: false });
+    expect(tarjeta.label).toBe("Reintegrado");
+    expect(tarjeta.detalle).toBe("No se cobró.");
   });
 });
 

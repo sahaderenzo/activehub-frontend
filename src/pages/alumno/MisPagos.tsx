@@ -37,7 +37,7 @@ export default function AlumnoMisPagos() {
 
   // KAN-63: un Retenido ya capturado es plata cobrada (espera el período de denuncias), no
   // reservada. Y "reintegrado" es lo que se le devolvió o nunca se le cobró por Mercado Pago:
-  // un efectivo cancelado lo devuelve el instructor en mano, no la plataforma.
+  // un efectivo cancelado se arregla por fuera de la plataforma.
   const sumar = (lista: MiPago[]) => lista.reduce((acum, f) => acum + f.monto, 0);
   const totalPagado = sumar(
     filas.filter((f) => f.estado === "Liberado" || f.estado === "Efectivo" || (f.estado === "Retenido" && f.capturado)),

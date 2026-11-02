@@ -11,7 +11,7 @@ PARTE A — ESTADO GENERAL
 ================================================================================
 
 ESTADO GENERAL
-Fecha de actualización: 26/10/2026 (después de la ENTRADA 020)
+Fecha de actualización: 31/10/2026 (después de la ENTRADA 022)
 
 Ajustes
   1. Filtro "Distancia" de Explorar como barra de rango con dos manijas (ENTRADA 001):
@@ -68,11 +68,16 @@ Ajustes
       probado en el navegador.
   20. Gestión del administrador: "Ordenar por" en las seis pestañas (ENTRADA 020):
       IMPLEMENTADO, solo frontend; pruebas automatizadas; no probado en el navegador.
+  21. Limpieza de la base y carga de datos de demostración (ENTRADA 021): scripts SQL
+      IMPLEMENTADOS y PROBADOS en una base local; NO ejecutados en Supabase.
+  22. El pago en efectivo cancelado ya no habla de devoluciones (ENTRADA 022): IMPLEMENTADO en
+      backend y frontend; pruebas automatizadas, salvo tres clases que necesitan base; no
+      probado en el navegador.
 
 Frontend
-  Pruebas: 295 pruebas en 49 archivos, todas en verde. Comando ejecutado el 26/10/2026:
-    npx vitest run --maxWorkers=1. Salida literal: "Test Files  49 passed (49)" y "Tests  295
-    passed (295)". Con npm test (hilos por defecto) la misma suite dio fallas por "Test timed
+  Pruebas: 296 pruebas en 49 archivos, todas en verde. Comando ejecutado el 31/10/2026:
+    npx vitest run --maxWorkers=1. Salida literal: "Test Files  49 passed (49)" y "Tests  296
+    passed (296)". Con npm test (hilos por defecto) la misma suite dio fallas por "Test timed
     out in 5000ms" en archivos no tocados mientras el equipo tenía corriendo otros procesos de
     java y node (ver ENTRADA 003, PRUEBAS). Conteo de archivos: find src -name "*.test.*" | wc
     -l -> 49.
@@ -92,6 +97,11 @@ Backend
     (JAVA_HOME=$HOME/.jdks/jdk-21.0.12+8 ./mvnw -B test, 26/10/2026): "Tests run: 1039,
     Failures: 0, Errors: 0, Skipped: 2", "BUILD SUCCESS". Casos de uso: 116. Archivos de prueba:
     212. Migraciones: 35 (V1 a V35).
+  Última corrida (31/10/2026, ENTRADA 022): 1043 pruebas; sin las 20 que necesitan base,
+    "Tests run: 1023, Failures: 0, Errors: 0, Skipped: 2", "BUILD SUCCESS". Esas 20 no se
+    ejecutaron. Cifras de arriba: las de la suite completa del 26/10/2026.
+  Datos de demostración (ENTRADA 021): scripts/datos-demo (copia de seguridad, restauración,
+    limpieza y carga, y su generador). No son migraciones y no cambian código.
 
 Integración continua
   Estado del último flujo ejecutado: no verificado. Los cambios no están commiteados ni
@@ -114,7 +124,11 @@ Pendientes abiertos
      actividad real (reiniciar el backend), y con una cuenta de instructor aprobada el
      Historial, Próximas clases, Mis actividades y Reseñas.
   2. Commitear y empujar.
-  3. Botón "Compartir" del detalle de una actividad: sigue sin acción. Postergado por decisión
+  3. Ejecutar en Supabase 01-copia-de-seguridad.sql y 03-limpieza-y-carga-demo.sql, después de
+     avisar al equipo (ENTRADA 021), y borrar la copia cuando ya no haga falta.
+     Correr CatalogoPublicoTest, ActivehubApiApplicationTests y BusquedaSinTildesTest (ENTRADA
+     022).
+  4. Botón "Compartir" del detalle de una actividad: sigue sin acción. Postergado por decisión
      del usuario (24/10/2026) hasta el despliegue, porque sin URL pública el enlace apuntaría a
      localhost. Propuesta acordada: menú nativo de compartir (navigator.share) y, donde no
      exista, copiar el enlace al portapapeles con el aviso "Enlace copiado"; y que el login
@@ -2498,6 +2512,249 @@ ERRORES DETECTADOS: ninguno.
 CAPTURAS SUGERIDAS: una pestaña de Gestión con "Ordenar por" desplegado.
 
 PENDIENTE QUE QUEDA: probar en el navegador con una cuenta de administrador.
+
+================================================================================
+ENTRADA 021
+================================================================================
+FECHA: 28/10/2026
+
+REPOSITORIO: activehub-backend (scripts SQL nuevos en scripts/datos-demo). El frontend no
+  cambia.
+
+RAMA Y COMMITS: main. Sin commit al momento de escribir esta entrada. Sin Pull Request.
+
+TIPO: datos.
+
+TÍTULO: Limpieza de la base y carga de datos de demostración coherentes.
+
+QUÉ CAMBIA PARA EL USUARIO: todavía nada: los scripts están escritos y probados en una base
+  local, pero no se ejecutaron en la base compartida de Supabase. Cuando se ejecuten, la
+  aplicación queda con 6 categorías y 18 tipos de actividad (los de la tabla del usuario), 5
+  instructores aprobados, 12 alumnos, 18 actividades (una por tipo, ninguna competitiva), 108
+  clases (3 dictadas y 3 por venir por actividad), 371 inscripciones, 342 pagos en efectivo,
+  144 reseñas (53 con respuesta del instructor) y 24 favoritos. Se pierden todos los alumnos e
+  instructores que había y lo que colgaba de ellos. Las cuentas de administrador no se tocan.
+
+TEXTOS DE INTERFAZ: sin cambios. Categorías y tipos que se cargan (texto de datos, no de
+  interfaz):
+    - "Entrenamiento de Fuerza y Resistencia": "Trabajo con pesas", "Trabajo con cargas
+      livianas", "Ejercicios de resistencia corporal", "Funcional".
+    - "Actividad Aeróbica": "Running", "Nadar", "Andar en bicicleta", "Bailar".
+    - "Actividades de Flexibilidad": "Estiramientos", "Yoga", "Pilates".
+    - "Artes Marciales": "Tai Chi", "Defensa Personal".
+    - "Aventura": "Senderismo", "Trekking", "Mountain Bike", "Escalada".
+    - "Bienestar": "Relajación".
+
+DETALLE TÉCNICO:
+  - Pedido del usuario (28/10/2026). Respuestas a las preguntas previas: avisa él al equipo;
+    5 instructores, unas 15 actividades y 12 alumnos (quedaron 18 actividades, una por tipo,
+    para que ningún tipo quede vacío en los filtros); copia de seguridad antes; los tres
+    niveles de intensidad quedan como están; ninguna actividad competitiva.
+  - Archivos nuevos en activehub-backend/scripts/datos-demo: LEEME.txt (orden de ejecución),
+    01-copia-de-seguridad.sql (copia todas las tablas de public al esquema
+    respaldo_pre_demo; se niega a pisar una copia anterior), 02-restaurar-copia.sql (vacía y
+    vuelve a llenar public desde la copia en una transacción, padres antes que hijos, por
+    nombre de columna; no toca flyway_schema_history), 03-limpieza-y-carga-demo.sql (una sola
+    transacción) y generar-carga-demo.py (el programa que genera el 03; datos fijos).
+  - Los scripts no son migraciones de Flyway: se ejecutan a mano en el SQL Editor de Supabase.
+  - El borrado es físico (DELETE), no baja lógica: el pedido es que los datos viejos no
+    estén. audit_log se conserva salvo las filas cuyo autor es un alumno o instructor borrado
+    (la clave foránea a usuario no deja otra opción). Los archivos subidos quedan huérfanos en
+    el almacenamiento.
+  - Las fechas se calculan desde el día de ejecución, en hora de Argentina (función temporal
+    pg_temp.dia): las clases dictadas quedan entre 4 y 27 días atrás y las futuras entre 1 y
+    15 días adelante, con estado Habilitada si faltan 4 días o menos y Programada si faltan
+    más. Las inscripciones a clases a más de 4 días son en parte PreInscripción (sin pago ni
+    cupo); las demás son Inscripto o PagoPendiente con pago Efectivo, para que el instructor
+    pueda mostrar "Confirmar cobro". cupos_ocupados cuenta Inscripto y PagoPendiente, como
+    inscribirse. El rating se calcula con la misma consulta que recalcularRating.
+  - No se usa Mercado Pago: un pago Retenido haría que los procesos automáticos intenten
+    capturarlo.
+
+ESTADO: IMPLEMENTADO y PROBADO en un PostgreSQL 16 local (contenedor descartable con las 35
+  migraciones). NO ejecutado en la base compartida.
+
+HISTORIAS Y CRITERIOS: sin cambios.
+
+PANTALLAS: sin cambios.
+
+REGLAS DE NEGOCIO: sin cambios. Los datos las respetan (ver PRUEBAS).
+
+MÓDULOS: 7. Actividades (taxonomía y oferta); datos de todos los demás.
+
+CASOS DE USO: sin cambios (116).
+
+ENTIDADES Y MIGRACIONES: sin cambios en el modelo ni migraciones nuevas. Cambian los datos.
+
+TECNOLOGÍAS: sin cambios (Python con el paquete bcrypt, solo para generar el script).
+
+COSTOS: sin cambios.
+
+RIESGOS: R05 (inconsistencias documentación-sistema): la base compartida pierde los datos que
+  el equipo usaba para probar. Mitigación: copia de seguridad y script de restauración
+  probados.
+
+SEGURIDAD: las 17 cuentas comparten la contraseña acordada para la demostración; no está
+  escrita en ningún archivo ni en esta bitácora: los scripts solo tienen su hash BCrypt
+  (verificado buscando el texto en los archivos nuevos). Correos en @activehub.test, un dominio
+  reservado que no recibe correo. La copia de seguridad guarda los hashes de las cuentas
+  viejas: borrarla cuando ya no haga falta (DROP SCHEMA respaldo_pre_demo CASCADE).
+
+PRUEBAS (todas en el contenedor local, 28/10/2026):
+  - Copia de un estado viejo armado a mano (admin, alumno e instructor con actividad, clase,
+    inscripción, pago, reseña, denuncia, penalización, favorito, notificaciones, auditoría y
+    soporte); carga dos veces seguidas; resumen: 6 categorías, 18 tipos, 5 instructores, 12
+    alumnos, 18 actividades, 108 clases, 371 inscripciones, 342 pagos, 144 reseñas, 24
+    favoritos.
+  - Consultas de control con resultado 0: cupos que no cuadran, clases pasadas sin
+    Finalizada, Habilitada a más de 4 días, reseñas en clases no finalizadas o sin inscripción
+    Inscripto, fechas de alta en el futuro, preinscripciones con pago. Rating entre 3,83 y 4,83;
+    ningún tipo sin actividad.
+  - Volver a ejecutar la copia: se detiene con "Ya existe el esquema respaldo_pre_demo."
+  - Restauración: las 27 tablas quedaron iguales a la copia, fila por fila (EXCEPT ALL en los
+    dos sentidos).
+  - Backend levantado en el puerto 8091 contra el contenedor (Flyway con línea de base 35;
+    la validación de esquema de Hibernate pasó): login con la contraseña de demostración como
+    instructor y como alumno (200) y con una incorrecta (401); catálogo con 6 categorías, 18
+    tipos y 18 actividades; las listas del instructor y del alumno responden con datos. Se
+    cerró al terminar.
+  - Sin cambios de código: no se corrieron las suites del frontend ni del backend.
+
+ANÁLISIS ESTÁTICO: sin cambios.
+
+DESPLIEGUE Y CONFIGURACIÓN: sin variables nuevas. Para aplicarlo: avisar al equipo, ejecutar
+  01 y después 03 en el SQL Editor de Supabase (ver LEEME.txt).
+
+DECISIONES: una actividad por tipo (18 y no 15); pagos solo en efectivo; sin documentos ni
+  fotos (un registro que apunta a un archivo inexistente da error al abrirlo); borrado físico;
+  copia dentro de la misma base en lugar de un volcado externo, para poder restaurar desde el
+  mismo editor.
+
+ERRORES DETECTADOS: en una base vacía la migración V18 falla: V1 crea permiso (con la
+  columna codigo) y configuracion_rol con otras columnas, y el CREATE TABLE IF NOT EXISTS de
+  V18 las saltea. En la prueba local se borraron esas dos tablas vacías antes de aplicar V18.
+  La base compartida no está afectada (ya tiene V18 aplicada); afecta a quien cree una base
+  nueva desde cero. No se corrigió: tocar una migración ya aplicada cambia su checksum y
+  rompe Flyway en las bases existentes. Durante la prueba, 110 inscripciones a clases futuras
+  quedaban con fecha de alta en el futuro: corregido en el generador.
+
+CAPTURAS SUGERIDAS: el catálogo de Explorar con las 18 actividades; el detalle de una
+  actividad con sus opiniones; el roster de una clase futura con un cobro pendiente.
+
+PENDIENTE QUE QUEDA: ejecutarlo en Supabase (lo hace el usuario después de avisar al equipo)
+  y recorrer la aplicación en el navegador.
+
+================================================================================
+ENTRADA 022
+================================================================================
+FECHA: 31/10/2026
+
+REPOSITORIO: activehub-backend y activehub-frontend.
+
+RAMA Y COMMITS: main en los dos. Sin commit al momento de escribir esta entrada. Sin Pull
+  Request.
+
+TIPO: cambio funcional menor (textos y regla de aviso).
+
+TÍTULO: Al cancelarse una clase o inscripción, el pago en efectivo ya no habla de devoluciones.
+
+QUÉ CAMBIA PARA EL USUARIO: un alumno con pago en efectivo recibe sólo el aviso de la
+  cancelación. Con Mercado Pago el aviso sigue informando qué pasó con el dinero, y una
+  preinscripción, que no tiene pago, recibe sólo la cancelación, como ya ocurría. En "Mis
+  pagos" y en el detalle de la clase del instructor, el pago en efectivo cancelado ya no habla
+  de devolución ni afirma que no se cobró.
+
+TEXTOS DE INTERFAZ:
+  Se quitan de los avisos: " Coordiná con el instructor la devolución de lo que pagaste en
+    efectivo." (cancelar clase) y " Coordiná con la plataforma la devolución de lo que pagaste
+    en efectivo." (suspensión por penalización, suspensión por denuncia y reintegro por
+    denuncia).
+  Mis pagos, efectivo cancelado: etiqueta "Pago cancelado" (sin cambios); detalle "La
+    inscripción se canceló." (antes "Coordiná con el instructor la devolución de lo que
+    pagaste.").
+  Detalle de la clase del instructor, efectivo cancelado: etiqueta "Cancelado" y detalle "La
+    inscripción se canceló." (antes "Reintegrado" y "No se cobró."). Con Mercado Pago sigue
+    "Reintegrado" y "No se cobró.".
+  Manual de usuario (las dos copias), cuatro frases:
+    - "Si el pago era en efectivo, el aviso informa sólo la cancelación."
+    - ""Pago cancelado" (pago en efectivo de una inscripción cancelada): "La inscripción se
+      canceló.""
+    - "En el caso de los pagos en efectivo, la notificación informa sólo la cancelación: el
+      efectivo se arregla por fuera de la plataforma."
+    - "También se usa para un pago en efectivo de una inscripción cancelada, que se arregla
+      por fuera de la plataforma."
+
+DETALLE TÉCNICO:
+  - Decisión del usuario (31/10/2026): en efectivo el alumno no llega a pagar por la
+    plataforma, así que no hay un pago que devolver; lo que haya pasado en mano se arregla por
+    fuera. Se descartaron dos propuestas previas: distinguir el cobro confirmado del no
+    confirmado (guardando el dato en pago.status_detail) y un texto "Si pagaste en efectivo,
+    coordiná la devolución".
+  - Backend: se quitó el texto en CancelarClaseService, CrearPenalizacionService y
+    ResolverDenunciaService (dos lugares). El pago sigue pasando a Cancelado, para que no quede
+    como válido.
+  - Frontend: lib/status.ts (explicarPagoAlumno y explicarPagoInstructor). La frase dice
+    "inscripción" y no "clase" porque el reintegro por denuncia cancela la inscripción de una
+    clase que sí se dictó.
+  - Cuando cancela el propio alumno no cambia nada.
+
+ESTADO: IMPLEMENTADO y PROBADO con pruebas automatizadas, salvo las tres clases de prueba que
+  necesitan base (ver PRUEBAS). No probado en el navegador.
+
+HISTORIAS Y CRITERIOS: E2I-HU08 criterio 5: cambia la decisión 6 del proyecto (el aviso le
+  indicaba al alumno coordinar la devolución). El pago en efectivo sigue quedando Cancelado.
+
+PANTALLAS: "Mis pagos" del alumno; detalle de la clase del instructor; "Manual de usuario"
+  (SYS-PAN-MAN, texto).
+
+REGLAS DE NEGOCIO: cambia la regla de aviso de la decisión 6, ver HISTORIAS Y CRITERIOS.
+
+MÓDULOS: 5. Alumno; 6. Instructor; 8. Reservas y Pagos; 15. Ayuda y Soporte al Usuario
+  (manual).
+
+CASOS DE USO: sin cambios (116).
+
+ENTIDADES Y MIGRACIONES: sin cambios.
+
+TECNOLOGÍAS: sin cambios.
+
+COSTOS: sin cambios.
+
+RIESGOS: un instructor puede haber confirmado un cobro antes de cancelar: la plataforma no le
+  indica nada al alumno y eso se arregla por fuera (decisión del usuario).
+
+SEGURIDAD: sin cambios.
+
+PRUEBAS:
+  - Backend: 4 nuevas (CancelarClaseServiceTest: efectivo y preinscripción;
+    CrearPenalizacionServiceTest y ResolverDenunciaServiceTest: suspensión con efectivo) y una
+    verificación más en el reintegro por denuncia con efectivo.
+  - Backend completo sin las tres clases que levantan la aplicación
+    (JAVA_HOME=$HOME/.jdks/jdk-21.0.12+8 ./mvnw -B test -Dtest='!CatalogoPublicoTest,
+    !ActivehubApiApplicationTests,!BusquedaSinTildesTest', 31/10/2026): "Tests run: 1023,
+    Failures: 0, Errors: 0, Skipped: 2", "BUILD SUCCESS".
+  - NO se ejecutaron CatalogoPublicoTest, ActivehubApiApplicationTests ni
+    BusquedaSinTildesTest (20 pruebas): necesitan una base. Docker Desktop no arrancó, y no se
+    corrieron contra Supabase para no tocar la base compartida. En la corrida sin base dieron
+    "Tests run: 1043, Failures: 0, Errors: 20, Skipped: 2": los 20 errores son de esas clases.
+    Ninguna prueba el cambio de esta entrada.
+  - Frontend completo (npx vitest run --maxWorkers=1, 31/10/2026): "Test Files  49 passed
+    (49)" y "Tests  296 passed (296)". Antes: 295.
+
+ANÁLISIS ESTÁTICO: "10 problems (0 errors, 10 warnings)", sin cambios. npx tsc -b: sin
+  errores. npm run build: correcto.
+
+DESPLIEGUE Y CONFIGURACIÓN: sin cambios. Reiniciar el backend para los avisos y el manual del
+  asistente.
+
+DECISIONES: sólo se avisa la cancelación en efectivo; sin dato nuevo en la base.
+
+ERRORES DETECTADOS: el detalle de la clase del instructor afirmaba "No se cobró." en efectivo
+  sin poder saberlo. Corregido.
+
+CAPTURAS SUGERIDAS: "Mis pagos" con un pago en efectivo cancelado.
+
+PENDIENTE QUE QUEDA: correr las tres clases de prueba pendientes y probarlo en el navegador.
 
 --------------------------------------------------------------------------------
 DUDAS ABIERTAS

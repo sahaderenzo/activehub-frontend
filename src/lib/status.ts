@@ -85,7 +85,7 @@ export function explicarPagoAlumno(pago: PagoParaExplicar): ExplicacionPago {
       return { type: "reembolsado", label: "Reembolsado", detalle: "Se te devolvió por Mercado Pago." };
     case "Cancelado":
       return esEfectivo
-        ? { type: "pagocancelado", label: "Pago cancelado", detalle: "Coordiná con el instructor la devolución de lo que pagaste." }
+        ? { type: "pagocancelado", label: "Pago cancelado", detalle: "La inscripción se canceló." }
         : { type: "pagocancelado", label: "Retención liberada", detalle: "No se te cobró: se liberó la reserva de tu tarjeta." };
   }
 }
@@ -112,7 +112,9 @@ export function explicarPagoInstructor(pago: PagoParaExplicar): ExplicacionPago 
     case "Reembolsado":
       return { type: "reembolsado", label: "Reintegrado", detalle: "Se le devolvió al alumno." };
     case "Cancelado":
-      return { type: "pagocancelado", label: "Reintegrado", detalle: "No se cobró." };
+      return pago.metodo === "Efectivo"
+        ? { type: "pagocancelado", label: "Cancelado", detalle: "La inscripción se canceló." }
+        : { type: "pagocancelado", label: "Reintegrado", detalle: "No se cobró." };
   }
 }
 
