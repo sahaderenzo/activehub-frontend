@@ -40,6 +40,7 @@ export type DestinoNotificacion =
   | "RESENIA"
   | "DENUNCIA"
   | "PERFIL_INSTRUCTOR"
+  | "PENALIZACION"
   | "NINGUNO";
 
 interface Candidata {
@@ -82,6 +83,13 @@ const CANDIDATAS: Record<Exclude<DestinoNotificacion, "NINGUNO">, Candidata[]> =
     // "Mis datos" no lleva permiso: RN-16 le deja esa pantalla al instructor no verificado,
     // que es justamente quien recibe el aprobado/rechazado.
     { area: "instructor", ruta: () => "/instructor/solicitud" },
+  ],
+  PENALIZACION: [
+    // V36. "Mis sanciones" no lleva permiso, como "Mis datos": es la cuenta propia, y es justo
+    // donde el instructor con la multa sin pagar carga el comprobante.
+    { area: "instructor", ruta: () => "/instructor/sanciones" },
+    // El administrador revisa el comprobante desde Penalizaciones.
+    { area: "admin", requiere: "penalizaciones.gestionar", ruta: (id) => `/admin/penalizaciones?penalizacion=${id}` },
   ],
 };
 

@@ -10,11 +10,96 @@ import { ApiError } from "../../lib/api";
 import { formatFecha } from "../../lib/mockData";
 import { MAX_DIAS_SUSPENSION, MIN_DIAS_SUSPENSION, MULTA_MAXIMA, MULTA_MINIMA, errorDiasSuspension, errorMulta } from "../../lib/limites";
 import type { TipoPenalizacion } from "../../lib/types";
+import { ESTILO_RESALTE, useResaltado } from "../../lib/resaltado";
+import { ETIQUETA_ESTADO_PAGO, agruparPenalizaciones, fechaCorta } from "../../lib/sanciones";
 
 const TIPO_STYLE: Record<TipoPenalizacion, [string, string, string]> = {
   Económica: ["#FFF3E0", "#B9741A", "#F6E2C0"],
   "Suspensión temporal": ["#FBEAEB", "#BE3A3E", "#F3D2D3"],
 };
+
+const GRID_FILAS = "1.5fr 1.1fr 2fr 0.9fr 0.6fr 200px";
+
+const CHIP = "font:700 12px Manrope,sans-serif;padding:5px 11px;border-radius:99px;width:fit-content;";
+const CHIP_ROJO = CHIP + "background:#FBEAEB;color:#BE3A3E;border:1px solid #F3D2D3;";
+const CHIP_GRIS = CHIP + "background:#F2F5F9;color:#65788C;border:1px solid #E2E9F0;";
+const CHIP_AMBAR = CHIP + "background:#FFF3E0;color:#B9741A;border:1px solid #F6E2C0;";
+const CHIP_AZUL = CHIP + "background:#EAF1FE;color:#3A6FF0;border:1px solid #D3E0FB;";
+const CHIP_VERDE = CHIP + "background:#E7F6EE;color:#1F8A55;border:1px solid #C9EBD8;";
+
+const BOTON_FILA = "background:#fff;border:1px solid #D6DEE7;border-radius:9px;padding:6px 10px;font:700 12px Manrope,sans-serif;color:#41566B;cursor:pointer;text-align:left;";
+
+/**
+ * V36. El estado de cada fila: una multa se lee por su pago (las anteriores a V36 no se pagan
+ * por la plataforma y siguen como "Aplicada"); una suspensión, por si sigue en curso o un
+ * administrador la levantó.
+ */
+function estadoFila(p: PenalizacionAdmin): [string, string] {
+  if (p.tipo === "Económica") {
+    if (p.estadoPago === "PENDIENTE_PAGO") return [ETIQUETA_ESTADO_PAGO.PENDIENTE_PAGO, CHIP_AMBAR];
+    if (p.estadoPago === "EN_REVISION") return [ETIQUETA_ESTADO_PAGO.EN_REVISION, CHIP_AZUL];
+    if (p.estadoPago === "PAGADA") return [ETIQUETA_ESTADO_PAGO.PAGADA, CHIP_VERDE];
+    return ["Aplicada", CHIP_GRIS];
+  }
+  if (p.levantadaAt) return ["Levantada", CHIP_GRIS];
+  return p.vigente ? ["Vigente", CHIP_ROJO] : ["Aplicada", CHIP_GRIS];
+}
+
+type TipoAccion = "desbloquear" | "invalidar" | "levantar";
+
+interface AccionPendiente {
+  tipo: TipoAccion;
+  p: PenalizacionAdmin;
+}
+
+/** El estado de una parte de la sanción (la multa o la suspensión) y sus acciones. */
+function EstadoParte({
+  p,
+  rotulo,
+  onVerComprobante,
+  onAccion,
+}: {
+  p: PenalizacionAdmin;
+  /** "Multa" / "Suspensión" cuando la fila tiene las dos partes; null si es una sola. */
+  rotulo: string | null;
+  onVerComprobante: (comprobanteId: string) => void;
+  onAccion: (tipo: TipoAccion, p: PenalizacionAdmin) => void;
+}) {
+  const [etiqueta, estilo] = estadoFila(p);
+  const comprobante = p.comprobantes[0];
+  const enRevision = p.estadoPago === "EN_REVISION" && comprobante?.estado === "EN_REVISION";
+  const puedeLevantar = p.tipo === "Suspensión temporal" && p.vigente && !p.levantadaAt;
+  return (
+    <div style={s("display:flex;flex-direction:column;gap:6px;")}>
+      {rotulo && (
+        <span style={s("font:700 10.5px Manrope,sans-serif;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;")}>{rotulo}</span>
+      )}
+      <span style={s(estilo)}>{etiqueta}</span>
+      {enRevision && (
+        <>
+          <button className="ah-btn" onClick={() => onVerComprobante(comprobante.id)} style={s(BOTON_FILA)}>
+            Ver comprobante
+          </button>
+          <button
+            className="ah-btn"
+            onClick={() => onAccion("desbloquear", p)}
+            style={s(BOTON_FILA + "background:#1F8A55;border-color:#1F8A55;color:#fff;")}
+          >
+            Desbloquear instructor
+          </button>
+          <button className="ah-btn" onClick={() => onAccion("invalidar", p)} style={s(BOTON_FILA + "color:#BE3A3E;border-color:#F3D2D3;")}>
+            Notificar invalidez
+          </button>
+        </>
+      )}
+      {puedeLevantar && (
+        <button className="ah-btn" onClick={() => onAccion("levantar", p)} style={s(BOTON_FILA)}>
+          Desbloquear
+        </button>
+      )}
+    </div>
+  );
+}
 
 
 interface FormState {
@@ -52,7 +137,16 @@ function sumarDias(fecha: string, dias: number): string {
 
 export default function AdminPenalizaciones() {
   const { puede } = useAuth();
-  const { listarPenalizaciones, crearPenalizacion, listarUsuariosAdmin } = useData();
+  const {
+    listarPenalizaciones,
+    crearPenalizacion,
+    listarUsuariosAdmin,
+    verComprobantePenalizacion,
+    desbloquearInstructorPenalizacion,
+    invalidarComprobantePenalizacion,
+    levantarSuspension,
+  } = useData();
+  const resaltado = useResaltado("penalizacion");
   // El listado de usuarios es `usuarios.gestionar`, un módulo distinto del de esta pantalla:
   // un rol puede tener penalizaciones sin gestión de usuarios. En ese caso el listado no se
   // pide y el alta queda deshabilitada con su explicación, en vez de un select vacío o una
@@ -69,6 +163,14 @@ export default function AdminPenalizaciones() {
   const [cargando, setCargando] = useState(true);
   const [formError, setFormError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
+  /** V36: desbloquear al instructor, notificar un comprobante inválido o levantar una suspensión. */
+  const [accion, setAccion] = useState<AccionPendiente | null>(null);
+  const [motivoAccion, setMotivoAccion] = useState("");
+  const [errorAccion, setErrorAccion] = useState<string | null>(null);
+  const [procesando, setProcesando] = useState(false);
+  /** Lo que pasó con la última acción, arriba de la tabla. */
+  const [aviso, setAviso] = useState<string | null>(null);
+  const [errorFila, setErrorFila] = useState<string | null>(null);
 
   // Datos reales: antes la pantalla leía el dataset mock del DataContext, así que lo que el
   // admin "aplicaba" no se guardaba y las penalizaciones que sí creaba `resolverdenuncia`
@@ -110,6 +212,7 @@ export default function AdminPenalizaciones() {
   }, [penalizaciones]);
 
   const rows = penalizaciones;
+  const grupos = useMemo(() => agruparPenalizaciones(rows), [rows]);
 
   const submit = async () => {
     setFormError(null);
@@ -154,6 +257,63 @@ export default function AdminPenalizaciones() {
       setFormError(err instanceof ApiError ? err.message : "No se pudo aplicar la penalización. Intentá de nuevo.");
     } finally {
       setGuardando(false);
+    }
+  };
+
+  /** La suspensión en curso de ese instructor, sin contar la que se está por levantar. */
+  const suspensionVigenteDe = (usuarioId: string, salvo?: string) =>
+    penalizaciones.find((x) => x.usuarioId === usuarioId && x.id !== salvo && x.tipo === "Suspensión temporal" && x.vigente);
+  /** Una multa que lo sigue bloqueando, sin contar la que se está por aprobar. */
+  const multaPendienteDe = (usuarioId: string, salvo?: string) =>
+    penalizaciones.some(
+      (x) => x.usuarioId === usuarioId && x.id !== salvo && (x.estadoPago === "PENDIENTE_PAGO" || x.estadoPago === "EN_REVISION"),
+    );
+
+  const abrirAccion = (tipo: TipoAccion, p: PenalizacionAdmin) => {
+    setAccion({ tipo, p });
+    setMotivoAccion("");
+    setErrorAccion(null);
+  };
+
+  const verComprobante = (comprobanteId: string) => {
+    setErrorFila(null);
+    verComprobantePenalizacion(comprobanteId).catch((err) =>
+      setErrorFila(err instanceof ApiError ? err.message : "No pudimos abrir el comprobante."),
+    );
+  };
+
+  const confirmarAccion = async () => {
+    if (!accion) return;
+    const motivo = motivoAccion.trim();
+    if (accion.tipo !== "desbloquear" && !motivo) return setErrorAccion("El motivo es obligatorio.");
+    setErrorAccion(null);
+    setProcesando(true);
+    try {
+      const nombre = accion.p.usuarioNombre;
+      if (accion.tipo === "desbloquear") {
+        const r = await desbloquearInstructorPenalizacion(accion.p.id);
+        setAviso(
+          r.suspendidoHasta
+            ? `Pago aprobado. ${nombre} sigue suspendido hasta el ${fechaCorta(r.suspendidoHasta)}.`
+            : `Pago aprobado. ${nombre} ya puede volver a operar.`,
+        );
+      } else if (accion.tipo === "invalidar") {
+        await invalidarComprobantePenalizacion(accion.p.id, motivo);
+        setAviso(`Le avisamos a ${nombre} que el comprobante no es válido. Puede cargar uno nuevo.`);
+      } else {
+        const r = await levantarSuspension(accion.p.id, motivo);
+        setAviso(
+          r.multaPendiente
+            ? `Suspensión levantada. ${nombre} sigue bloqueado hasta que se apruebe el pago de su multa.`
+            : `Suspensión levantada. ${nombre} ya puede volver a operar.`,
+        );
+      }
+      setAccion(null);
+      cargar();
+    } catch (err) {
+      setErrorAccion(err instanceof ApiError ? err.message : "No se pudo completar la acción. Intentá de nuevo.");
+    } finally {
+      setProcesando(false);
     }
   };
 
@@ -205,12 +365,34 @@ export default function AdminPenalizaciones() {
           ))}
         </div>
 
+        {aviso && (
+          <div
+            role="status"
+            style={s("display:flex;gap:12px;align-items:center;background:#E7F6EE;border:1px solid #C9EBD8;color:#1F6B44;border-radius:12px;padding:11px 16px;margin-bottom:16px;font:600 13.5px Manrope,sans-serif;")}
+          >
+            <span style={s("flex:1;")}>{aviso}</span>
+            <button
+              className="ah-btn"
+              onClick={() => setAviso(null)}
+              aria-label="Cerrar aviso"
+              style={s("background:none;border:none;color:#1F6B44;font:700 16px Manrope,sans-serif;cursor:pointer;")}
+            >
+              ×
+            </button>
+          </div>
+        )}
+        {errorFila && (
+          <div role="alert" style={s("background:#FBEAEB;border:1px solid #F3D2D3;color:#BE3A3E;border-radius:12px;padding:11px 16px;margin-bottom:16px;font:700 13px Manrope,sans-serif;")}>
+            {errorFila}
+          </div>
+        )}
+
         <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:18px;overflow:hidden;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
           <div style={s("overflow-x:auto;")}>
-            <div style={s("min-width:820px;")}>
+            <div style={s("min-width:900px;")}>
               <div
                 style={s(
-                  "display:grid;grid-template-columns:1.6fr 1.1fr 2fr 1fr 0.8fr 120px;padding:12px 22px;background:#F7FAFC;border-bottom:1px solid #EEF2F6;font:700 11.5px Manrope,sans-serif;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;",
+                  `display:grid;grid-template-columns:${GRID_FILAS};gap:12px;padding:12px 22px;background:#F7FAFC;border-bottom:1px solid #EEF2F6;font:700 11.5px Manrope,sans-serif;color:#90A1B2;text-transform:uppercase;letter-spacing:.4px;`,
                 )}
               >
                 <span>Usuario</span>
@@ -220,12 +402,24 @@ export default function AdminPenalizaciones() {
                 <span>Acum.</span>
                 <span>Estado</span>
               </div>
-              {(cargando ? [] : rows).map((p) => {
-                const [tipoBg, tipoFg, tipoBd] = TIPO_STYLE[p.tipo];
+              {(cargando ? [] : grupos).map((grupo) => {
+                // Multa + suspensión aplicadas juntas van en UNA fila, pero cada parte conserva
+                // su estado y sus botones: se resuelven por separado y el instructor sigue
+                // bloqueado mientras quede alguna (ver agruparPenalizaciones).
+                const primera = grupo[0];
+                const multa = grupo.find((x) => x.tipo === "Económica");
+                const suspension = grupo.find((x) => x.tipo === "Suspensión temporal");
+                const motivos = [...new Set(grupo.map((x) => x.motivo))];
+                const conRotulo = grupo.length > 1;
+                const resaltada = grupo.some((x) => resaltado.activo(x.id));
                 return (
                   <div
-                    key={p.id}
-                    style={s("display:grid;grid-template-columns:1.6fr 1.1fr 2fr 1fr 0.8fr 120px;padding:14px 22px;border-bottom:1px solid #F1F4F8;align-items:center;")}
+                    key={grupo.map((x) => x.id).join("+")}
+                    ref={grupo.map((x) => resaltado.ref(x.id)).find(Boolean)}
+                    style={s(
+                      `display:grid;grid-template-columns:${GRID_FILAS};gap:12px;padding:14px 22px;border-bottom:1px solid #F1F4F8;align-items:center;` +
+                        (resaltada ? ESTILO_RESALTE : ""),
+                    )}
                   >
                     <div style={s("display:flex;align-items:center;gap:10px;")}>
                       <span
@@ -233,49 +427,73 @@ export default function AdminPenalizaciones() {
                           "width:34px;height:34px;border-radius:99px;background:#FBEAEB;color:#BE3A3E;display:flex;align-items:center;justify-content:center;font:700 13px Space Grotesk,sans-serif;flex:none;",
                         )}
                       >
-                        {p.usuarioNombre.charAt(0).toUpperCase()}
+                        {primera.usuarioNombre.charAt(0).toUpperCase()}
                       </span>
-                      <span style={s("font:700 14px Manrope,sans-serif;color:#0E2A47;")}>{p.usuarioNombre}</span>
+                      <span style={s("font:700 14px Manrope,sans-serif;color:#0E2A47;")}>{primera.usuarioNombre}</span>
                     </div>
-                    <span
-                      style={s(
-                        `font:700 11.5px Manrope,sans-serif;padding:4px 10px;border-radius:99px;background:${tipoBg};color:${tipoFg};border:1px solid ${tipoBd};width:fit-content;`,
-                      )}
-                    >
-                      {p.tipo}
-                    </span>
+                    <div style={s("display:flex;flex-direction:column;gap:5px;")}>
+                      {grupo.map((x) => {
+                        const [tipoBg, tipoFg, tipoBd] = TIPO_STYLE[x.tipo];
+                        return (
+                          <span
+                            key={x.id}
+                            style={s(
+                              `font:700 11.5px Manrope,sans-serif;padding:4px 10px;border-radius:99px;background:${tipoBg};color:${tipoFg};border:1px solid ${tipoBd};width:fit-content;`,
+                            )}
+                          >
+                            {x.tipo}
+                          </span>
+                        );
+                      })}
+                    </div>
                     <div>
-                      <div style={s("font-size:13px;color:#65788C;font-weight:600;")}>{p.motivo}</div>
-                      {p.monto != null && (
+                      {motivos.map((m) => (
+                        <div key={m} style={s("font-size:13px;color:#65788C;font-weight:600;")}>
+                          {m}
+                        </div>
+                      ))}
+                      {multa?.monto != null && (
                         <div style={s("font:700 12.5px Manrope,sans-serif;color:#B9741A;margin-top:2px;")}>
-                          Monto: ${p.monto.toLocaleString("es-AR")}
+                          Monto: ${multa.monto.toLocaleString("es-AR")}
                         </div>
                       )}
-                      {p.fechaInicio && p.fechaFin && (
+                      {suspension?.fechaInicio && suspension.fechaFin && (
                         <div style={s("font-size:12.5px;color:#7A8C9E;font-weight:600;margin-top:2px;")}>
-                          Vigencia: {formatFecha(p.fechaInicio)} → {formatFecha(p.fechaFin)}{" "}
-                          <span style={s("color:#BE3A3E;")}>({diasEntre(p.fechaInicio, p.fechaFin)} días)</span>
+                          Vigencia: {formatFecha(suspension.fechaInicio)} → {formatFecha(suspension.fechaFin)}{" "}
+                          <span style={s("color:#BE3A3E;")}>({diasEntre(suspension.fechaInicio, suspension.fechaFin)} días)</span>
                         </div>
                       )}
-                      {p.denunciaId && (
+                      {primera.denunciaId && (
                         <div style={s("font-size:12.5px;color:#3A6FF0;font-weight:700;margin-top:2px;")}>
                           Originada en una denuncia
                         </div>
                       )}
-                    </div>
-                    <span style={s("font-size:13px;color:#65788C;font-weight:600;")}>{formatFecha(p.createdAt)}</span>
-                    <span style={s("font:700 15px Space Grotesk,sans-serif;color:#BE3A3E;")}>
-                      {p.cantidadPenalizacionesUsuario}
-                    </span>
-                    <span
-                      style={s(
-                        p.vigente
-                          ? "font:700 12px Manrope,sans-serif;padding:5px 11px;border-radius:99px;background:#FBEAEB;color:#BE3A3E;border:1px solid #F3D2D3;width:fit-content;"
-                          : "font:700 12px Manrope,sans-serif;padding:5px 11px;border-radius:99px;background:#F2F5F9;color:#65788C;border:1px solid #E2E9F0;width:fit-content;",
+                      {multa?.estadoPago === "PENDIENTE_PAGO" && multa.comprobantes[0]?.estado === "INVALIDO" && (
+                        <div style={s("font-size:12.5px;color:#BE3A3E;font-weight:600;margin-top:2px;")}>
+                          Comprobante inválido: {multa.comprobantes[0].motivoInvalidez}
+                        </div>
                       )}
-                    >
-                      {p.vigente ? "Vigente" : "Aplicada"}
+                      {suspension?.levantadaAt && (
+                        <div style={s("font-size:12.5px;color:#65788C;font-weight:600;margin-top:2px;")}>
+                          Levantada el {formatFecha(suspension.levantadaAt)}: {suspension.motivoLevantamiento}
+                        </div>
+                      )}
+                    </div>
+                    <span style={s("font-size:13px;color:#65788C;font-weight:600;")}>{formatFecha(primera.createdAt)}</span>
+                    <span style={s("font:700 15px Space Grotesk,sans-serif;color:#BE3A3E;")}>
+                      {primera.cantidadPenalizacionesUsuario}
                     </span>
+                    <div style={s("display:flex;flex-direction:column;gap:12px;")}>
+                      {grupo.map((x) => (
+                        <EstadoParte
+                          key={x.id}
+                          p={x}
+                          rotulo={conRotulo ? (x.tipo === "Económica" ? "Multa" : "Suspensión") : null}
+                          onVerComprobante={verComprobante}
+                          onAccion={abrirAccion}
+                        />
+                      ))}
+                    </div>
                   </div>
                 );
               })}
@@ -305,6 +523,103 @@ export default function AdminPenalizaciones() {
           </div>
         </div>
       </div>
+
+      {accion && (
+        <Modal onClose={() => !procesando && setAccion(null)}>
+          <div style={s("width:100%;max-width:440px;background:#fff;border-radius:16px;padding:22px;box-shadow:0 26px 64px rgba(0,0,0,.3);")}>
+            <div style={s("font:700 16px Space Grotesk,sans-serif;color:#0E2A47;margin-bottom:10px;")}>
+              {accion.tipo === "desbloquear"
+                ? "Desbloquear instructor"
+                : accion.tipo === "invalidar"
+                  ? "Notificar comprobante inválido"
+                  : "Levantar la suspensión"}
+            </div>
+            <p style={s("font:600 13.5px Manrope,sans-serif;color:#41566B;line-height:1.55;margin:0 0 14px;")}>
+              {accion.tipo === "desbloquear" && (
+                <>
+                  Vas a aprobar el pago de la multa de <b>{accion.p.usuarioNombre}</b>
+                  {accion.p.monto != null && <> (${accion.p.monto.toLocaleString("es-AR")})</>}. Revisá el comprobante antes de confirmar.{" "}
+                  {(() => {
+                    const susp = suspensionVigenteDe(accion.p.usuarioId);
+                    if (susp) return <>Sigue suspendido hasta el {formatFecha(susp.fechaFin ?? "")}: vuelve a operar cuando termine la suspensión.</>;
+                    if (multaPendienteDe(accion.p.usuarioId, accion.p.id)) return <>Tiene otra multa sin pagar: sigue bloqueado hasta que se apruebe.</>;
+                    return <>Vuelve a operar en cuanto confirmes.</>;
+                  })()}
+                </>
+              )}
+              {accion.tipo === "invalidar" && (
+                <>
+                  Le avisamos a <b>{accion.p.usuarioNombre}</b> que el comprobante no es válido, con el motivo que escribas, y
+                  va a poder cargar otro. Sigue bloqueado hasta que se apruebe un pago.
+                </>
+              )}
+              {accion.tipo === "levantar" && (
+                <>
+                  La suspensión de <b>{accion.p.usuarioNombre}</b> termina hoy en vez del{" "}
+                  {formatFecha(accion.p.fechaFin ?? "")}. Las clases que ya se cancelaron no se recuperan.{" "}
+                  {multaPendienteDe(accion.p.usuarioId) && <>Tiene una multa sin pagar: sigue bloqueado hasta que se apruebe.</>}
+                </>
+              )}
+            </p>
+
+            {accion.tipo !== "desbloquear" && (
+              <>
+                <label
+                  htmlFor="motivo-accion"
+                  style={s("display:block;font:700 12px Manrope,sans-serif;color:#41566B;margin-bottom:6px;")}
+                >
+                  Motivo *
+                </label>
+                <textarea
+                  id="motivo-accion"
+                  value={motivoAccion}
+                  onChange={(e) => setMotivoAccion(e.target.value)}
+                  rows={3}
+                  placeholder={
+                    accion.tipo === "invalidar" ? "Ej.: el monto no coincide con el de la multa" : "Por qué se levanta antes de tiempo"
+                  }
+                  style={s("width:100%;border:1px solid #E2E9F0;border-radius:10px;padding:10px 12px;font:600 13.5px Manrope,sans-serif;color:#0E2A47;margin-bottom:12px;resize:vertical;")}
+                />
+              </>
+            )}
+
+            {errorAccion && (
+              <div role="alert" style={s("font:700 12.5px Manrope,sans-serif;color:#BE3A3E;margin-bottom:12px;")}>
+                {errorAccion}
+              </div>
+            )}
+
+            <div style={s("display:flex;gap:10px;")}>
+              <button
+                className="ah-btn"
+                onClick={() => setAccion(null)}
+                disabled={procesando}
+                style={s("flex:1;background:#F4F7FA;color:#41566B;border:none;border-radius:10px;padding:11px;font:700 13.5px Manrope,sans-serif;cursor:pointer;")}
+              >
+                Cancelar
+              </button>
+              <button
+                className="ah-btn"
+                onClick={confirmarAccion}
+                disabled={procesando}
+                style={s(
+                  `flex:1;background:${accion.tipo === "invalidar" ? "#E5484D" : "#1F8A55"};color:#fff;border:none;border-radius:10px;padding:11px;font:700 13.5px Manrope,sans-serif;cursor:${
+                    procesando ? "not-allowed" : "pointer"
+                  };opacity:${procesando ? ".6" : "1"};`,
+                )}
+              >
+                {procesando
+                  ? "Procesando…"
+                  : accion.tipo === "desbloquear"
+                    ? "Aprobar y desbloquear"
+                    : accion.tipo === "invalidar"
+                      ? "Notificar invalidez"
+                      : "Levantar suspensión"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {showForm && (
         <Modal onClose={() => setShowForm(false)}>

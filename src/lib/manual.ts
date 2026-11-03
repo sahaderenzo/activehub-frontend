@@ -346,7 +346,7 @@ export const MANUAL: SeccionManual[] = [
           },
           {
             tipo: "p",
-            texto: 'Avisos por correo electrónico. Además de la campana, los avisos importantes se envían al correo de la cuenta: la cancelación de una clase (también cuando el instructor avisa que no puede dictarla), la cancelación de una inscripción con el reintegro correspondiente, la eliminación de una actividad, la resolución de una denuncia, una suspensión o una penalización, la aprobación o el rechazo de la cuenta de instructor, el vencimiento de la vinculación con Mercado Pago y, para la administración, un cobro que no pudo completarse. El correo repite el mismo texto de la notificación e incluye el botón "Abrir ActiveHub". Los avisos rutinarios (una inscripción nueva, una reseña, una clase nueva de un favorito) se muestran solo en la campana.',
+            texto: 'Avisos por correo electrónico. Además de la campana, los avisos importantes se envían al correo de la cuenta: la cancelación de una clase (también cuando el instructor avisa que no puede dictarla), la cancelación de una inscripción con el reintegro correspondiente, la eliminación de una actividad, la resolución de una denuncia, una suspensión o una penalización, el levantamiento de una suspensión, la aprobación o el rechazo del comprobante de pago de una multa, la aprobación o el rechazo de la cuenta de instructor, el vencimiento de la vinculación con Mercado Pago y, para la administración, un cobro que no pudo completarse. El correo repite el mismo texto de la notificación e incluye el botón "Abrir ActiveHub". Los avisos rutinarios (una inscripción nueva, una reseña, una clase nueva de un favorito) se muestran solo en la campana.',
           },
         ],
       },
@@ -739,7 +739,7 @@ export const MANUAL: SeccionManual[] = [
         bloques: [
           {
             tipo: "p",
-            texto: 'El panel lateral permite acceder a "Panel", "Mis actividades", "Próximas clases", "Historial", "Métricas", "Reseñas" y "Mi perfil". La pantalla principal resume las inscripciones recientes, las próximas clases y las alertas de pagos en efectivo pendientes de confirmación; al presionar una alerta, el sistema abre la gestión de la clase correspondiente con el alumno resaltado. El botón "Nueva actividad" inicia la publicación de una actividad.',
+            texto: 'El panel lateral permite acceder a "Panel", "Mis actividades", "Próximas clases", "Historial", "Métricas", "Reseñas", "Mis sanciones" y "Mi perfil". La pantalla principal resume las inscripciones recientes, las próximas clases y las alertas de pagos en efectivo pendientes de confirmación; al presionar una alerta, el sistema abre la gestión de la clase correspondiente con el alumno resaltado. El botón "Nueva actividad" inicia la publicación de una actividad.',
           },
           {
             tipo: "sub",
@@ -958,7 +958,36 @@ export const MANUAL: SeccionManual[] = [
         bloques: [
           {
             tipo: "p",
-            texto: "Ante incumplimientos, el administrador puede aplicar al instructor una penalización económica, una suspensión temporal o ambas. La suspensión dura entre 15 y 365 días y no impide el ingreso a la plataforma, para que el instructor pueda consultar su sanción y sus datos, pero durante su vigencia no es posible crear ni editar actividades o clases. Siguen habilitadas la confirmación de cobros, la consulta de inscriptos, la respuesta a reseñas y la cancelación de clases. Las clases programadas dentro del período de suspensión se cancelan automáticamente, con el reintegro correspondiente a sus inscriptos. Al vencer la suspensión, la cuenta recupera su operatoria habitual de forma automática.",
+            texto: 'Ante incumplimientos, el administrador puede aplicar al instructor una penalización económica (multa), una suspensión temporal o ambas. Todas se consultan en "Mis sanciones", en el panel lateral, junto con su estado.',
+          },
+          {
+            tipo: "sub",
+            texto: "Suspensión temporal",
+          },
+          {
+            tipo: "p",
+            texto: "La suspensión dura entre 15 y 365 días y no impide el ingreso a la plataforma, para que el instructor pueda consultar su sanción y sus datos, pero durante su vigencia no es posible crear ni editar actividades o clases; un cartel en la parte superior de cada pantalla lo recuerda. Siguen habilitadas la confirmación de cobros, la consulta de inscriptos, la respuesta a reseñas y la cancelación de clases. Las clases programadas dentro del período de suspensión se cancelan automáticamente, con el reintegro correspondiente a sus inscriptos. Al vencer la suspensión, la cuenta recupera su operatoria habitual de forma automática. El administrador también puede levantarla antes de tiempo.",
+          },
+          {
+            tipo: "sub",
+            texto: "Multa pendiente de pago",
+          },
+          {
+            tipo: "p",
+            texto: 'Mientras una multa no esté pagada, la cuenta queda bloqueada: sus actividades dejan de mostrarse en el catálogo y no admiten nuevas inscripciones, y el panel lateral solo muestra "Próximas clases" y "Mis sanciones". Desde "Próximas clases" se puede abrir cada clase para ver la lista de inscriptos y confirmar los cobros en efectivo; no es posible crear, editar ni cancelar actividades o clases. La multa se paga por transferencia bancaria, por fuera de la plataforma: no se utiliza Mercado Pago.',
+          },
+          {
+            tipo: "pasos",
+            items: [
+              'En "Mis sanciones", la tarjeta "Pago de penalización" muestra el "Monto a pagar", el "Motivo" y, bajo "Transferí el monto a:", el alias, el CBU y el titular de la cuenta de destino. Si la plataforma no tiene esos datos cargados, se indica "Consultá los datos para transferir con la administración."',
+              "Realizar la transferencia desde el banco o la billetera virtual.",
+              'En "Comprobante de pago *", presionar "Elegir archivo" y seleccionar el comprobante (PDF, JPG o PNG, hasta 5 MB).',
+              'Presionar "Enviar". La tarjeta indica que el comprobante está "En revisión" y la administración recibe el aviso. Mientras se revisa, no es posible enviar otro.',
+            ],
+          },
+          {
+            tipo: "p",
+            texto: 'Si la administración aprueba el comprobante, llega una notificación y la cuenta vuelve a operar; si además hay una suspensión en curso, esta sigue rigiendo hasta su fin. Si lo considera inválido, la notificación indica el motivo, la tarjeta muestra "Tu comprobante anterior no es válido: (motivo). Cargá uno nuevo." y se puede enviar otro comprobante. El "Historial de sanciones" lista todas las sanciones, con su estado y sus comprobantes.',
           },
         ],
       },
@@ -1128,8 +1157,8 @@ export const MANUAL: SeccionManual[] = [
               null,
               [
                 "**Reintegrar el pago**: cancela las inscripciones y reintegra el pago de todos los inscriptos de la clase, no solo de quien denunció, y notifica a cada alumno.",
-                "**Suspender al instructor**: solicita la cantidad de días de suspensión (entre 15 y 365) y, opcionalmente, un monto de multa (entre $1.000 y $500.000; en 0 no se aplica multa). Cancela las clases del instructor dentro del período, con sus reintegros.",
-                "**Aplicar penalización económica**: registra únicamente la multa, sin cancelar clases ni devolver pagos.",
+                "**Suspender al instructor**: solicita la cantidad de días de suspensión (entre 15 y 365) y, opcionalmente, un monto de multa (entre $1.000 y $500.000; en 0 no se aplica multa). Cancela las clases del instructor dentro del período, con sus reintegros. Si se carga una multa, el instructor además queda bloqueado hasta que se apruebe su pago (ver 4.7).",
+                '**Aplicar penalización económica**: solicita el "Monto de la multa *" (entre $1.000 y $500.000). El instructor queda bloqueado hasta que pague y se apruebe su comprobante (ver 4.7); no se cancelan clases ni se devuelven pagos.',
                 "**Desestimar**: cierra el caso sin consecuencias y notifica al denunciado.",
                 'En las denuncias sobre una reseña, las únicas acciones disponibles son "Ocultar la reseña" y "Desestimar": las que tocan el pago o al instructor no se muestran porque no aplican.',
               ],
@@ -1158,7 +1187,28 @@ export const MANUAL: SeccionManual[] = [
           },
           {
             tipo: "p",
-            texto: "La pantalla resume la cantidad de usuarios penalizados, las suspensiones vigentes y el monto total de las multas. Cuando una penalización surge de una denuncia resuelta, queda vinculada automáticamente a ella. Las suspensiones vencidas se levantan solas.",
+            texto: 'La pantalla resume el total de penalizaciones, los usuarios sancionados y las suspensiones vigentes. La columna "Estado" indica "Vigente", "Aplicada" o "Levantada" en las suspensiones, y "Pendiente de pago", "En revisión" o "Pagada" en las multas. Una multa y una suspensión aplicadas juntas se muestran en una sola fila, con el estado y los botones de cada parte por separado: se resuelven de forma independiente y el instructor sigue bloqueado mientras quede alguna pendiente. Cuando una penalización surge de una denuncia resuelta, queda vinculada automáticamente a ella. Las suspensiones vencidas se levantan solas.',
+          },
+          {
+            tipo: "sub",
+            texto: "Revisar el pago de una multa",
+          },
+          {
+            tipo: "pasos",
+            items: [
+              'Cuando el instructor envía el comprobante, llega una notificación y la multa pasa a "En revisión". Al presionar la notificación, la pantalla resalta esa penalización.',
+              'Presionar "Ver comprobante" para abrir el archivo en una pestaña nueva.',
+              'Si el pago es correcto, presionar "Desbloquear instructor" y confirmar con "Aprobar y desbloquear". La confirmación indica si el instructor sigue suspendido por otra sanción.',
+              'Si el comprobante no es válido, presionar "Notificar invalidez", completar el "Motivo *" y confirmar. El instructor recibe el motivo y puede cargar otro comprobante.',
+            ],
+          },
+          {
+            tipo: "sub",
+            texto: "Levantar una suspensión",
+          },
+          {
+            tipo: "p",
+            texto: 'En una suspensión "Vigente", el botón "Desbloquear" permite terminarla antes de tiempo por cualquier motivo. Se completa el "Motivo *" y se confirma con "Levantar suspensión"; la fila pasa a "Levantada", con la fecha y el motivo, y el instructor recibe una notificación. Las clases que ya se cancelaron no se recuperan. Si el instructor tiene además una multa sin pagar, sigue bloqueado hasta que se apruebe su pago.',
           },
         ],
       },
@@ -1369,6 +1419,16 @@ export const MANUAL: SeccionManual[] = [
                 "Reseña",
                 "Oculta · Respondida",
                 "Estado de la reseña: toda reseña se publica al enviarse; puede quedar retirada de circulación por el administrador o tener respuesta del instructor.",
+              ],
+              [
+                "Penalización económica",
+                "Pendiente de pago · En revisión · Pagada",
+                'Estado del pago de una multa. Mientras está pendiente o en revisión, el instructor solo accede a "Mis sanciones" y a sus próximas clases; cuando la administración aprueba el comprobante pasa a "Pagada" y la cuenta vuelve a operar.',
+              ],
+              [
+                "Suspensión temporal",
+                "Vigente · Levantada",
+                '"Vigente" mientras corre el período de la suspensión; "Levantada" cuando un administrador la terminó antes de tiempo.',
               ],
             ],
           },

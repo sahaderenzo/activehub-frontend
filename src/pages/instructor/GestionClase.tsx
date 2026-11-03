@@ -134,6 +134,9 @@ export default function InstructorGestionClase() {
   // Una clase que ya pasó (o que se canceló) es de sólo lectura: se ve quién estaba anotado y
   // qué pasó con cada pago, pero no hay nada que editar, cancelar ni cobrar.
   const soloLectura = clase.estado === "Finalizada" || clase.estado === "Cancelada";
+  // V36: con la multa sin pagar sólo puede ver a sus inscriptos y confirmar cobros en efectivo
+  // (el backend frena el resto); editar, cancelar y notificar ausencia no se ofrecen.
+  const conMulta = currentUser?.restricciones?.multaPendiente === true;
   const tipo = actividad ? data.getTipoActividad(actividad.tipoActividadId) : undefined;
   const cat = tipo ? data.getCategoria(tipo.categoriaId) : undefined;
   const disp = disponibilidad(clase);
@@ -252,7 +255,7 @@ export default function InstructorGestionClase() {
               )}
             </div>
           </div>
-          {!soloLectura && actividad && (
+          {!soloLectura && !conMulta && actividad && (
           <div style={s("display:flex;gap:9px;flex:none;")}>
             <button
               className="ah-btn"

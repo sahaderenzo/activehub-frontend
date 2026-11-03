@@ -22,9 +22,9 @@ export const DESCRIPCION_ACCION: Record<AccionResolucion, string> = {
   REINTEGRAR:
     "Cancela la inscripción y devuelve el pago a todos los inscriptos de la clase, no sólo a quien denunció: lo denunciado es un hecho de la clase y afecta a todos los que pagaron.",
   SUSPENDER:
-    `Inhabilita al instructor por la cantidad de días que elijas (entre ${MIN_DIAS_SUSPENSION} y ${MAX_DIAS_SUSPENSION}) y, si cargás un monto, además le aplica una multa. Cancela las clases que tuviera en ese período y reintegra a todos sus inscriptos. Puede seguir iniciando sesión, pero no publicar ni gestionar nada.`,
+    `Inhabilita al instructor por la cantidad de días que elijas (entre ${MIN_DIAS_SUSPENSION} y ${MAX_DIAS_SUSPENSION}) y, si cargás un monto, además le aplica una multa. Cancela las clases que tuviera en ese período y reintegra a todos sus inscriptos. Puede seguir iniciando sesión, pero no publicar ni gestionar nada. Si hay multa, además queda bloqueado hasta que la pague y la administración apruebe el comprobante.`,
   PENALIZAR:
-    "Suma una penalización económica al historial del instructor. No lo inhabilita, no cancela clases y no devuelve ningún pago.",
+    "Le aplica una multa del monto que elijas. Hasta que la pague y la administración apruebe el comprobante, sus actividades no se muestran y sólo puede ver sus inscriptos y confirmar cobros en efectivo. No cancela clases y no devuelve ningún pago.",
   DESESTIMAR:
     "Cierra el caso sin ninguna consecuencia: no se toca el pago, ni la inscripción, ni el instructor. Se le avisa al denunciante igual.",
   OCULTAR_RESENIA:

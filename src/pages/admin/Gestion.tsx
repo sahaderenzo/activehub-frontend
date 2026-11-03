@@ -137,6 +137,8 @@ const hayFiltro = (f: object) => Object.values(f).some((v) => typeof v === "stri
 
 interface SuspensionEnCurso {
   denuncia: DenunciaAdmin;
+  /** V36: PENALIZAR usa el mismo modal sin los días, y la multa es obligatoria. */
+  accion: "SUSPENDER" | "PENALIZAR";
   dias: string;
   monto: string;
   detalle: string;
@@ -470,23 +472,28 @@ export default function AdminGestion() {
 
   const confirmarSuspension = async () => {
     if (!suspension) return;
+    const esMulta = suspension.accion === "PENALIZAR";
     const dias = Number(suspension.dias);
     const monto = suspension.monto.trim() === "" ? 0 : Number(suspension.monto);
 
-    const errorDatos = errorDiasSuspension(dias) ?? errorMulta(monto, true);
+    const errorDatos = esMulta ? errorMulta(monto, false) : (errorDiasSuspension(dias) ?? errorMulta(monto, true));
     if (errorDatos) return setErrorSuspension(errorDatos);
 
     setErrorSuspension(null);
     setGuardandoSuspension(true);
     try {
-      await resolverDenuncia(suspension.denuncia.id, "SUSPENDER", suspension.detalle, {
-        montoMulta: monto,
-        diasSuspension: dias,
-      });
+      await resolverDenuncia(
+        suspension.denuncia.id,
+        suspension.accion,
+        suspension.detalle,
+        esMulta ? { montoMulta: monto } : { montoMulta: monto, diasSuspension: dias },
+      );
       setSuspension(null);
       cargarDenuncias();
     } catch (err) {
-      setErrorSuspension(err instanceof ApiError ? err.message : "No pudimos aplicar la suspensión.");
+      setErrorSuspension(
+        err instanceof ApiError ? err.message : esMulta ? "No pudimos aplicar la multa." : "No pudimos aplicar la suspensión.",
+      );
     } finally {
       setGuardandoSuspension(false);
     }
@@ -504,6 +511,19 @@ export default function AdminGestion() {
 
   const resolverReclamo = async (d: DenunciaAdmin, accion: AccionResolucion) => {
     setErrorDenuncias(null);
+    // Suspender pide días y multa, y penalizar pide la multa: van por su modal. Antes los dos
+    // pasaban por el prompt de abajo, sin esos datos, y el backend los rechazaba.
+    if (accion === "SUSPENDER" || accion === "PENALIZAR") {
+      setErrorSuspension(null);
+      setSuspension({
+        denuncia: d,
+        accion,
+        dias: String(MIN_DIAS_SUSPENSION),
+        monto: accion === "PENALIZAR" ? "" : "0",
+        detalle: "",
+      });
+      return;
+    }
     // El detalle es lo que ve el denunciante junto a la resolución (E3A-HU11 criterio 7).
     const detalle = window.prompt(
       `Vas a resolver este reclamo como "${ETIQUETA_ACCION[accion]}". Podés dejarle un detalle al denunciante (opcional):`,
@@ -1333,13 +1353,13 @@ export default function AdminGestion() {
         <Modal onClose={() => !guardandoSuspension && setSuspension(null)} zIndex={60}>
           <div style={s("background:#fff;border-radius:18px;padding:26px;max-width:460px;width:100%;")}>
             <div style={s("font:700 18px Space Grotesk,sans-serif;color:#0E2A47;margin-bottom:4px;")}>
-              Suspender al instructor
+              {ETIQUETA_ACCION[suspension.accion]}
             </div>
             <div style={s("font-size:13.5px;color:#7A8C9E;font-weight:600;margin-bottom:18px;")}>
               {suspension.denuncia.instructor
                 ? `${suspension.denuncia.instructor.nombre} ${suspension.denuncia.instructor.apellido}`
                 : "Instructor de la clase denunciada"}
-              {" · "}la suspensión se levanta sola al vencer.
+              {suspension.accion === "SUSPENDER" && " · la suspensión se levanta sola al vencer."}
             </div>
 
             {/* La misma descripción que la leyenda de la tabla: es donde se confirma. */}
@@ -1348,10 +1368,11 @@ export default function AdminGestion() {
                 "background:#FFF9EF;border:1px solid #F6E2C0;border-radius:11px;padding:11px 14px;margin-bottom:16px;font:600 12.5px Manrope,sans-serif;color:#8A5A12;line-height:1.5;",
               )}
             >
-              {DESCRIPCION_ACCION.SUSPENDER}
+              {DESCRIPCION_ACCION[suspension.accion]}
             </div>
 
             <div style={s("display:flex;flex-direction:column;gap:12px;")}>
+              {suspension.accion === "SUSPENDER" && (
               <label style={s("display:flex;flex-direction:column;gap:6px;")}>
                 <span style={s("font:700 12.5px Manrope,sans-serif;color:#41566B;")}>
                   Días de suspensión (entre {MIN_DIAS_SUSPENSION} y {MAX_DIAS_SUSPENSION})
@@ -1366,12 +1387,15 @@ export default function AdminGestion() {
                   style={s("border:1px solid #E2E9F0;border-radius:10px;padding:11px 12px;font:600 14px Manrope,sans-serif;color:#0E2A47;")}
                 />
               </label>
+              )}
 
               <label style={s("display:flex;flex-direction:column;gap:6px;")}>
-                <span style={s("font:700 12.5px Manrope,sans-serif;color:#41566B;")}>Multa (puede ser 0)</span>
+                <span style={s("font:700 12.5px Manrope,sans-serif;color:#41566B;")}>
+                  {suspension.accion === "PENALIZAR" ? "Monto de la multa *" : "Multa (puede ser 0)"}
+                </span>
                 <input
                   type="number"
-                  min={0}
+                  min={suspension.accion === "PENALIZAR" ? MULTA_MINIMA : 0}
                   max={MULTA_MAXIMA}
                   step={100}
                   value={suspension.monto}
@@ -1379,7 +1403,9 @@ export default function AdminGestion() {
                   style={s("border:1px solid #E2E9F0;border-radius:10px;padding:11px 12px;font:600 14px Manrope,sans-serif;color:#0E2A47;")}
                 />
                 <span style={s("font-size:11.5px;color:#9AAABA;font-weight:600;")}>
-                  En 0 no se aplica penalización económica, solo la suspensión. Si cargás una multa, va de ${MULTA_MINIMA.toLocaleString("es-AR")} a ${MULTA_MAXIMA.toLocaleString("es-AR")}.
+                  {suspension.accion === "PENALIZAR"
+                    ? `Entre $${MULTA_MINIMA.toLocaleString("es-AR")} y $${MULTA_MAXIMA.toLocaleString("es-AR")}.`
+                    : `En 0 no se aplica penalización económica, solo la suspensión. Si cargás una multa, va de $${MULTA_MINIMA.toLocaleString("es-AR")} a $${MULTA_MAXIMA.toLocaleString("es-AR")}.`}
                 </span>
               </label>
 
@@ -1420,7 +1446,7 @@ export default function AdminGestion() {
                   `flex:1;background:${guardandoSuspension ? "#D89A9C" : "#BE3A3E"};border:none;border-radius:11px;padding:12px;font:700 14px Manrope,sans-serif;color:#fff;cursor:${guardandoSuspension ? "wait" : "pointer"};`,
                 )}
               >
-                {guardandoSuspension ? "Aplicando…" : "Suspender"}
+                {guardandoSuspension ? "Aplicando…" : suspension.accion === "PENALIZAR" ? "Aplicar multa" : "Suspender"}
               </button>
             </div>
           </div>

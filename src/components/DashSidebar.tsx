@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { s } from "../lib/style";
 import { areasDisponibles, homeDeArea, puedeVerItem } from "../lib/areas";
+import { ITEMS_CON_MULTA } from "../lib/sanciones";
 import { useAuth } from "../context/AuthContext";
 import NotificationBell from "./NotificationBell";
 import Avatar from "./Avatar";
@@ -67,6 +68,12 @@ function instructorItems(color: (on: boolean) => string, activeKey: string): Nav
       "Reseñas",
       "/instructor/resenas",
       '<path d="M11.5 3.5 13.8 8l5 .7-3.6 3.5.9 5L11.5 15l-4.5 2.4.9-5L4.3 8.7l5-.7z"/>',
+    ],
+    [
+      "sanciones",
+      "Mis sanciones",
+      "/instructor/sanciones",
+      '<path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>',
     ],
     [
       "perfil",
@@ -157,7 +164,12 @@ export default function DashSidebar({ role, active }: DashSidebarProps) {
   // de instructor también se filtraba antes por nombre de rol, así que un rol nuevo con
   // `clases.gestionar` veía ítems que el backend después le rechazaba con 403 — y al revés,
   // un alumno con permisos de instructor no tenía cómo llegar acá.
-  const items = todos.filter((it) => puedeVerItem(it.key, permisos));
+  // V36: con la multa sin pagar sólo quedan "Mis sanciones" y "Próximas clases" (para
+  // llegar a los inscriptos y confirmar cobros); el resto lo frena RequireSinMultaPendiente.
+  const conMulta = role === "instructor" && currentUser?.restricciones?.multaPendiente === true;
+  const items = todos.filter(
+    (it) => puedeVerItem(it.key, permisos) && (!conMulta || ITEMS_CON_MULTA.includes(it.key)),
+  );
   // Alguien puede tener permisos de más de un área (un instructor que además se inscribe,
   // o un rol mixto creado en "Roles y permisos"): se le ofrece el cambio en vez de dejarlo
   // encerrado en el panel al que entró.

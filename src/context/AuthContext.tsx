@@ -3,7 +3,14 @@
    afecta al fast refresh en desarrollo. */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import type { InteresAlumno, PerfilAlumno, PerfilInstructor, RolNombre, Usuario } from "../lib/types";
+import type {
+  InteresAlumno,
+  PerfilAlumno,
+  PerfilInstructor,
+  RestriccionesPenalizacion,
+  RolNombre,
+  Usuario,
+} from "../lib/types";
 import { perfilesAlumno, perfilesInstructor, usuarios as seedUsuarios } from "../lib/mockData";
 import { api, ApiError, clearToken, getToken, setToken } from "../lib/api";
 import { puedeEntrarA } from "../lib/areas";
@@ -55,6 +62,11 @@ export interface SesionUsuario extends Usuario {
    * esperar al render siguiente.
    */
   permisos?: string[];
+  /**
+   * V36: suspensión vigente y multa sin pagar. La guarda de rutas manda al instructor con la
+   * multa sin pagar a su pantalla de pago; el control real lo hace el backend.
+   */
+  restricciones?: RestriccionesPenalizacion;
 }
 
 export interface RegistrarAlumnoInput {
@@ -176,6 +188,8 @@ interface UsuarioRespuesta {
   condicionSalud?: string | null;
   /** Claves habilitadas para su rol (RN-19). El menú y las rutas se arman con esto. */
   permisos?: string[];
+  /** V36: la suspensión que rige hoy y si tiene una multa sin pagar. Sólo lo trae /me. */
+  restricciones?: RestriccionesPenalizacion;
 }
 
 interface AuthRespuesta {
@@ -237,6 +251,8 @@ interface AuthContextValue {
   actualizarMisIntereses: (tiposActividadId: string[]) => Promise<void>;
   /** "¿Padecés alguna enfermedad o lesión?". Vacío borra lo que había. */
   actualizarMiCondicionSalud: (texto: string) => Promise<void>;
+  /** V36: vuelve a pedir la suspensión vigente y la multa sin pagar (`/api/auth/me`). */
+  refrescarRestricciones: () => Promise<void>;
   cambiarMiContrasenia: (contraseniaActual: string, contraseniaNueva: string) => Promise<void>;
   darDeBajaMiCuenta: () => Promise<void>;
   reabrirSolicitud: () => Promise<void>;
@@ -406,7 +422,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       usuario.rol === "ALUMNO" ? { usuarioId: usuario.id, intereses: completo?.intereses ?? [], condicionSalud: completo?.condicionSalud ?? undefined } : undefined;
     // `permisos` viaja en la sesión devuelta para que quien llame (el login) pueda decidir
     // a qué área mandar al usuario sin esperar al próximo render del contexto.
-    const sesion: SesionUsuario = { ...usuario, permisos: permisosDelRol, perfilAlumno, perfilInstructor };
+    const sesion: SesionUsuario = {
+      ...usuario,
+      permisos: permisosDelRol,
+      perfilAlumno,
+      perfilInstructor,
+      restricciones: completo?.restricciones,
+    };
     setCurrentUser(sesion);
     setPermisos(permisosDelRol);
     return sesion;
@@ -446,7 +468,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const perfilInstructor = await fetchPerfilInstructorSiCorresponde(usuario, permisosDelRol);
     const perfilAlumno =
       usuario.rol === "ALUMNO" ? { usuarioId: usuario.id, intereses: completo?.intereses ?? [], condicionSalud: completo?.condicionSalud ?? undefined } : undefined;
-    const sesion: SesionUsuario = { ...usuario, permisos: permisosDelRol, perfilAlumno, perfilInstructor };
+    const sesion: SesionUsuario = {
+      ...usuario,
+      permisos: permisosDelRol,
+      perfilAlumno,
+      perfilInstructor,
+      restricciones: completo?.restricciones,
+    };
     setCurrentUser(sesion);
     setPermisos(permisosDelRol);
     return { modo: "SESION" as const, sesion, cuentaNueva };
@@ -584,6 +612,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
+  // V36: la pantalla de pago la vuelve a pedir al cargar y después de enviar el comprobante,
+  // así una multa aprobada mientras tanto desbloquea la navegación sin tener que recargar.
+  const refrescarRestricciones = useCallback(async () => {
+    const me = await api.get<UsuarioRespuesta>("/api/auth/me");
+    setCurrentUser((prev) => (prev ? { ...prev, restricciones: me.restricciones } : prev));
+  }, []);
+
   // Mismo criterio que los intereses: el resultado se refleja en currentUser, de donde lee el
   // Perfil. Antes este dato se cargaba sólo en el alta y no había forma de cambiarlo.
   const actualizarMiCondicionSalud = useCallback(async (texto: string) => {
@@ -652,6 +687,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       actualizarMiPerfil,
       actualizarMisIntereses,
       actualizarMiCondicionSalud,
+      refrescarRestricciones,
       cambiarMiContrasenia,
       darDeBajaMiCuenta,
       reabrirSolicitud,
@@ -680,6 +716,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       actualizarMiPerfil,
       actualizarMisIntereses,
       actualizarMiCondicionSalud,
+      refrescarRestricciones,
       cambiarMiContrasenia,
       darDeBajaMiCuenta,
       reabrirSolicitud,

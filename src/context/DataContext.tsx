@@ -16,6 +16,8 @@ import type {
   RolNombre,
   TipoActividad,
   DatosPagoMercadoPago,
+  EstadoComprobantePenalizacion,
+  EstadoPagoPenalizacion,
   TipoPenalizacion,
 } from "../lib/types";
 import type { DestinoNotificacion } from "../lib/notificaciones";
@@ -311,6 +313,48 @@ export interface PenalizacionAdmin {
   denunciaId: string | null;
   cantidadPenalizacionesUsuario: number;
   createdAt: string;
+  /** V36, sólo multas. Null en las anteriores a V36 (no se pagan por la plataforma). */
+  estadoPago: EstadoPagoPenalizacion | null;
+  pagoAprobadoAt: string | null;
+  /** V36, sólo suspensiones: si un administrador la levantó antes de tiempo. */
+  levantadaAt: string | null;
+  motivoLevantamiento: string | null;
+  /** Del más reciente al más viejo. */
+  comprobantes: ComprobantePenalizacionAdmin[];
+}
+
+export interface ComprobantePenalizacionAdmin {
+  id: string;
+  nombreArchivo: string;
+  estado: EstadoComprobantePenalizacion;
+  motivoInvalidez: string | null;
+  createdAt: string;
+  revisadoAt: string | null;
+}
+
+/** "Pago de penalización" del instructor (`GET /api/instructor/sanciones`, V36). */
+export interface MisSanciones {
+  multaPendiente: boolean;
+  suspendidoHasta: string | null;
+  /** De la configuración del servidor. Cada dato puede venir en null si no se cargó. */
+  transferencia: { alias: string | null; cbu: string | null; titular: string | null };
+  sanciones: MiSancion[];
+}
+
+export interface MiSancion {
+  id: string;
+  tipo: TipoPenalizacion;
+  motivo: string;
+  monto: number | null;
+  fechaInicio: string | null;
+  fechaFin: string | null;
+  createdAt: string;
+  estadoPago: EstadoPagoPenalizacion | null;
+  /** Sólo suspensiones: si rige hoy. */
+  vigente: boolean;
+  levantadaAt: string | null;
+  motivoLevantamiento: string | null;
+  comprobantes: { id: string; nombreArchivo: string; estado: EstadoComprobantePenalizacion; motivoInvalidez: string | null; createdAt: string }[];
 }
 
 export interface CrearPenalizacionInput {
@@ -325,10 +369,13 @@ export interface CrearPenalizacionInput {
 
 /** Datos extra que pide "Suspender al instructor" al resolver una denuncia. */
 export interface SancionSuspension {
-  /** Puede ser 0: en ese caso la sanción es solo la suspensión, sin multa. */
+  /**
+   * SUSPENDER: puede ser 0, y en ese caso la sanción es solo la suspensión, sin multa.
+   * PENALIZAR: obligatorio desde V36 (el instructor tiene que saber cuánto pagar).
+   */
   montoMulta: number;
-  /** Mínimo 15 días (lo valida también el backend). */
-  diasSuspension: number;
+  /** Sólo SUSPENDER. Mínimo 15 días (lo valida también el backend). */
+  diasSuspension?: number;
 }
 
 export interface RosterClase {
@@ -809,6 +856,13 @@ interface DataContextValue {
   ) => Promise<{ id: string; actividadId: string; orden: number }>;
   eliminarImagenActividad: (actividadId: string, imagenId: string) => Promise<void>;
   listarPenalizaciones: () => Promise<PenalizacionAdmin[]>;
+  // V36: pago de multas con comprobante y levantar una suspensión
+  listarMisSanciones: () => Promise<MisSanciones>;
+  enviarComprobantePenalizacion: (penalizacionId: string, archivo: File) => Promise<void>;
+  verComprobantePenalizacion: (comprobanteId: string) => Promise<void>;
+  desbloquearInstructorPenalizacion: (penalizacionId: string) => Promise<{ suspendidoHasta: string | null }>;
+  invalidarComprobantePenalizacion: (penalizacionId: string, motivo: string) => Promise<void>;
+  levantarSuspension: (penalizacionId: string, motivo: string) => Promise<{ multaPendiente: boolean }>;
   listarRolesPermisos: () => Promise<RolesPermisos>;
   /** Cambia el rol de una cuenta, incluidos los roles creados por el admin. */
   asignarRolUsuario: (usuarioId: string, rolId: string) => Promise<void>;
@@ -1254,7 +1308,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       await api.post(`/api/admin/denuncias/${id}/resolver`, {
         accion,
         detalle: detalle?.trim() || undefined,
-        // Solo viajan con SUSPENDER; el backend los exige en ese caso.
+        // Viajan con SUSPENDER (días y multa opcional) y con PENALIZAR (sólo la multa).
         montoMulta: sancion?.montoMulta,
         diasSuspension: sancion?.diasSuspension,
       });
@@ -1375,6 +1429,44 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const crearPenalizacion = useCallback(async (input: CrearPenalizacionInput) => {
     await api.post("/api/admin/penalizaciones", input);
+  }, []);
+
+  const listarMisSanciones = useCallback(async () => {
+    return api.get<MisSanciones>("/api/instructor/sanciones");
+  }, []);
+
+  const enviarComprobantePenalizacion = useCallback(async (penalizacionId: string, archivo: File) => {
+    const formData = new FormData();
+    formData.append("archivo", archivo);
+    await api.postForm(`/api/instructor/sanciones/${penalizacionId}/comprobante`, formData);
+  }, []);
+
+  const verComprobantePenalizacion = useCallback(async (comprobanteId: string) => {
+    // Mismo cuidado que verDocumentoInstructor: la pestaña se abre dentro del click y el archivo
+    // se carga después; si no, el bloqueador de ventanas emergentes la corta.
+    const ventana = window.open("", "_blank");
+    try {
+      const blob = await api.getBlob(`/api/admin/penalizaciones/comprobantes/${comprobanteId}/archivo`);
+      const url = URL.createObjectURL(blob);
+      if (ventana) ventana.location.href = url;
+      else window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      ventana?.close();
+      throw err;
+    }
+  }, []);
+
+  const desbloquearInstructorPenalizacion = useCallback(async (penalizacionId: string) => {
+    return api.post<{ suspendidoHasta: string | null }>(`/api/admin/penalizaciones/${penalizacionId}/desbloquear`);
+  }, []);
+
+  const invalidarComprobantePenalizacion = useCallback(async (penalizacionId: string, motivo: string) => {
+    await api.post(`/api/admin/penalizaciones/${penalizacionId}/invalidar-comprobante`, { motivo });
+  }, []);
+
+  const levantarSuspension = useCallback(async (penalizacionId: string, motivo: string) => {
+    return api.post<{ multaPendiente: boolean }>(`/api/admin/penalizaciones/${penalizacionId}/levantar`, { motivo });
   }, []);
 
   const listarUsuariosAdmin = useCallback(async () => {
@@ -1501,6 +1593,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       agregarImagenActividad,
       eliminarImagenActividad,
       listarPenalizaciones,
+      listarMisSanciones,
+      enviarComprobantePenalizacion,
+      verComprobantePenalizacion,
+      desbloquearInstructorPenalizacion,
+      invalidarComprobantePenalizacion,
+      levantarSuspension,
       listarRolesPermisos,
       asignarRolUsuario,
       actualizarPermisosRol,
@@ -1597,6 +1695,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       agregarImagenActividad,
       eliminarImagenActividad,
       listarPenalizaciones,
+      listarMisSanciones,
+      enviarComprobantePenalizacion,
+      verComprobantePenalizacion,
+      desbloquearInstructorPenalizacion,
+      invalidarComprobantePenalizacion,
+      levantarSuspension,
       listarRolesPermisos,
       asignarRolUsuario,
       actualizarPermisosRol,

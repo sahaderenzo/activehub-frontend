@@ -5,6 +5,22 @@ export type RolNombre = "ALUMNO" | "INSTRUCTOR" | "ADMIN";
 export type EstadoUsuario = "ACTIVO" | "SUSPENDIDO";
 export type EstadoVerificacion = "PENDIENTE" | "APROBADO" | "RECHAZADO";
 
+/**
+ * V36 del backend. Una multa bloquea al instructor hasta que la administración aprueba el
+ * comprobante: `PENDIENTE_PAGO` y `EN_REVISION` bloquean, `PAGADA` no. Las multas anteriores a
+ * V36 no tienen estado (null) y no bloquean.
+ */
+export type EstadoPagoPenalizacion = "PENDIENTE_PAGO" | "EN_REVISION" | "PAGADA";
+
+export type EstadoComprobantePenalizacion = "EN_REVISION" | "APROBADO" | "INVALIDO";
+
+/** Lo que trae `/api/auth/me` sobre las penalizaciones que hoy le cortan la operación. */
+export interface RestriccionesPenalizacion {
+  /** Último día de la suspensión que rige hoy (incluido), "aaaa-mm-dd", o null. */
+  suspendidoHasta: string | null;
+  multaPendiente: boolean;
+}
+
 export type EstadoInscripcion =
   | "PreInscripción"
   | "PagoPendiente"

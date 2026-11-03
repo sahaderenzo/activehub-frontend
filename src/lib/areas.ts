@@ -137,6 +137,10 @@ export const AREAS: AreaDef[] = [
       // Perfil no lleva permiso: son los datos de la propia cuenta, no un módulo. Va al
       // final para que nunca sea el aterrizaje de nadie que tenga algo más que hacer.
       { key: "perfil", path: "/instructor/perfil" },
+      // V36: "Mis sanciones" tampoco lleva permiso (es la cuenta propia) y es donde el
+      // instructor con la multa sin pagar carga el comprobante. Va después de Perfil para
+      // que tampoco sea el aterrizaje: con la multa, a esta pantalla lo lleva la guarda.
+      { key: "sanciones", path: "/instructor/sanciones" },
     ],
   },
   {

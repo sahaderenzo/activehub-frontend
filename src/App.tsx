@@ -5,6 +5,7 @@ import RequireArea from "./components/RequireArea";
 import RequireEmailVerificado from "./components/RequireEmailVerificado";
 import RequirePerfilCompleto from "./components/RequirePerfilCompleto";
 import RequirePermiso from "./components/RequirePermiso";
+import RequireSinMultaPendiente from "./components/RequireSinMultaPendiente";
 import Footer from "./components/Footer";
 import { permisosDePantalla } from "./lib/areas";
 
@@ -43,6 +44,7 @@ import InstructorMetricas from "./pages/instructor/Metricas";
 import InstructorResenas from "./pages/instructor/Resenas";
 import InstructorSolicitud from "./pages/instructor/Solicitud";
 import InstructorPerfil from "./pages/instructor/Perfil";
+import InstructorSanciones from "./pages/instructor/Sanciones";
 
 import AdminDashboard from "./pages/admin/Dashboard";
 import AdminGestion from "./pages/admin/Gestion";
@@ -121,25 +123,30 @@ function AppRoutes() {
           </Route>
 
           <Route element={<RequireArea area="instructor" />}>
-            <Route path="/instructor" element={<InstructorPanel />} />
-            {/* "Mis datos" (solicitud) es identidad, no un módulo: no lleva permiso, igual
-                que en el backend — RN-16 le deja esa única pantalla al no verificado. */}
-            <Route path="/instructor/solicitud" element={<InstructorSolicitud />} />
-            <Route path="/instructor/perfil" element={<InstructorPerfil />} />
-            <Route element={<RequirePermiso clave="actividades.publicar" />}>
-              <Route path="/instructor/actividades" element={<InstructorMisActividades />} />
-              <Route path="/instructor/actividades/nueva" element={<InstructorCrearActividad />} />
-              <Route path="/instructor/actividades/:id/editar" element={<InstructorCrearActividad />} />
-              <Route path="/instructor/actividades/:id" element={<InstructorActividadDetalle />} />
-            </Route>
-            <Route element={<RequirePermiso clave="clases.gestionar" />}>
-              <Route path="/instructor/clases/:id" element={<InstructorGestionClase />} />
-              <Route path="/instructor/proximas-clases" element={<InstructorProximasClases />} />
-              <Route path="/instructor/historial" element={<InstructorHistorialClases />} />
-              <Route path="/instructor/metricas" element={<InstructorMetricas />} />
-            </Route>
-            <Route element={<RequirePermiso clave="resenias.responder" />}>
-              <Route path="/instructor/resenas" element={<InstructorResenas />} />
+            {/* V36: con la multa sin pagar, sólo "Mis sanciones" y los inscriptos de sus clases. */}
+            <Route element={<RequireSinMultaPendiente />}>
+              <Route path="/instructor" element={<InstructorPanel />} />
+              {/* "Mis sanciones" es la cuenta propia, como "Mis datos": no lleva permiso. */}
+              <Route path="/instructor/sanciones" element={<InstructorSanciones />} />
+              {/* "Mis datos" (solicitud) es identidad, no un módulo: no lleva permiso, igual
+                  que en el backend — RN-16 le deja esa única pantalla al no verificado. */}
+              <Route path="/instructor/solicitud" element={<InstructorSolicitud />} />
+              <Route path="/instructor/perfil" element={<InstructorPerfil />} />
+              <Route element={<RequirePermiso clave="actividades.publicar" />}>
+                <Route path="/instructor/actividades" element={<InstructorMisActividades />} />
+                <Route path="/instructor/actividades/nueva" element={<InstructorCrearActividad />} />
+                <Route path="/instructor/actividades/:id/editar" element={<InstructorCrearActividad />} />
+                <Route path="/instructor/actividades/:id" element={<InstructorActividadDetalle />} />
+              </Route>
+              <Route element={<RequirePermiso clave="clases.gestionar" />}>
+                <Route path="/instructor/clases/:id" element={<InstructorGestionClase />} />
+                <Route path="/instructor/proximas-clases" element={<InstructorProximasClases />} />
+                <Route path="/instructor/historial" element={<InstructorHistorialClases />} />
+                <Route path="/instructor/metricas" element={<InstructorMetricas />} />
+              </Route>
+              <Route element={<RequirePermiso clave="resenias.responder" />}>
+                <Route path="/instructor/resenas" element={<InstructorResenas />} />
+              </Route>
             </Route>
           </Route>
 
