@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import AdminPenalizaciones from "./Penalizaciones";
@@ -79,23 +79,65 @@ describe("Penalizaciones del admin", () => {
     DATA.listarPenalizaciones.mockResolvedValue([base({}), enRevision, base({ id: "pen-3", estadoPago: "PAGADA" })]);
     montar();
 
-    expect(await screen.findByText("Pendiente de pago")).toBeInTheDocument();
-    expect(screen.getByText("En revisión")).toBeInTheDocument();
-    expect(screen.getByText("Pagada")).toBeInTheDocument();
+    const lista = within(await screen.findByTestId("lista-penalizaciones"));
+    expect(await lista.findByText("Pendiente de pago")).toBeInTheDocument();
+    expect(lista.getByText("En revisión")).toBeInTheDocument();
+    expect(lista.getByText("Pagada")).toBeInTheDocument();
   });
 
   it("multa y suspensión aplicadas juntas van en una sola fila, cada una con su estado", async () => {
     DATA.listarPenalizaciones.mockResolvedValue([base({}), suspension]);
     montar();
 
-    expect(await screen.findByText("Pendiente de pago")).toBeInTheDocument();
+    const lista = within(await screen.findByTestId("lista-penalizaciones"));
+    expect(await lista.findByText("Pendiente de pago")).toBeInTheDocument();
     expect(screen.getAllByText("Sofía Ruiz")).toHaveLength(1);
     expect(screen.getAllByText("Faltó a la clase")).toHaveLength(1);
     expect(screen.getByText("Multa")).toBeInTheDocument();
     expect(screen.getByText("Suspensión")).toBeInTheDocument();
-    expect(screen.getByText("Vigente")).toBeInTheDocument();
+    expect(lista.getByText("Vigente")).toBeInTheDocument();
     // Cada parte se resuelve por su lado: la suspensión sigue ofreciendo su botón.
     expect(screen.getByText("Desbloquear")).toBeInTheDocument();
+  });
+
+  it("la lupa busca por instructor y Limpiar filtros vuelve a mostrar todo", async () => {
+    DATA.listarPenalizaciones.mockResolvedValue([
+      base({}),
+      base({ id: "pen-9", usuarioId: "inst-2", usuarioNombre: "Diego Morales", usuarioEmail: "diego@activehub.test" }),
+    ]);
+    montar();
+    const usuario = userEvent.setup();
+
+    await screen.findByText("Diego Morales");
+    expect(screen.getByText("2 en total")).toBeInTheDocument();
+    await usuario.type(screen.getByLabelText("Buscar por instructor"), "diego");
+    expect(screen.queryByText("Sofía Ruiz")).not.toBeInTheDocument();
+    expect(screen.getByText("1 de 2")).toBeInTheDocument();
+
+    await usuario.click(screen.getByText("Limpiar filtros"));
+    expect(screen.getByText("Sofía Ruiz")).toBeInTheDocument();
+  });
+
+  it("un filtro sin resultados lo dice", async () => {
+    DATA.listarPenalizaciones.mockResolvedValue([base({})]);
+    montar();
+    const usuario = userEvent.setup();
+
+    await screen.findByText("Sofía Ruiz");
+    await usuario.selectOptions(screen.getByLabelText("Estado"), "Pagada");
+    expect(screen.getByText("No hay penalizaciones con esos filtros.")).toBeInTheDocument();
+  });
+
+  it("pagina de a 10 sanciones", async () => {
+    DATA.listarPenalizaciones.mockResolvedValue(
+      Array.from({ length: 12 }, (_, i) =>
+        base({ id: `pen-${i}`, usuarioId: `inst-${i}`, usuarioNombre: `Instructor ${String(i).padStart(2, "0")}` }),
+      ),
+    );
+    montar();
+
+    await screen.findByText("12 en total");
+    expect(within(screen.getByTestId("lista-penalizaciones")).getAllByText(/^Instructor \d\d$/)).toHaveLength(10);
   });
 
   it("con el comprobante en revisión abre el archivo", async () => {
@@ -158,7 +200,8 @@ describe("Penalizaciones del admin", () => {
     ]);
     montar();
 
-    expect(await screen.findByText("Levantada")).toBeInTheDocument();
+    const lista = within(await screen.findByTestId("lista-penalizaciones"));
+    expect(await lista.findByText("Levantada")).toBeInTheDocument();
     expect(screen.getByText(/error en la denuncia/)).toBeInTheDocument();
     expect(screen.queryByText("Desbloquear")).not.toBeInTheDocument();
   });

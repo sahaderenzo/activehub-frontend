@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DashLayout from "../../components/DashLayout";
 import { s } from "../../lib/style";
 import Modal from "../../components/Modal";
@@ -11,7 +11,23 @@ import { formatFecha } from "../../lib/mockData";
 import { MAX_DIAS_SUSPENSION, MIN_DIAS_SUSPENSION, MULTA_MAXIMA, MULTA_MINIMA, errorDiasSuspension, errorMulta } from "../../lib/limites";
 import type { TipoPenalizacion } from "../../lib/types";
 import { ESTILO_RESALTE, useResaltado } from "../../lib/resaltado";
-import { ETIQUETA_ESTADO_PAGO, agruparPenalizaciones, fechaCorta } from "../../lib/sanciones";
+import { agruparPenalizaciones, fechaCorta } from "../../lib/sanciones";
+import {
+  FILTRO_VACIO,
+  OPCIONES_ESTADO,
+  OPCIONES_ORIGEN,
+  OPCIONES_TIPO,
+  ORDENES_PENALIZACIONES,
+  estadoDeParte,
+  filtrarSanciones,
+  hayFiltro,
+  ordenarSanciones,
+  type EstadoParte,
+  type FiltroPenalizaciones,
+} from "../../lib/filtrosPenalizaciones";
+import { usePaginado } from "../../lib/paginado";
+import Paginacion from "../../components/Paginacion";
+import BuscadorLupa from "../../components/BuscadorLupa";
 
 const TIPO_STYLE: Record<TipoPenalizacion, [string, string, string]> = {
   Económica: ["#FFF3E0", "#B9741A", "#F6E2C0"],
@@ -34,15 +50,47 @@ const BOTON_FILA = "background:#fff;border:1px solid #D6DEE7;border-radius:9px;p
  * por la plataforma y siguen como "Aplicada"); una suspensión, por si sigue en curso o un
  * administrador la levantó.
  */
+const CHIP_DE_ESTADO: Record<EstadoParte, string> = {
+  "Pendiente de pago": CHIP_AMBAR,
+  "En revisión": CHIP_AZUL,
+  Pagada: CHIP_VERDE,
+  Aplicada: CHIP_GRIS,
+  Vigente: CHIP_ROJO,
+  Levantada: CHIP_GRIS,
+};
+
 function estadoFila(p: PenalizacionAdmin): [string, string] {
-  if (p.tipo === "Económica") {
-    if (p.estadoPago === "PENDIENTE_PAGO") return [ETIQUETA_ESTADO_PAGO.PENDIENTE_PAGO, CHIP_AMBAR];
-    if (p.estadoPago === "EN_REVISION") return [ETIQUETA_ESTADO_PAGO.EN_REVISION, CHIP_AZUL];
-    if (p.estadoPago === "PAGADA") return [ETIQUETA_ESTADO_PAGO.PAGADA, CHIP_VERDE];
-    return ["Aplicada", CHIP_GRIS];
-  }
-  if (p.levantadaAt) return ["Levantada", CHIP_GRIS];
-  return p.vigente ? ["Vigente", CHIP_ROJO] : ["Aplicada", CHIP_GRIS];
+  const estado = estadoDeParte(p);
+  return [estado, CHIP_DE_ESTADO[estado]];
+}
+
+const POR_PAGINA = 10;
+const SELECT =
+  "background:#fff;border:1px solid #D6DEE7;border-radius:12px;padding:10px 12px;font:600 13.5px Manrope,sans-serif;color:#0E2A47;cursor:pointer;";
+
+function Selector({
+  etiqueta,
+  valor,
+  opciones,
+  onChange,
+}: {
+  etiqueta: string;
+  valor: string;
+  opciones: { valor: string; etiqueta: string }[];
+  onChange: (valor: string) => void;
+}) {
+  return (
+    <label style={s("display:flex;align-items:center;gap:7px;font:700 12.5px Manrope,sans-serif;color:#65788C;")}>
+      {etiqueta}
+      <select aria-label={etiqueta} value={valor} onChange={(e) => onChange(e.target.value)} style={s(SELECT)}>
+        {opciones.map((o) => (
+          <option key={o.valor} value={o.valor}>
+            {o.etiqueta}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
 }
 
 type TipoAccion = "desbloquear" | "invalidar" | "levantar";
@@ -213,6 +261,24 @@ export default function AdminPenalizaciones() {
 
   const rows = penalizaciones;
   const grupos = useMemo(() => agruparPenalizaciones(rows), [rows]);
+
+  // Buscador, filtros y orden: sobre las sanciones (filas), no sobre cada parte.
+  const [filtro, setFiltro] = useState<FiltroPenalizaciones>(FILTRO_VACIO);
+  const [orden, setOrden] = useState(ORDENES_PENALIZACIONES[0].valor);
+  const ordenadas = useMemo(() => ordenarSanciones(filtrarSanciones(grupos, filtro), orden), [grupos, filtro, orden]);
+  // La notificación de un comprobante trae `?penalizacion=`: se abre en la página de esa fila.
+  const indiceResaltado = ordenadas.findIndex((g) => g.some((x) => x.id === resaltado.id));
+  const pag = usePaginado(
+    ordenadas,
+    POR_PAGINA,
+    JSON.stringify(filtro) + orden,
+    indiceResaltado >= 0 ? Math.floor(indiceResaltado / POR_PAGINA) + 1 : undefined,
+  );
+  const listaRef = useRef<HTMLDivElement>(null);
+  const irAPagina = (n: number) => {
+    pag.irAPagina(n);
+    if (listaRef.current) listaRef.current.scrollTop = 0;
+  };
 
   const submit = async () => {
     setFormError(null);
@@ -387,6 +453,44 @@ export default function AdminPenalizaciones() {
           </div>
         )}
 
+        {!cargando && !error && rows.length > 0 && (
+          <div style={s("display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;")}>
+            <BuscadorLupa
+              valor={filtro.texto}
+              onChange={(texto) => setFiltro({ ...filtro, texto })}
+              placeholder="Buscar por instructor (nombre o correo)"
+              etiqueta="Buscar por instructor"
+            />
+            <Selector etiqueta="Tipo" valor={filtro.tipo} opciones={OPCIONES_TIPO} onChange={(tipo) => setFiltro({ ...filtro, tipo })} />
+            <Selector
+              etiqueta="Estado"
+              valor={filtro.estado}
+              opciones={OPCIONES_ESTADO}
+              onChange={(estado) => setFiltro({ ...filtro, estado })}
+            />
+            <Selector
+              etiqueta="Origen"
+              valor={filtro.origen}
+              opciones={OPCIONES_ORIGEN}
+              onChange={(origen) => setFiltro({ ...filtro, origen })}
+            />
+            <Selector etiqueta="Ordenar por" valor={orden} opciones={ORDENES_PENALIZACIONES} onChange={setOrden} />
+            <span style={s("font-size:13px;color:#65788C;font-weight:600;display:flex;align-items:center;gap:12px;")}>
+              {hayFiltro(filtro) ? `${ordenadas.length} de ${grupos.length}` : `${grupos.length} en total`}
+              {hayFiltro(filtro) && (
+                <span
+                  className="ah-link"
+                  role="button"
+                  onClick={() => setFiltro(FILTRO_VACIO)}
+                  style={s("color:#12B5A5;font-weight:700;cursor:pointer;")}
+                >
+                  Limpiar filtros
+                </span>
+              )}
+            </span>
+          </div>
+        )}
+
         <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:18px;overflow:hidden;box-shadow:0 1px 2px rgba(14,42,71,.04);")}>
           <div style={s("overflow-x:auto;")}>
             <div style={s("min-width:900px;")}>
@@ -402,7 +506,8 @@ export default function AdminPenalizaciones() {
                 <span>Acum.</span>
                 <span>Estado</span>
               </div>
-              {(cargando ? [] : grupos).map((grupo) => {
+              <div ref={listaRef} className="ah-scroll" data-testid="lista-penalizaciones" style={s("max-height:620px;overflow-y:auto;")}>
+              {pag.visibles.map((grupo) => {
                 // Multa + suspensión aplicadas juntas van en UNA fila, pero cada parte conserva
                 // su estado y sus botones: se resuelven por separado y el instructor sigue
                 // bloqueado mientras quede alguna (ver agruparPenalizaciones).
@@ -497,6 +602,12 @@ export default function AdminPenalizaciones() {
                   </div>
                 );
               })}
+              {!cargando && !error && rows.length > 0 && ordenadas.length === 0 && (
+                <div style={s("padding:40px 22px;text-align:center;color:#90A1B2;font:600 13.5px Manrope,sans-serif;")}>
+                  No hay penalizaciones con esos filtros.
+                </div>
+              )}
+              </div>
               {error && (
                 <div style={s("padding:30px 22px;text-align:center;")}>
                   <div style={s("color:#BE3A3E;font:700 13.5px Manrope,sans-serif;margin-bottom:12px;")}>{error}</div>
@@ -518,6 +629,11 @@ export default function AdminPenalizaciones() {
               )}
               {!cargando && !error && rows.length === 0 && (
                 <div style={s("padding:40px 22px;text-align:center;color:#90A1B2;font:600 13.5px Manrope,sans-serif;")}>No hay penalizaciones aplicadas.</div>
+              )}
+              {!cargando && !error && pag.totalPaginas > 1 && (
+                <div style={s("padding:14px 22px;border-top:1px solid #EEF2F6;")}>
+                  <Paginacion paginaActual={pag.paginaActual} totalPaginas={pag.totalPaginas} irAPagina={irAPagina} />
+                </div>
               )}
             </div>
           </div>
