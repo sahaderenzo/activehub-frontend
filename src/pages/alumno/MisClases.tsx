@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AlumnoNav from "../../components/AlumnoNav";
 import StatusBadge from "../../components/StatusBadge";
+import ActivityPhoto from "../../components/ActivityPhoto";
 import { CargandoAccion, CargandoSeccion } from "../../components/Cargando";
 import Paginacion from "../../components/Paginacion";
 import { usePaginado } from "../../lib/paginado";
@@ -377,10 +378,13 @@ export default function AlumnoMisClases() {
                       + (resaltada ? ESTILO_RESALTE : ""),
                   )}
                 >
-                  <div style={s(`width:88px;height:88px;border-radius:14px;flex:none;background:${actividad?.photoTint ?? "#0E2A47"};position:relative;`)}>
+                  {/* La portada real, igual que en el resto de las pantallas; el degradé y "FOTO"
+                      quedan debajo para la actividad sin portada (ActivityPhoto se oculta si falla). */}
+                  <div style={s(`width:88px;height:88px;border-radius:14px;flex:none;background:${actividad?.photoTint ?? "#0E2A47"};position:relative;overflow:hidden;`)}>
                     <div style={s("position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.6);font:600 9px ui-monospace,Menlo,monospace;")}>
                       FOTO
                     </div>
+                    <ActivityPhoto actividadId={r.actividadId} />
                   </div>
                   <div style={s("flex:1;min-width:220px;")}>
                     <div style={s("display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap;")}>

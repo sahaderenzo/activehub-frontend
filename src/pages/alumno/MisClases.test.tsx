@@ -134,4 +134,14 @@ describe("mis clases", () => {
     expect(await screen.findByText("Yoga 11")).toBeInTheDocument();
     expect(filasVisibles()).toEqual(["Yoga 09", "Yoga 10", "Yoga 11"]);
   });
+
+  it("muestra la portada de cada actividad, no sólo el recuadro de color", async () => {
+    // Reportado (2026-11-06): las tarjetas mostraban siempre "FOTO" sobre el degradé.
+    const { container } = montar();
+    await screen.findByText("Natación");
+
+    const fotos = [...container.querySelectorAll("img")].map((i) => i.getAttribute("src") ?? "");
+    expect(fotos.some((src) => src.includes("a-n1"))).toBe(true);
+    expect(fotos).toHaveLength(filasVisibles().length);
+  });
 });
